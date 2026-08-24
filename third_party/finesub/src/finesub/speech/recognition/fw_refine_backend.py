@@ -687,7 +687,10 @@ class FwRefineModelPool:
                     compute_type=(
                         "float16"
                         if self._device.strip().lower().startswith("cuda")
-                        else "float32"
+                        # The cloud CTranslate2 build intentionally omits an
+                        # SGEMM library; int8 uses the compiled RUY backend and
+                        # is also the practical compute type for CPU Whisper.
+                        else "int8"
                     ),
                     refine_sec=self._refine_sec,
                 )

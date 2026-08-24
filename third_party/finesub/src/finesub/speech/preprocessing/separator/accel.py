@@ -35,7 +35,7 @@ from ....reporting import current_reporter
 # Bumped when the build configuration changes in a way that invalidates
 # artefacts the key alone would not distinguish -- a different target set, a
 # different inductor flag. Part of the key, so old directories go unread.
-BUILD_FORMAT = "2"
+BUILD_FORMAT = "4"
 
 # JIT pays ~35s of graph reconstruction per process against ~2s for AOTI, so it
 # only earns its keep on long inputs. Measured break-even is ~800s; 600s is used

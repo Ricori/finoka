@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,6 +27,7 @@ import (
 const (
 	maxMediaDuration  = 2 * time.Hour
 	maxThumbnailBytes = 5 << 20
+	maxEditorClips    = 200
 )
 
 var supportedExtensions = map[string]struct{}{
@@ -47,6 +49,15 @@ type Entry struct {
 	Available          bool    `json:"available"`
 	DocumentAvailable  bool    `json:"documentAvailable"`
 	Cached             bool    `json:"cached"`
+	Clips              []Clip  `json:"clips,omitempty"`
+}
+
+type Clip struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	T0        float64 `json:"t0"`
+	T1        float64 `json:"t1"`
+	CreatedAt int64   `json:"createdAt"`
 }
 
 type ImportFailure struct {
@@ -88,7 +99,9 @@ type Service struct {
 	thumbnailer  thumbnailer
 	app          *application.App
 	home         *application.WebviewWindow
+	editor       *application.WebviewWindow
 	media        *loopbackMediaServer
+	bundledFonts map[string][]byte
 	legacyRoot   string
 	cacheMu      sync.Mutex
 	cacheConfig  CacheConfig
@@ -151,6 +164,55 @@ func Attach(s *Service, app *application.App, home *application.WebviewWindow) {
 	s.mu.Unlock()
 }
 
+func SetEditorWindow(s *Service, editor *application.WebviewWindow) {
+	s.mu.Lock()
+	s.editor = editor
+	s.mu.Unlock()
+}
+
+func SetBundledFonts(s *Service, fonts map[string][]byte) {
+	cloned := make(map[string][]byte, len(fonts))
+	for name, data := range fonts {
+		cloned[name] = append([]byte(nil), data...)
+	}
+	s.mu.Lock()
+	s.bundledFonts = cloned
+	s.mu.Unlock()
+}
+
+func (s *Service) copyBundledFonts(directory string) (bool, error) {
+	s.mu.RLock()
+	fonts := make(map[string][]byte, len(s.bundledFonts))
+	for name, data := range s.bundledFonts {
+		fonts[name] = data
+	}
+	s.mu.RUnlock()
+	if len(fonts) == 0 {
+		return false, nil
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return false, err
+	}
+	for name, data := range fonts {
+		if filepath.Base(name) != name || !strings.EqualFold(filepath.Ext(name), ".woff2") {
+			return false, errors.New("invalid bundled font name")
+		}
+		if err := os.WriteFile(filepath.Join(directory, name), data, 0o600); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (s *Service) dialogWindow() (*application.App, *application.WebviewWindow) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.editor != nil {
+		return s.app, s.editor
+	}
+	return s.app, s.home
+}
+
 func (s *Service) List() []Entry {
 	s.mu.RLock()
 	result := append([]Entry(nil), s.entries...)
@@ -165,16 +227,18 @@ func (s *Service) List() []Entry {
 	return result
 }
 
+func (s *Service) Get(id string) (Entry, error) {
+	return s.entryByID(id)
+}
+
 func (s *Service) PickAndImport() (ImportResult, error) {
-	s.mu.RLock()
-	app, home := s.app, s.home
-	s.mu.RUnlock()
-	if app == nil || home == nil {
+	app, window := s.dialogWindow()
+	if app == nil || window == nil {
 		return ImportResult{}, errors.New("application window is not ready")
 	}
 	paths, err := app.Dialog.OpenFile().
 		SetTitle("选择本地媒体").
-		AttachToWindow(home).
+		AttachToWindow(window).
 		AddFilter("视频文件", "*.mp4;*.m4v;*.mov;*.mkv;*.webm").
 		PromptForMultipleSelection()
 	if err != nil || len(paths) == 0 {
@@ -215,6 +279,73 @@ func (s *Service) ThumbnailDataURL(id string) (string, error) {
 		return "", errors.New("thumbnail exceeds size limit")
 	}
 	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+func (s *Service) GetClips(id string) []Clip {
+	if !validID(id) {
+		return []Clip{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, entry := range s.entries {
+		if entry.ID == id {
+			return append([]Clip(nil), entry.Clips...)
+		}
+	}
+	return []Clip{}
+}
+
+func (s *Service) SetClips(id string, clips []Clip) (bool, error) {
+	if !validID(id) {
+		return false, errors.New("invalid media id")
+	}
+	normalized := normalizeClips(clips)
+	s.mu.Lock()
+	for index := range s.entries {
+		if s.entries[index].ID != id {
+			continue
+		}
+		previous := s.entries[index].Clips
+		s.entries[index].Clips = normalized
+		if err := s.saveLocked(); err != nil {
+			s.entries[index].Clips = previous
+			s.mu.Unlock()
+			return false, err
+		}
+		s.mu.Unlock()
+		s.emitChanged()
+		return true, nil
+	}
+	s.mu.Unlock()
+	return false, errors.New("media entry not found")
+}
+
+func normalizeClips(clips []Clip) []Clip {
+	if len(clips) > maxEditorClips {
+		clips = clips[:maxEditorClips]
+	}
+	result := make([]Clip, 0, len(clips))
+	for _, clip := range clips {
+		if math.IsNaN(clip.T0) || math.IsNaN(clip.T1) || math.IsInf(clip.T0, 0) || math.IsInf(clip.T1, 0) || clip.T1 <= clip.T0 {
+			continue
+		}
+		clip.ID = truncateRunes(clip.ID, 32)
+		clip.Name = truncateRunes(clip.Name, 80)
+		clip.T0 = math.Max(0, clip.T0)
+		if clip.CreatedAt == 0 {
+			clip.CreatedAt = time.Now().UnixMilli()
+		}
+		result = append(result, clip)
+	}
+	return result
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
 }
 
 func (s *Service) importOne(path string) (Entry, bool, error) {

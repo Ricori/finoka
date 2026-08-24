@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping
 import gc
+import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -33,6 +35,175 @@ from ..preprocessing.audio import ensure_decodable_input
 from ...run_metadata import record_scratch_file
 from ... import config as app_config
 from ...reporting import current_reporter, reporting_to, terminal_reporter
+
+
+PREPARED_VAD_SCHEMA = 1
+
+
+def _audio_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _energy_track_payload(track: vad_energy.VadEnergyTrack) -> dict[str, object]:
+    return {
+        "energy_db": track.energy_db.detach().cpu(),
+        "frame_dbfs": (
+            track.frame_dbfs.detach().cpu() if track.frame_dbfs is not None else None
+        ),
+        "hop_sec": float(track.hop_sec),
+        "frame_sec": float(track.frame_sec),
+        "energy_mode": str(track.energy_mode),
+    }
+
+
+def _energy_track_from_payload(payload: Mapping[str, object]) -> vad_energy.VadEnergyTrack:
+    energy_db = payload.get("energy_db")
+    frame_dbfs = payload.get("frame_dbfs")
+    if not isinstance(energy_db, torch.Tensor):
+        raise RuntimeError("prepared VAD artifact has no energy tensor")
+    if frame_dbfs is not None and not isinstance(frame_dbfs, torch.Tensor):
+        raise RuntimeError("prepared VAD artifact has an invalid frame tensor")
+    return vad_energy.VadEnergyTrack(
+        energy_db=energy_db,
+        frame_dbfs=frame_dbfs,
+        hop_sec=float(payload["hop_sec"]),
+        frame_sec=float(payload["frame_sec"]),
+        energy_mode=str(payload["energy_mode"]),
+    )
+
+
+def prepare_vad_asr(
+    input_path: str | Path,
+    *,
+    prepared_path: str | Path,
+    vad_silero_assist: bool = False,
+    run_metadata_path: str | Path | None = None,
+) -> Path:
+    """Run the CPU-only VAD/energy prefix and persist its complete state."""
+
+    started = time.perf_counter()
+    source = Path(input_path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"Input not found: {source}")
+    destination = Path(prepared_path).expanduser().resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    audio_source, temporary_audio = ensure_decodable_input(source, destination.parent)
+    if temporary_audio is not None and run_metadata_path is not None:
+        record_scratch_file(run_metadata_path, temporary_audio)
+
+    collector = None
+    if vad_silero_assist:
+        from ..preprocessing import silero_ghost
+
+        collector = silero_ghost.SileroProbCollector("cpu")
+    try:
+        try:
+            (
+                raw_segments,
+                vad_meta,
+                audio_duration,
+                timing,
+                energy_track,
+            ) = vad_detection.detect_segments(audio_source, observer=collector)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
+
+        if collector is not None:
+            from ..preprocessing import silero_ghost
+
+            timing["silero_probs_sec"] = collector.seconds
+            ghost_started = time.perf_counter()
+            raw_segments, assist_stats = silero_ghost.assist_segments(
+                audio_source,
+                raw_segments,
+                energy_track,
+                audio_duration,
+                device="cpu",
+                probs=collector.probs(),
+            )
+            timing["silero_assist_sec"] = time.perf_counter() - ghost_started
+            vad_meta = dict(vad_meta)
+            inner_vad = dict(vad_meta.get("vad") or {})
+            inner_vad["silero_assist"] = assist_stats
+            vad_meta["vad"] = inner_vad
+
+        segments = asr_align.normalize_vad_segments(raw_segments, audio_duration)
+        timing["prepare_total_sec"] = time.perf_counter() - started
+        payload = {
+            "schema": PREPARED_VAD_SCHEMA,
+            "input_sha256": _audio_digest(source),
+            "raw_segments": raw_segments,
+            "segments": segments,
+            "vad_meta": vad_meta,
+            "audio_duration": float(audio_duration),
+            "timing": timing,
+            "energy_track": _energy_track_payload(energy_track),
+        }
+        temporary = destination.with_name(f".{destination.name}.part")
+        temporary.unlink(missing_ok=True)
+        try:
+            torch.save(payload, temporary)
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        current_reporter().debug(
+            "aligned prepare timing",
+            {
+                key: f"{float(value):.3f}"
+                for key, value in timing.items()
+                if key.endswith("_sec")
+            },
+        )
+        return destination
+    finally:
+        if temporary_audio is not None:
+            temporary_audio.unlink(missing_ok=True)
+
+
+def _load_prepared_vad(
+    input_path: Path, prepared_path: str | Path
+) -> dict[str, object]:
+    artifact = Path(prepared_path).expanduser().resolve()
+    if not artifact.is_file():
+        raise FileNotFoundError(f"Prepared VAD artifact not found: {artifact}")
+    payload = torch.load(artifact, map_location="cpu", weights_only=False)
+    if not isinstance(payload, dict) or payload.get("schema") != PREPARED_VAD_SCHEMA:
+        raise RuntimeError("prepared VAD artifact schema mismatch")
+    if payload.get("input_sha256") != _audio_digest(input_path):
+        raise RuntimeError("prepared VAD artifact does not match the vocal audio")
+    return payload
+
+
+def prepared_vad_has_speech(prepared_path: str | Path) -> bool:
+    payload = torch.load(
+        Path(prepared_path).expanduser().resolve(),
+        map_location="cpu",
+        weights_only=False,
+    )
+    return bool(
+        isinstance(payload, dict)
+        and payload.get("schema") == PREPARED_VAD_SCHEMA
+        and payload.get("segments")
+    )
+
+
+def prepared_vad_matches(
+    input_path: str | Path, prepared_path: str | Path
+) -> bool:
+    """Return whether a trusted prepared artifact belongs to this audio."""
+
+    try:
+        _load_prepared_vad(
+            Path(input_path).expanduser().resolve(),
+            prepared_path,
+        )
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return False
+    return True
 
 
 def parse_args() -> argparse.Namespace:
@@ -226,6 +397,7 @@ def run_vad_asr(
     qwen_verify: str = "auto",
     split_length_scale: float | None = None,
     run_metadata_path: str | Path | None = None,
+    prepared_path: str | Path | None = None,
 ) -> Path:
     # Before anything else: an out-of-range knob must not surface after the
     # GPU work is already done.
@@ -289,52 +461,73 @@ def run_vad_asr(
                 },
             )
 
-        collector = None
-        if vad_silero_assist:
-            from ..preprocessing import silero_ghost
+        if prepared_path is not None:
+            prepared = _load_prepared_vad(input_path, prepared_path)
+            raw_segments = list(prepared.get("raw_segments") or [])
+            segments = list(prepared.get("segments") or [])
+            vad_meta = dict(prepared.get("vad_meta") or {})
+            audio_duration = float(prepared.get("audio_duration") or 0.0)
+            timing = {
+                str(key): float(value)
+                for key, value in dict(prepared.get("timing") or {}).items()
+            }
+            energy_payload = prepared.get("energy_track")
+            if not isinstance(energy_payload, Mapping):
+                raise RuntimeError("prepared VAD artifact has no energy track")
+            energy_track = _energy_track_from_payload(energy_payload)
+        else:
+            collector = None
+            if vad_silero_assist:
+                from ..preprocessing import silero_ghost
 
-            # Rides along on the VAD's normalized blocks: the probabilities are
-            # ready by the time detect_segments returns.
-            collector = silero_ghost.SileroProbCollector(device)
+                # Rides along on the VAD's normalized blocks: the probabilities
+                # are ready by the time detect_segments returns.
+                collector = silero_ghost.SileroProbCollector(device)
 
-        try:
-            (
-                raw_segments,
-                vad_meta,
-                audio_duration,
-                timing,
-                energy_track,
-            ) = vad_detection.detect_segments(audio_source, observer=collector)
-        except Exception as exc:
-            raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
+            try:
+                (
+                    raw_segments,
+                    vad_meta,
+                    audio_duration,
+                    timing,
+                    energy_track,
+                ) = vad_detection.detect_segments(audio_source, observer=collector)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
 
-        if collector is not None:
-            # The probabilities were scored inside the VAD pass, so their cost
-            # sits in vad_sec; report it rather than let it hide there.
-            timing["silero_probs_sec"] = collector.seconds
-            t_ghost = time.perf_counter()
-            raw_segments, assist_stats = silero_ghost.assist_segments(
-                audio_source, raw_segments, energy_track, audio_duration,
-                device=device, probs=collector.probs(),
+            if collector is not None:
+                # The probabilities were scored inside the VAD pass, so their
+                # cost sits in vad_sec; report it rather than hide it there.
+                timing["silero_probs_sec"] = collector.seconds
+                t_ghost = time.perf_counter()
+                raw_segments, assist_stats = silero_ghost.assist_segments(
+                    audio_source,
+                    raw_segments,
+                    energy_track,
+                    audio_duration,
+                    device=device,
+                    probs=collector.probs(),
+                )
+                timing["silero_assist_sec"] = time.perf_counter() - t_ghost
+                vad_meta = dict(vad_meta)
+                inner_vad = dict(vad_meta.get("vad") or {})
+                inner_vad["silero_assist"] = assist_stats
+                vad_meta["vad"] = inner_vad
+                current_reporter().debug(
+                    "silero assist",
+                    {
+                        "intervals": f"{assist_stats['base_intervals']} -> "
+                        f"{assist_stats['intervals']}",
+                        "speech": f"{assist_stats['base_speech_sec']:.0f}s -> "
+                        f"{assist_stats['speech_sec']:.0f}s",
+                        "ghost_dropped": assist_stats["ghost_dropped"],
+                        "seams_restored": assist_stats["seams_restored"],
+                    },
+                )
+
+            segments = asr_align.normalize_vad_segments(
+                raw_segments, audio_duration
             )
-            timing["silero_assist_sec"] = time.perf_counter() - t_ghost
-            vad_meta = dict(vad_meta)
-            inner_vad = dict(vad_meta.get("vad") or {})
-            inner_vad["silero_assist"] = assist_stats
-            vad_meta["vad"] = inner_vad
-            current_reporter().debug(
-                "silero assist",
-                {
-                    "intervals": f"{assist_stats['base_intervals']} -> "
-                    f"{assist_stats['intervals']}",
-                    "speech": f"{assist_stats['base_speech_sec']:.0f}s -> "
-                    f"{assist_stats['speech_sec']:.0f}s",
-                    "ghost_dropped": assist_stats["ghost_dropped"],
-                    "seams_restored": assist_stats["seams_restored"],
-                },
-            )
-
-        segments = asr_align.normalize_vad_segments(raw_segments, audio_duration)
         if not raw_segments or not segments:
             timing["total_sec"] = time.perf_counter() - t_start
             align_meta["timing"] = {

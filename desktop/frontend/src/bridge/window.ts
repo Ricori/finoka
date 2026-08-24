@@ -1,15 +1,19 @@
 import { Events, System, Window } from "@wailsio/runtime";
 
 export async function installWindowsTitlebar(): Promise<void> {
-  let isWindows = System.IsWindows();
-  if (!isWindows) {
+  let platform = System.IsMac() ? "darwin" : System.IsWindows() ? "windows" : "";
+  if (!platform) {
     try {
-      isWindows = (await System.Environment()).OS === "windows";
+      platform = (await System.Environment()).OS;
     } catch {
       return;
     }
   }
-  if (!isWindows || document.getElementById("wails-window-controls")) return;
+  if (platform === "darwin") {
+    document.documentElement.classList.add("wails-mac");
+    return;
+  }
+  if (platform !== "windows" || document.getElementById("wails-window-controls")) return;
 
   document.documentElement.classList.add("wails-frameless");
   const controls = document.createElement("div");

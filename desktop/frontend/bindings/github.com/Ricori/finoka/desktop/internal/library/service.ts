@@ -33,6 +33,18 @@ export function ExportVideo(id: string, ass: string): $CancellablePromise<string
     return $Call.ByID(3082659338, id, ass);
 }
 
+export function ExportVideoRange(id: string, defaultName: string, ass: string, t0: number, t1: number, crf: number, preset: string, scaleH: number, abr: string): $CancellablePromise<$models.ExportResult> {
+    return $Call.ByID(1204025495, id, defaultName, ass, t0, t1, crf, preset, scaleH, abr);
+}
+
+export function Get(id: string): $CancellablePromise<$models.Entry> {
+    return $Call.ByID(1905997107, id);
+}
+
+export function GetClips(id: string): $CancellablePromise<$models.Clip[] | null> {
+    return $Call.ByID(515255666, id);
+}
+
 export function Import(paths: string[] | null): $CancellablePromise<$models.ImportResult> {
     return $Call.ByID(3931832280, paths);
 }
@@ -91,6 +103,14 @@ export function SetActiveMedia(id: string): $CancellablePromise<void> {
 
 export function SetCacheLimitGB(limit: number): $CancellablePromise<$models.CacheStatus> {
     return $Call.ByID(1619038403, limit);
+}
+
+export function SetClips(id: string, clips: $models.Clip[] | null): $CancellablePromise<boolean> {
+    return $Call.ByID(1467358358, id, clips);
+}
+
+export function SpectrogramTile(id: string, start: number, duration: number): $CancellablePromise<$models.SpectrogramTileResult> {
+    return $Call.ByID(3487955186, id, start, duration);
 }
 
 export function ThumbnailDataURL(id: string): $CancellablePromise<string> {

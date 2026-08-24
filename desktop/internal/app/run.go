@@ -20,9 +20,13 @@ import (
 
 const lifecycleTimeout = 20 * time.Second
 
+var bundledFontNames = []string{"FZZhunYuan.woff2", "JingNanBoBoHei.woff2"}
+
 func init() {
 	application.RegisterEvent[[]string]("files:dropped")
 	application.RegisterEvent[[]library.Entry]("library:changed")
+	application.RegisterEvent[string]("editor:request-close")
+	application.RegisterEvent[bool]("home:refresh")
 }
 
 // Run owns the desktop lifecycle. Sidecar startup failure is intentionally
@@ -37,6 +41,16 @@ func Run(assets fs.FS) error {
 	if err != nil {
 		return err
 	}
+	fonts := make(map[string][]byte, len(bundledFontNames))
+	for _, name := range bundledFontNames {
+		data, readErr := fs.ReadFile(assets, "fonts/"+name)
+		if readErr != nil {
+			log.Printf("bundled font %s: %v", name, readErr)
+			continue
+		}
+		fonts[name] = data
+	}
+	library.SetBundledFonts(libraryService, fonts)
 	preferencesService, err := preferences.New(dataDirectory)
 	if err != nil {
 		return err
@@ -60,6 +74,7 @@ func Run(assets fs.FS) error {
 	if err != nil {
 		return err
 	}
+	windowService := NewWindowService(preferencesService, libraryService)
 
 	applicationInstance := application.New(application.Options{
 		Name:        "Finoka",
@@ -69,6 +84,7 @@ func Run(assets fs.FS) error {
 			application.NewService(libraryService),
 			application.NewService(cloudService),
 			application.NewService(preferencesService),
+			application.NewService(windowService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -97,10 +113,11 @@ func Run(assets fs.FS) error {
 	})
 	homeOptions, deferredState := deferWindowStart(homeOptions)
 	home := applicationInstance.Window.NewWithOptions(homeOptions)
+	windowService.attach(applicationInstance, home)
 	if deferredState != application.WindowStateNormal {
 		home.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) { showDeferredWindow(home, deferredState) })
 	}
-	trackWindowState(preferencesService, "home", applicationInstance, home)
+	trackWindowState(preferencesService, "home", applicationInstance, home).Activate()
 	library.Attach(libraryService, applicationInstance, home)
 	home.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
 		applicationInstance.Event.Emit("files:dropped", event.Context().DroppedFiles())

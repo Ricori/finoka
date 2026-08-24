@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MediaEntry } from "../bridge/library.ts";
-import { formatDate, taskActivityText, taskProgress, taskStageLabel, taskStateLabel } from "../app/format.ts";
+import { formatTaskDate, taskActivityText, taskProgress, taskStageLabel, taskStateLabel } from "../app/format.ts";
 import type { TaskHistoryEntry } from "../app/types.ts";
 import { activeStates, recoverableStates } from "../app/types.ts";
 import { Mark } from "../components/Mark.tsx";
@@ -14,6 +14,7 @@ interface TasksPageProps {
   pipelineError?: string;
   onNavigateLibrary: () => void;
   onOpenEditor: (entry: MediaEntry) => void;
+  onClearTasks: () => void;
   onTaskAction: (item: TaskHistoryEntry, action: "cancel" | "resume") => Promise<void>;
 }
 
@@ -75,12 +76,25 @@ function TaskActivityText({ snapshot }: { snapshot: TaskHistoryEntry["snapshot"]
 }
 
 export function TasksPage(props: TasksPageProps) {
-  const { tasks, media, activeCount, message, pipelineError, onNavigateLibrary, onOpenEditor, onTaskAction } = props;
+  const { tasks, media, activeCount, message, pipelineError, onNavigateLibrary, onOpenEditor, onClearTasks, onTaskAction } = props;
+  const clearableCount = tasks.filter((item) => !activeStates.has(item.snapshot.state)).length;
   return (
     <section className="task-history">
       <header className="task-history-header">
         <div>{tasks.length > 0 && <Mark>{tasks.length} 个任务</Mark>}<h2>处理历史</h2><p>本机与云端任务统一显示；应用重启后会自动重新读取任务状态。</p></div>
-        {activeCount > 0 && <span className="running-summary"><i />{activeCount} 个进行中</span>}
+        <div className="task-history-header-actions">
+          {activeCount > 0 && <span className="running-summary"><i />{activeCount} 个进行中</span>}
+          {tasks.length > 0 && (
+            <button
+              className="task-clear-button"
+              disabled={clearableCount === 0}
+              title={clearableCount === 0 ? "进行中的任务会保留在列表中" : `清除 ${clearableCount} 条已结束任务记录`}
+              onClick={onClearTasks}
+            >
+              清空列表
+            </button>
+          )}
+        </div>
       </header>
       {message && <p className="task-history-message">{message}</p>}
       {pipelineError && <p className="task-history-message">{pipelineError}</p>}
@@ -101,7 +115,7 @@ export function TasksPage(props: TasksPageProps) {
                 <div className="task-state-icon" aria-hidden="true">{snapshot.state === "completed" ? "✓" : activeStates.has(snapshot.state) ? "↻" : recoverableStates.has(snapshot.state) ? "!" : "·"}</div>
                 <div className="task-row-copy">
                   <div className="task-row-title"><strong>{item.title}</strong><span className={`task-state task-state-${snapshot.state}`}>{taskStateLabel(snapshot.state)}</span><small>{item.provider === "cloud" ? "☁ 云端" : "本机"}</small></div>
-                  <div className="task-row-meta"><span>{taskStageLabel(snapshot.stage)}</span><code>{item.taskId.slice(0, 12)}</code><time dateTime={snapshot.updated_at}>{formatDate(snapshot.updated_at)}</time></div>
+                  <div className="task-row-meta"><span>{taskStageLabel(snapshot.stage)}</span><code>{item.taskId.slice(0, 12)}</code><time dateTime={snapshot.updated_at}>{formatTaskDate(snapshot.updated_at)}</time></div>
                   <AnimatedTaskProgress snapshot={snapshot} />
                   <TaskActivityText snapshot={snapshot} />
                 </div>

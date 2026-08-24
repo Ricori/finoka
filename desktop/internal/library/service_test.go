@@ -167,6 +167,67 @@ func TestRelinkRejectsDifferentMediaFingerprint(t *testing.T) {
 	}
 }
 
+func TestEditorClipsAreNormalizedAndPersisted(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.mp4")
+	if err := os.WriteFile(source, []byte("media-fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools := fixtureTools{metadata: Metadata{Duration: 42, HasVideo: true, HasAudio: true}}
+	data := filepath.Join(root, "data")
+	service, err := newServiceWithTools(data, tools, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := service.Import([]string{source}).Added[0]
+	ok, err := service.SetClips(entry.ID, []Clip{
+		{ID: "intro", Name: "开场", T0: 2, T1: 8},
+		{ID: "invalid", Name: "无效", T0: 9, T1: 4},
+	})
+	if err != nil || !ok {
+		t.Fatalf("set clips = %v, %v", ok, err)
+	}
+	clips := service.GetClips(entry.ID)
+	if len(clips) != 1 || clips[0].Name != "开场" || clips[0].CreatedAt == 0 {
+		t.Fatalf("clips = %#v", clips)
+	}
+	reloaded, err := New(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.GetClips(entry.ID); len(got) != 1 || got[0].ID != "intro" {
+		t.Fatalf("reloaded clips = %#v", got)
+	}
+}
+
+func TestBundledEditorFontsAreCopiedForVideoExport(t *testing.T) {
+	tools := fixtureTools{metadata: Metadata{Duration: 1, Width: 16, Height: 16, HasVideo: true}}
+	service, err := newServiceWithTools(t.TempDir(), tools, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetBundledFonts(service, map[string][]byte{
+		"FZZhunYuan.woff2":     []byte("fzy-font"),
+		"JingNanBoBoHei.woff2": []byte("jnb-font"),
+	})
+	directory := filepath.Join(t.TempDir(), "fonts")
+	copied, err := service.copyBundledFonts(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !copied {
+		t.Fatal("expected bundled fonts to be copied")
+	}
+	for name, want := range map[string]string{
+		"FZZhunYuan.woff2": "fzy-font", "JingNanBoBoHei.woff2": "jnb-font",
+	} {
+		data, readErr := os.ReadFile(filepath.Join(directory, name))
+		if readErr != nil || string(data) != want {
+			t.Fatalf("font %s = %q, %v", name, data, readErr)
+		}
+	}
+}
+
 func TestLegacyMigrationImportsSourceAndCachedMediaWithoutCopying(t *testing.T) {
 	root := t.TempDir()
 	legacy := filepath.Join(root, "Nonoka")

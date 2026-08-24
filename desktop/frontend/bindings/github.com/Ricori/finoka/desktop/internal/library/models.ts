@@ -9,6 +9,14 @@ export interface CacheStatus {
     "files": number;
 }
 
+export interface Clip {
+    "id": string;
+    "name": string;
+    "t0": number;
+    "t1": number;
+    "createdAt": number;
+}
+
 export interface Entry {
     "id": string;
     "sourcePath": string;
@@ -24,6 +32,12 @@ export interface Entry {
     "available": boolean;
     "documentAvailable": boolean;
     "cached": boolean;
+    "clips"?: Clip[] | null;
+}
+
+export interface ExportResult {
+    "path": string;
+    "size": number;
 }
 
 export interface ImportFailure {
@@ -48,4 +62,12 @@ export interface LegacyMigrationStatus {
     "root": string;
     "entries": number;
     "localMedia": number;
+}
+
+export interface SpectrogramTileResult {
+    "url": string;
+    "start": number;
+    "duration": number;
+    "width": number;
+    "height": number;
 }

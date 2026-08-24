@@ -28,8 +28,10 @@ test("buildSrt emits deterministic bilingual cue timing", () => {
 
 test("buildAss creates Japanese and Chinese styles and escapes line breaks", () => {
   const value = buildAss(document);
-  assert.match(value, /Style: JP,/);
-  assert.match(value, /Style: CN,/);
+  assert.match(value, /Style: JP,方正准圆_GBK,70,/);
+  assert.match(value, /Style: CN,方正准圆_GBK,70,/);
+  assert.match(value, /Style: 优花,荆南波波黑,90,/);
+  assert.doesNotMatch(value, /Style: (?:JP|CN),Arial,/);
   assert.match(value, /Dialogue: 0,0:00:01\.23,0:00:03\.50,JP/);
   assert.match(value, /第二行\\N继续/);
 });

@@ -2,7 +2,7 @@ import type { CloudEntry } from "../bridge/cloud.ts";
 import type { MediaEntry } from "../bridge/library.ts";
 import type { TaskSnapshot } from "../providers/types.ts";
 
-export type Section = "library" | "tasks" | "runtime" | "keys" | "adminKeys" | "account" | "editor";
+export type Section = "library" | "tasks" | "runtime" | "keys" | "adminKeys" | "account";
 export type NavigationSection = "library" | "tasks" | "runtime" | "settings" | "adminKeys";
 export type ExecutionMode = "local" | "cloud";
 export type LoadState = "loading" | "ready" | "error";

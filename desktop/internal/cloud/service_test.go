@@ -436,7 +436,7 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 			_ = json.NewDecoder(request.Body).Decode(&body)
 			source := body["source"].(map[string]any)
 			correction := body["correction"].(map[string]any)
-			if source["kind"] != "uploaded_audio" || source["object_id"] != uploadID {
+			if source["kind"] != "uploaded_audio" || source["object_id"] != uploadID || source["fingerprint"] != "fingerprint" {
 				http.Error(writer, `{"detail":"invalid source"}`, http.StatusBadRequest)
 				return
 			}

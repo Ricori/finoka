@@ -9,10 +9,19 @@ import type {
 
 export type { CacheStatus, MediaEntry, ImportResult, LegacyMigrationResult, LegacyMigrationStatus };
 
+export interface EditorClip {
+  id: string;
+  name: string;
+  t0: number;
+  t1: number;
+  createdAt: number;
+}
+
 export const mediaLibrary = {
   async list(): Promise<MediaEntry[]> {
     return (await LibraryService.List()) ?? [];
   },
+  get: LibraryService.Get,
   pickAndImport: LibraryService.PickAndImport,
   importPaths: LibraryService.Import,
   thumbnail: LibraryService.ThumbnailDataURL,
@@ -22,6 +31,8 @@ export const mediaLibrary = {
   mediaURL: LibraryService.MediaURL,
   saveSubtitle: LibraryService.SaveSubtitle,
   exportVideo: LibraryService.ExportVideo,
+  exportVideoRange: LibraryService.ExportVideoRange,
+  spectrogramTile: LibraryService.SpectrogramTile,
   revealInFolder: LibraryService.RevealInFolder,
   legacyMigrationStatus: LibraryService.LegacyMigrationStatus,
   migrateLegacyLibrary: LibraryService.MigrateLegacyLibrary,
@@ -30,4 +41,8 @@ export const mediaLibrary = {
   setCacheLimitGB: LibraryService.SetCacheLimitGB,
   clearVideoCache: LibraryService.ClearVideoCache,
   setActiveMedia: LibraryService.SetActiveMedia,
+  async getClips(id: string): Promise<EditorClip[]> {
+    return ((await LibraryService.GetClips(id)) ?? []) as EditorClip[];
+  },
+  setClips: LibraryService.SetClips,
 };

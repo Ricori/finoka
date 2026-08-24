@@ -32,8 +32,9 @@ export interface EditDocument {
   subtitles: EditSegment[];
   tracks: EditTrack[];
   track_meta: { name: string; ja: LaneMeta; zh: LaneMeta };
+  /** 兼容旧工程迁移文档；缺省时使用旧工程内置 ASS 模板。 */
+  ass_template?: string;
   projection: { schema: 1; mode: "stable" | "final" };
   created_at?: string;
   updated_at?: string;
 }
-

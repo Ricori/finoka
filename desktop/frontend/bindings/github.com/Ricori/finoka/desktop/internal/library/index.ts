@@ -8,9 +8,12 @@ export {
 
 export type {
     CacheStatus,
+    Clip,
     Entry,
+    ExportResult,
     ImportFailure,
     ImportResult,
     LegacyMigrationResult,
-    LegacyMigrationStatus
+    LegacyMigrationStatus,
+    SpectrogramTileResult
 } from "./models.js";

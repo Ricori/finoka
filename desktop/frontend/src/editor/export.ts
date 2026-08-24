@@ -1,4 +1,5 @@
 import type { EditDocument, EditSegment } from "../documents/types.ts";
+import { ASS_EVENTS_HEAD, ASS_SCRIPT_INFO, DEFAULT_ASS_TEMPLATE } from "./constants.ts";
 
 
 export type ExportLanguage = "ja" | "zh" | "both";
@@ -48,19 +49,9 @@ export function buildAss(document: EditDocument): string {
     if (segment.ja.trim()) lines.push(`Dialogue: 0,${assTime(segment.t0)},${assTime(segment.t1)},JP,,0,0,0,,${assText(segment.ja.trim())}`);
     if (segment.zh.trim()) lines.push(`Dialogue: 0,${assTime(segment.t0)},${assTime(segment.t1)},CN,,0,0,0,,${assText(segment.zh.trim())}`);
   }
-  return `[Script Info]
-ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: JP,Arial,46,&H00FFFFFF,&H000000FF,&H00101010,&H64000000,0,0,0,0,100,100,0,0,1,2,0,2,50,50,88,1
-Style: CN,Arial,52,&H00FFFFFF,&H000000FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,2.4,0,2,50,50,28,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-${lines.join("\n")}
-`;
+  let template = document.ass_template?.trim() || DEFAULT_ASS_TEMPLATE;
+  const eventsIndex = template.toLowerCase().indexOf("[events]");
+  if (eventsIndex >= 0) template = template.slice(0, eventsIndex).trimEnd();
+  const head = template.toLowerCase().includes("[script info]") ? template : ASS_SCRIPT_INFO + template;
+  return head + ASS_EVENTS_HEAD + lines.join("\n") + "\n";
 }

@@ -35,6 +35,18 @@ export function formatDate(value: number | string): string {
   return date.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
 }
 
+export function formatTaskDate(value: number | string): string {
+  const date = typeof value === "number" ? new Date(value) : new Date(Date.parse(value));
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 export function taskStateLabel(state: TaskSnapshot["state"]): string {
   return {
     queued: "排队中",

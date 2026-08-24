@@ -119,15 +119,31 @@ def cxx_toolchain_available() -> bool:
     with no compiler would otherwise be told a 90-second build is starting and
     then land on eager, on exactly the run where the JIT tier was available.
 
-    Deliberately mirrors what ``_activate_msvc`` checks, so the two cannot
-    disagree -- including that it is Windows-shaped, which is the only platform
-    the AOTI path has been run on.
+    Deliberately mirrors what ``_activate_cxx_toolchain`` checks, so the two
+    cannot disagree. Linux uses the compiler already shipped in the Modal
+    worker image; Windows activates MSVC as before.
     """
 
+    if os.name != "nt":
+        return any(shutil.which(name) is not None for name in ("g++", "clang++"))
     return shutil.which("cl.exe") is not None or _find_vcvars() is not None
 
 
-def _activate_msvc() -> str:
+def _activate_cxx_toolchain() -> str:
+    if os.name != "nt":
+        # Modal's image exposes clang first, but TorchInductor then links its
+        # OpenMP objects with -lomp. Ubuntu's build-essential image only ships
+        # libgomp, so that otherwise fails after an expensive compile. Prefer
+        # GCC and override Modal's inherited CXX selection: g++ uses the
+        # already-installed libgomp runtime and needs no image rebuild.
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        if compiler is None:
+            raise RuntimeError("AOTInductor requires clang++ or g++ on Linux")
+        # TorchInductor otherwise probes the host again and can select a
+        # different compiler between the capability check and the build.
+        os.environ["CXX"] = compiler
+        return compiler
+
     existing = shutil.which("cl.exe")
     if existing is not None:
         return existing
@@ -231,7 +247,7 @@ def _pinned_attention_backend(module: torch.nn.Module, backend: str | None) -> A
 
 
 def _inductor_configs(emulate_precision_casts: bool) -> dict[str, Any]:
-    return {
+    configs: dict[str, Any] = {
         # Weightless packages. 2.11 replaced the on-disk bool with
         # package_constants_on_disk_format, whose default (None) already means
         # "not on disk", so only the in-so switch is set here. Either way the
@@ -241,10 +257,12 @@ def _inductor_configs(emulate_precision_casts: bool) -> dict[str, Any]:
         # Keep injected constants reachable; see the note next to
         # _CROSS_BLOCK_ERROR_TOLERANCE.
         "aot_inductor.use_runtime_constant_folding": True,
-        # Windows AOTI link list omits cudart although the generated wrapper
-        # uses that API.
-        "aot_inductor.custom_op_libs": ["cudart"],
     }
+    if os.name == "nt":
+        # Windows AOTI link list omits cudart although the generated wrapper
+        # uses that API. Linux resolves it through Torch's CUDA link settings.
+        configs["aot_inductor.custom_op_libs"] = ["cudart"]
+    return configs
 
 
 def _capture_module_inputs(
@@ -338,7 +356,7 @@ def build_packages(
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Output directory is not empty: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    compiler = _activate_msvc()
+    compiler = _activate_cxx_toolchain()
 
     attention_backends = {
         axis: (

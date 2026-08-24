@@ -2,8 +2,12 @@
 .task-history-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 3px 2px 1px; }
 .task-history-header h2 { margin: 8px 0 0; font-size: 19px; }
 .task-history-header p { margin: 6px 0 0; color: var(--mut); font-size: 10px; }
+.task-history-header-actions { display: flex; align-items: center; gap: 8px; }
 .running-summary { display: flex; align-items: center; gap: 7px; border: 1px solid var(--accent-line); border-radius: 999px; padding: 6px 10px; background: var(--accent-dim); color: var(--accent); font-size: 9px; font-weight: 700; white-space: nowrap; }
 .running-summary i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim); animation: task-pulse 1.4s ease-in-out infinite; }
+.task-clear-button { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: transparent; color: var(--mut); font-size: 9px; cursor: pointer; white-space: nowrap; }
+.task-clear-button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); color: var(--warn); }
+.task-clear-button:disabled { cursor: not-allowed; opacity: .45; }
 .task-history-message { margin: 0; border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 10px; padding: 9px 11px; background: color-mix(in srgb, var(--warn) 8%, var(--panel)); color: var(--warn); font-size: 10px; }
 .task-list { display: grid; gap: 8px; }
 .task-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 13px; border: 1px solid var(--line-soft); border-radius: 13px; padding: 14px 15px; background: color-mix(in srgb, var(--panel) 94%, transparent); transition: border-color .14s, background .14s; }

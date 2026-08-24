@@ -32,20 +32,16 @@ class ResourceProfile:
         return int(float(self.ram_budget_gb) * BYTES_PER_GIB)
 
 
-# Roformer processes a single file as a sequence of inference chunks. Increasing
-# this batch is the only useful way for a short input to fill a larger GPU: the
-# outer block scheduler deliberately keeps inputs below 300 seconds at one
-# worker to avoid disproportionate overlap padding. The previous all-ones table
-# therefore made every GPU budget identical for the common short-video case.
-#
-# The batch ladder follows the same 4 GiB step as the worker ladder. A batch-1
-# L4 run peaks at roughly 2.3 GiB, leaving ample room for batch 2 inside the
-# 8 GiB profile's 7 GiB usable limit.
+# The L4 batch-2 production probe raised peak VRAM from 2.26 to 3.41 GiB but
+# left the same 67-second block pipeline at 67.48 seconds. Keep one internal
+# file batch; larger GPU profiles gain throughput through independent outer
+# workers on long inputs instead of spending memory on an ineffective inner
+# batch for short inputs.
 RESOURCE_PROFILES = {
     budget: ResourceProfile(
         gpu_budget_gb=budget,
         vocal_separator_instances=budget // 4,
-        vocal_separation_batch_size=budget // 4,
+        vocal_separation_batch_size=1,
     )
     for budget in (4, 8, 12, 16)
 }

@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  formatTaskDate,
   taskActivityText,
   taskProgress,
   taskStageLabel,
 } from "../src/app/format.ts";
+
+test("task dates include hours and minutes", () => {
+  const formatted = formatTaskDate("2026-08-24T00:05:00Z");
+  assert.match(formatted, /8月24日/);
+  assert.match(formatted, /\d{2}:\d{2}/);
+  assert.equal(formatTaskDate("not-a-date"), "—");
+});
 
 function snapshot(stage, options = {}) {
   return {

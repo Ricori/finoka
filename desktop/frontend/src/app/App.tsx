@@ -10,13 +10,13 @@ import type { FineSubSettingsState } from "../bridge/settings.ts";
 import { fineSubRuntime } from "../bridge/runtime.ts";
 import type { RuntimeProvisionState } from "../bridge/runtime.ts";
 import { desktopPreferences } from "../bridge/preferences.ts";
+import { desktopWindows } from "../bridge/windows.ts";
 import { localProviderBridge, sidecarStatus } from "../bridge/wails.ts";
 import { PipelineController } from "../home/pipelineController.ts";
 import { CloudExecutionProvider } from "../providers/cloudProvider.ts";
 import type { PipelineState } from "../home/pipelineController.ts";
 import { LocalExecutionProvider } from "../providers/localProvider.ts";
 import type { Capabilities, TaskRequest, TaskSnapshot } from "../providers/types.ts";
-import { Editor } from "../editor/Editor.tsx";
 import { MediaDialog } from "../components/MediaDialog.tsx";
 import { TranscriptionDialog } from "../components/TranscriptionDialog.tsx";
 import { WindowDropOverlay } from "../components/WindowDropOverlay.tsx";
@@ -90,7 +90,6 @@ export default function App() {
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
   const [activeMedia, setActiveMedia] = useState<MediaEntry | null>(null);
-  const [editorMedia, setEditorMedia] = useState<MediaEntry | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
   const [transcriptionMedia, setTranscriptionMedia] = useState<MediaEntry | null>(null);
@@ -108,6 +107,14 @@ export default function App() {
   }, [taskHistory]);
 
   useEffect(() => {
+    if (taskHistoryMessage !== "任务列表已清空。" && !taskHistoryMessage.startsWith("已清除 ")) return;
+    const timer = window.setTimeout(() => {
+      setTaskHistoryMessage((current) => current === taskHistoryMessage ? "" : current);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [taskHistoryMessage]);
+
+  useEffect(() => {
     void desktopPreferences.get().then((value) => {
       setTheme(value.theme === "light" ? "light" : "dark");
       setSidebarCollapsed(value.sidebarCollapsed);
@@ -119,7 +126,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.body.classList.toggle("light", theme === "light" && section !== "editor");
+    document.body.classList.toggle("light", theme === "light");
     if (preferencesHydrated.current) void desktopPreferences.save({ theme }).catch(() => undefined);
   }, [section, theme]);
 
@@ -184,6 +191,15 @@ export default function App() {
       setLibraryMessage(detail || "无法连接本地媒体库");
     }
   }, [hydrateThumbnails]);
+
+  const openEditor = useCallback(async (entry: MediaEntry) => {
+    setLibraryMessage("");
+    try {
+      await desktopWindows.openEditor(entry.id);
+    } catch (value) {
+      setLibraryMessage(value instanceof Error ? value.message : String(value));
+    }
+  }, []);
 
   const loadCacheStatus = useCallback(async () => {
     try {
@@ -297,6 +313,13 @@ export default function App() {
       offChanged();
     };
   }, [hydrateThumbnails]);
+
+  useEffect(() => Events.On("home:refresh", () => {
+    void loadLibrary();
+    void desktopPreferences.get().then((value) => {
+      setTheme(value.theme === "light" ? "light" : "dark");
+    }).catch(() => undefined);
+  }), [loadLibrary]);
 
   const handleDroppedFiles = useCallback((paths: string[], ignored: number) => {
     setSection("library");
@@ -414,6 +437,16 @@ export default function App() {
     }
   }, [cloudProvider, controller, localProvider, pipeline.snapshot?.task_id]);
 
+  const clearTaskHistory = useCallback(() => {
+    const active = taskHistoryRef.current.filter((item) => activeStates.has(item.snapshot.state));
+    const clearedCount = taskHistoryRef.current.length - active.length;
+    if (clearedCount === 0) return;
+    setTaskHistory(active);
+    setTaskHistoryMessage(active.length > 0
+      ? `已清除 ${clearedCount} 条历史记录，进行中的任务已保留。`
+      : "任务列表已清空。");
+  }, []);
+
   const startMedia = useCallback(async (entry: MediaEntry) => {
     setLibraryMessage("");
     setTranscriptionError("");
@@ -444,12 +477,6 @@ export default function App() {
       setTranscriptionBusy(false);
     }
   }, [cloudController, cloudSession?.authenticated, loadCacheStatus, loadLibrary, localController, rememberTask, transcriptionMedia]);
-
-  useEffect(() => {
-    const id = section === "editor" ? editorMedia?.id ?? "" : "";
-    void mediaLibrary.setActiveMedia(id).catch(() => undefined);
-    return () => { if (id) void mediaLibrary.setActiveMedia("").catch(() => undefined); };
-  }, [editorMedia?.id, section]);
 
   const saveCacheLimit = useCallback(async (limit: number) => {
     setCacheBusy(true);
@@ -508,10 +535,9 @@ export default function App() {
     if (openedTasks.current.has(snapshot.task_id)) return;
     openedTasks.current.add(snapshot.task_id);
     void loadLibrary().finally(() => {
-      setEditorMedia(activeMedia);
-      setSection("editor");
+      void openEditor(activeMedia);
     });
-  }, [activeMedia, loadLibrary, pipeline.artifacts, pipeline.snapshot]);
+  }, [activeMedia, loadLibrary, openEditor, pipeline.artifacts, pipeline.snapshot]);
 
   const renameMedia = useCallback((entry: MediaEntry) => {
     setDialog({ kind: "rename", entry, value: entry.title });
@@ -627,9 +653,7 @@ export default function App() {
     ? "媒体库"
     : section === "tasks"
       ? "处理任务"
-      : section === "editor"
-        ? "字幕编辑器"
-        : section === "runtime"
+      : section === "runtime"
           ? "运行环境"
           : section === "account"
             ? "云端账户"
@@ -798,7 +822,7 @@ export default function App() {
             setView={setViewMode}
             onClearQuery={() => setQuery("")}
             onImport={importMedia}
-            onOpen={(entry) => { setEditorMedia(entry); setSection("editor"); }}
+            onOpen={(entry) => void openEditor(entry)}
             onStart={startMedia}
             onRename={renameMedia}
             onRemove={removeMedia}
@@ -815,13 +839,10 @@ export default function App() {
             message={taskHistoryMessage}
             pipelineError={pipeline.error?.message}
             onNavigateLibrary={() => setSection("library")}
-            onOpenEditor={(entry) => { setEditorMedia(entry); setSection("editor"); }}
+            onOpenEditor={(entry) => void openEditor(entry)}
+            onClearTasks={clearTaskHistory}
             onTaskAction={actOnHistoryTask}
           />
-        )}
-
-        {section === "editor" && editorMedia && (
-          <Editor media={editorMedia} onClose={() => setSection("library")} onSaved={() => void loadLibrary()} />
         )}
 
         {section === "runtime" && (

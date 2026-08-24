@@ -11,6 +11,11 @@ import (
 
 const windowStateDebounce = 400 * time.Millisecond
 
+type windowStateTracker struct {
+	Activate func()
+	Flush    func()
+}
+
 func applyWindowOptions(store *preferences.Service, kind string, options application.WebviewWindowOptions) application.WebviewWindowOptions {
 	bounds, ok := store.GetWindowBounds(kind)
 	if !ok || !validWindowBounds(bounds, options.MinWidth, options.MinHeight) {
@@ -19,6 +24,7 @@ func applyWindowOptions(store *preferences.Service, kind string, options applica
 	options.Width, options.Height = bounds.Width, bounds.Height
 	options.X, options.Y = bounds.X, bounds.Y
 	options.InitialPosition = application.WindowXY
+	options.StartState = application.WindowStateNormal
 	if bounds.FullScreen {
 		options.StartState = application.WindowStateFullscreen
 	} else if bounds.Maximized {
@@ -46,10 +52,14 @@ func showDeferredWindow(window *application.WebviewWindow, state application.Win
 	window.Show()
 }
 
-func trackWindowState(store *preferences.Service, kind string, app *application.App, window *application.WebviewWindow) {
+func trackWindowState(store *preferences.Service, kind string, app *application.App, window *application.WebviewWindow) windowStateTracker {
 	normal, _ := store.GetWindowBounds(kind)
 	var mu sync.Mutex
 	var timer *time.Timer
+	var initialTimer *time.Timer
+	active := false
+	runtimeReady := false
+	initialised := false
 	capture := func() {
 		mu.Lock()
 		maximized, fullscreen := window.IsMaximised(), window.IsFullscreen()
@@ -66,14 +76,31 @@ func trackWindowState(store *preferences.Service, kind string, app *application.
 	}
 	schedule := func(_ *application.WindowEvent) {
 		mu.Lock()
+		if !active {
+			mu.Unlock()
+			return
+		}
 		if timer != nil {
 			timer.Stop()
 		}
 		timer = time.AfterFunc(windowStateDebounce, capture)
 		mu.Unlock()
 	}
-	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
-		time.AfterFunc(150*time.Millisecond, func() {
+	startInitialCapture := func() {
+		mu.Lock()
+		if !active || !runtimeReady || initialised {
+			mu.Unlock()
+			return
+		}
+		initialised = true
+		initialTimer = time.AfterFunc(150*time.Millisecond, func() {
+			mu.Lock()
+			initialTimer = nil
+			stillActive := active
+			mu.Unlock()
+			if !stillActive {
+				return
+			}
 			bounds := preferences.WindowBounds{}
 			bounds.X, bounds.Y = window.Position()
 			bounds.Width, bounds.Height = window.Size()
@@ -85,9 +112,41 @@ func trackWindowState(store *preferences.Service, kind string, app *application.
 			}
 			capture()
 		})
+		mu.Unlock()
+	}
+	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
+		mu.Lock()
+		runtimeReady = true
+		mu.Unlock()
+		startInitialCapture()
 	})
 	for _, eventType := range []events.WindowEventType{events.Common.WindowDidMove, events.Common.WindowDidResize, events.Common.WindowMaximise, events.Common.WindowUnMaximise, events.Common.WindowFullscreen, events.Common.WindowUnFullscreen} {
 		window.OnWindowEvent(eventType, schedule)
+	}
+	return windowStateTracker{
+		Activate: func() {
+			mu.Lock()
+			active = true
+			mu.Unlock()
+			startInitialCapture()
+		},
+		Flush: func() {
+			mu.Lock()
+			if timer != nil {
+				timer.Stop()
+				timer = nil
+			}
+			if initialTimer != nil {
+				initialTimer.Stop()
+				initialTimer = nil
+			}
+			shouldCapture := active
+			active = false
+			mu.Unlock()
+			if shouldCapture {
+				capture()
+			}
+		},
 	}
 }
 

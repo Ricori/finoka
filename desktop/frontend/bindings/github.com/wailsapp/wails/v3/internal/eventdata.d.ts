@@ -12,7 +12,9 @@ import type * as library$0 from "../../../../Ricori/finoka/desktop/internal/libr
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "editor:request-close": string;
             "files:dropped": string[] | null;
+            "home:refresh": boolean;
             "library:changed": library$0.Entry[] | null;
         }
     }

@@ -17,7 +17,7 @@ export function AccountPage({ session, media, loginKey, busy, message, onLoginKe
     <section className="account-layout">
       <article className="panel account-card">
         <span className="eyebrow">Key authentication</span>
-        <h2>{session?.authenticated ? session.admin ? "管理员已连接" : "已连接云端视频库" : "使用 Nonoka Key 登录"}</h2>
+        <h2>{session?.authenticated ? session.admin ? "管理员已连接" : "已连接云端服务" : "使用 Nonoka Key 登录"}</h2>
         {session?.authenticated ? (
           <>
             <dl>

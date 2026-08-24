@@ -105,15 +105,13 @@ func (s *Service) PickRelink(id string) (Entry, error) {
 	if !validID(id) {
 		return Entry{}, errors.New("invalid media id")
 	}
-	s.mu.RLock()
-	app, home := s.app, s.home
-	s.mu.RUnlock()
-	if app == nil || home == nil {
+	app, window := s.dialogWindow()
+	if app == nil || window == nil {
 		return Entry{}, errors.New("application window is not ready")
 	}
 	path, err := app.Dialog.OpenFile().
 		SetTitle("重新定位本地视频").
-		AttachToWindow(home).
+		AttachToWindow(window).
 		AddFilter("视频文件", "*.mp4;*.m4v;*.mov;*.mkv;*.webm").
 		PromptForSingleSelection()
 	if err != nil || path == "" {
@@ -220,10 +218,8 @@ func (s *Service) SaveSubtitle(defaultName, content string) (string, error) {
 	if len(content) > 64<<20 {
 		return "", errors.New("subtitle content exceeds 64 MB")
 	}
-	s.mu.RLock()
-	app, home := s.app, s.home
-	s.mu.RUnlock()
-	if app == nil || home == nil {
+	app, window := s.dialogWindow()
+	if app == nil || window == nil {
 		return "", errors.New("application window is not ready")
 	}
 	extension := strings.ToLower(filepath.Ext(defaultName))
@@ -236,7 +232,7 @@ func (s *Service) SaveSubtitle(defaultName, content string) (string, error) {
 	}
 	path, err := app.Dialog.SaveFile().SetFilename(name).
 		AddFilter(strings.ToUpper(strings.TrimPrefix(extension, "."))+" 字幕", "*"+extension).
-		AttachToWindow(home).PromptForSingleSelection()
+		AttachToWindow(window).PromptForSingleSelection()
 	if err != nil || path == "" {
 		return "", err
 	}
@@ -251,7 +247,7 @@ func (s *Service) ExportVideo(id, ass string) (string, error) {
 		return "", errors.New("invalid video export request")
 	}
 	s.mu.RLock()
-	app, home := s.app, s.home
+	app := s.app
 	var entry *Entry
 	for index := range s.entries {
 		if s.entries[index].ID == id {
@@ -260,12 +256,16 @@ func (s *Service) ExportVideo(id, ass string) (string, error) {
 			break
 		}
 	}
+	window := s.editor
+	if window == nil {
+		window = s.home
+	}
 	s.mu.RUnlock()
-	if app == nil || home == nil || entry == nil || !fileExists(entry.SourcePath) {
+	if app == nil || window == nil || entry == nil || !fileExists(entry.SourcePath) {
 		return "", errors.New("local media is unavailable")
 	}
 	name := strings.TrimSuffix(entry.Title, filepath.Ext(entry.Title)) + " - 字幕.mp4"
-	output, err := app.Dialog.SaveFile().SetFilename(name).AddFilter("MP4 视频", "*.mp4").AttachToWindow(home).PromptForSingleSelection()
+	output, err := app.Dialog.SaveFile().SetFilename(name).AddFilter("MP4 视频", "*.mp4").AttachToWindow(window).PromptForSingleSelection()
 	if err != nil || output == "" {
 		return "", err
 	}
@@ -296,8 +296,16 @@ func (s *Service) ExportVideo(id, ass string) (string, error) {
 	if err := os.WriteFile(filepath.Join(work, "subtitle.ass"), []byte(ass), 0o600); err != nil {
 		return "", err
 	}
+	fontsCopied, err := s.copyBundledFonts(filepath.Join(work, "fonts"))
+	if err != nil {
+		return "", err
+	}
+	filter := "subtitles=subtitle.ass"
+	if fontsCopied {
+		filter += ":fontsdir=fonts"
+	}
 	partial := output + ".part.mp4"
-	command := exec.Command(ffmpeg, "-v", "error", "-y", "-i", entry.SourcePath, "-vf", "subtitles=subtitle.ass", "-c:v", "libx264", "-preset", "medium", "-crf", "21", "-c:a", "aac", "-b:a", "192k", partial)
+	command := exec.Command(ffmpeg, "-v", "error", "-y", "-i", entry.SourcePath, "-vf", filter, "-c:v", "libx264", "-preset", "medium", "-crf", "21", "-c:a", "aac", "-b:a", "192k", partial)
 	command.Dir = work
 	configureMediaCommand(command)
 	if result, runErr := command.CombinedOutput(); runErr != nil {
