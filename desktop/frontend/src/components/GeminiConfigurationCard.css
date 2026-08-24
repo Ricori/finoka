@@ -1,0 +1,188 @@
+.gemini-config-card {
+  overflow: hidden;
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--panel) 93%, var(--accent-dim));
+}
+
+.gemini-config-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 23px 25px 19px;
+}
+
+.gemini-config-heading>div {
+  min-width: 0;
+}
+
+.gemini-config-heading h2 {
+  margin: 6px 0 0;
+  font-size: 17px;
+}
+
+.gemini-config-heading p {
+  max-width: 620px;
+  margin: 8px 0 0;
+  color: var(--mut);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.gemini-config-heading .mark {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.gemini-key-list {
+  display: grid;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.gemini-key-row {
+  display: grid;
+  grid-template-columns: minmax(190px, .8fr) minmax(145px, .55fr) minmax(240px, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 82px;
+  padding: 14px 25px;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+}
+
+.gemini-key-row+.gemini-key-row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.gemini-key-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gemini-key-copy>div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gemini-key-copy strong {
+  font-size: 11px;
+}
+
+.gemini-key-copy small {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-tier {
+  flex: 0 0 auto;
+  border: 1px solid var(--accent-line);
+  border-radius: 7px;
+  padding: 3px 6px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.gemini-tier-paid {
+  border-color: var(--line);
+  background: var(--raised);
+  color: var(--mut);
+}
+
+.gemini-key-status {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gemini-key-status span {
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.gemini-key-status small {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-key-input {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.gemini-key-input input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--bg) 72%, var(--panel));
+  color: var(--text);
+  outline: none;
+}
+
+.gemini-key-input input:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.gemini-key-input .danger-link {
+  flex: 0 0 auto;
+}
+
+.gemini-config-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px 25px;
+}
+
+.gemini-config-footer span {
+  color: var(--mut);
+  font-size: 9px;
+}
+
+.gemini-config-footer button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.gemini-config-footer button:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .gemini-key-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .gemini-key-status {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .gemini-config-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

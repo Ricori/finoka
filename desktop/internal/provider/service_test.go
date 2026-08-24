@@ -1,0 +1,105 @@
+package provider
+
+import (
+	"context"
+	"reflect"
+	"testing"
+
+	"github.com/Ricori/finoka/desktop/internal/sidecar"
+)
+
+const taskID = "0123456789abcdef0123456789abcdef"
+
+type call struct {
+	method   string
+	endpoint string
+	body     any
+}
+
+type fakeCaller struct {
+	calls []call
+}
+
+func (f *fakeCaller) Snapshot() sidecar.Snapshot {
+	return sidecar.Snapshot{Running: true, BaseURL: "http://127.0.0.1:1234", PID: 42}
+}
+
+func (f *fakeCaller) DoJSON(_ context.Context, method, endpoint string, body, response any) error {
+	f.calls = append(f.calls, call{method: method, endpoint: endpoint, body: body})
+	if target, ok := response.(*map[string]any); ok {
+		*target = map[string]any{"ok": true}
+	}
+	return nil
+}
+
+func TestServiceMapsFixedProviderEndpoints(t *testing.T) {
+	transport := &fakeCaller{}
+	service, err := New(transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := map[string]any{"schema": 1, "provider": "local"}
+	_, _ = service.Capabilities()
+	_, _ = service.RuntimeProvisionStatus()
+	_, _ = service.InstallRuntime("media")
+	_, _ = service.Settings()
+	_, _ = service.SaveKeys(map[string]any{"GEMINI_FREE": "secret"})
+	_, _ = service.ListTasks()
+	_, _ = service.StartTask(request)
+	_, _ = service.TaskStatus(taskID)
+	_, _ = service.TaskEvents(taskID, 7)
+	_, _ = service.TaskArtifacts(taskID)
+	_, _ = service.CancelTask(taskID)
+	_, _ = service.RetryTask(taskID)
+	_, _ = service.ResumeTask(taskID)
+
+	want := []call{
+		{method: "GET", endpoint: "/v1/capabilities"},
+		{method: "GET", endpoint: "/v1/runtime/provision"},
+		{method: "POST", endpoint: "/v1/runtime/provision", body: map[string]any{"target": "media"}},
+		{method: "GET", endpoint: "/v1/settings"},
+		{method: "PUT", endpoint: "/v1/settings/keys", body: map[string]any{"keys": map[string]any{"GEMINI_FREE": "secret"}}},
+		{method: "GET", endpoint: "/v1/tasks?limit=100"},
+		{method: "POST", endpoint: "/v1/tasks", body: request},
+		{method: "GET", endpoint: "/v1/tasks/" + taskID},
+		{method: "GET", endpoint: "/v1/tasks/" + taskID + "/events?after=7"},
+		{method: "GET", endpoint: "/v1/tasks/" + taskID + "/artifacts"},
+		{method: "POST", endpoint: "/v1/tasks/" + taskID + "/cancel", body: map[string]any{}},
+		{method: "POST", endpoint: "/v1/tasks/" + taskID + "/retry", body: map[string]any{}},
+		{method: "POST", endpoint: "/v1/tasks/" + taskID + "/resume", body: map[string]any{}},
+	}
+	if !reflect.DeepEqual(transport.calls, want) {
+		t.Fatalf("calls = %#v\nwant  = %#v", transport.calls, want)
+	}
+	status := service.SidecarStatus()
+	if !status.Running || status.BaseURL == "" {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestServiceRejectsUnknownRuntimeTarget(t *testing.T) {
+	transport := &fakeCaller{}
+	service, _ := New(transport)
+	if _, err := service.InstallRuntime("unknown"); err == nil {
+		t.Fatal("unknown runtime target was accepted")
+	}
+	if len(transport.calls) != 0 {
+		t.Fatalf("invalid runtime target reached transport: %#v", transport.calls)
+	}
+}
+
+func TestServiceRejectsPathInjectionBeforeTransport(t *testing.T) {
+	transport := &fakeCaller{}
+	service, _ := New(transport)
+	for _, value := range []string{"", "../capabilities", taskID + "/cancel", "ABCDEF0123456789ABCDEF0123456789"} {
+		if _, err := service.TaskStatus(value); err == nil {
+			t.Fatalf("expected task id %q to fail", value)
+		}
+	}
+	if _, err := service.TaskEvents(taskID, -1); err == nil {
+		t.Fatal("expected negative cursor to fail")
+	}
+	if len(transport.calls) != 0 {
+		t.Fatalf("invalid input reached transport: %#v", transport.calls)
+	}
+}

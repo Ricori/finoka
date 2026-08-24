@@ -1,0 +1,107 @@
+version: '3'
+
+tasks:
+  install:frontend:deps:
+    summary: Installs locked frontend dependencies
+    run: once
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/.package-lock.json
+    preconditions:
+      - sh: npm --version
+        msg: "Node.js and npm are required."
+    cmds:
+      - npm ci
+
+  generate:bindings:
+    summary: Generates TypeScript bindings for exported Wails services
+    run: once
+    deps:
+      - task: stage:resources
+    sources:
+      - "**/*.go"
+      - exclude: "frontend/**/*"
+      - go.mod
+      - go.sum
+    generates:
+      - frontend/bindings/**/*
+    cmds:
+      - >-
+        {{.WAILS}} generate bindings -f '{{.BUILD_FLAGS}}'
+        -clean -ts -i -d frontend/bindings ./...
+
+  build:frontend:
+    summary: Builds the Vite renderer
+    run: once
+    deps:
+      - task: install:frontend:deps
+      - task: generate:bindings
+        vars:
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
+    dir: frontend
+    sources:
+      - index.html
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+      - vite.config.ts
+      - src/**/*
+    generates:
+      - dist/index.html
+    cmds:
+      - 'npm run {{if eq .DEV "true"}}build:dev{{else}}build{{end}}'
+
+  dev:frontend:
+    summary: Starts Vite for Wails development mode
+    dir: frontend
+    cmds:
+      - npm run dev -- --port {{.VITE_PORT}} --strictPort
+
+  stage:resources:
+    summary: Stages Python and FineSub resources for embedding in the Go binary
+    run: once
+    sources:
+      - ../scripts/run_local_sidecar.py
+      - ../src/finoka/**/*
+      - exclude: ../src/finoka/**/__pycache__/**/*
+      - exclude: ../src/finoka/**/*.pyc
+      - ../third_party/finesub/src/**/*
+      - exclude: ../third_party/finesub/src/**/__pycache__/**/*
+      - exclude: ../third_party/finesub/src/**/*.pyc
+      - ../third_party/finesub/resources/**/*
+      - ../third_party/finesub/runtime/**/*
+      - ../third_party/finesub/LICENSE
+      - ../third_party/finesub/LICENSES.json
+      - ../third_party/finesub/PROMPT_LICENSE.md
+      - ../third_party/finesub/UPSTREAM.json
+      - ../third_party/finesub/pyproject.toml
+      - build/tools/stage/main.go
+    generates:
+      - internal/app/bundled/finoka/STAGED.json
+    cmds:
+      - go run ./build/tools/stage -repository .. -output internal/app/bundled/finoka
+
+  generate:icons:
+    summary: Generates PNG, ICNS, and ICO icons from the Finoka mark
+    run: once
+    sources:
+      - build/tools/icon/main.go
+    generates:
+      - frontend/public/assets/icon.png
+      - build/appicon.png
+      - build/darwin/icons.icns
+      - build/windows/icon.ico
+    cmds:
+      - go run ./build/tools/icon -output frontend/public/assets/icon.png
+      - '{{.WAILS}} tool cp frontend/public/assets/icon.png build/appicon.png'
+      - '{{.WAILS}} generate icons -input build/appicon.png -macfilename build/darwin/icons.icns -windowsfilename build/windows/icon.ico'
+
+  update:build-assets:
+    summary: Updates macOS and Windows metadata from build/config.yml
+    cmds:
+      - '{{.WAILS}} update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config build/config.yml -dir build'
+      - go run ./build/tools/configure

@@ -1,0 +1,203 @@
+// Package provider exposes the versioned Local ExecutionProvider contract to
+// Wails without exposing sidecar transport details or its bearer token.
+package provider
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"regexp"
+	"strconv"
+
+	"github.com/Ricori/finoka/desktop/internal/sidecar"
+)
+
+var validTaskID = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+type caller interface {
+	DoJSON(context.Context, string, string, any, any) error
+	Snapshot() sidecar.Snapshot
+}
+
+type Service struct {
+	provider caller
+}
+
+func New(local caller) (*Service, error) {
+	if local == nil {
+		return nil, errors.New("local provider is required")
+	}
+	return &Service{provider: local}, nil
+}
+
+func (s *Service) SidecarStatus() sidecar.Snapshot {
+	return s.provider.Snapshot()
+}
+
+func (s *Service) Capabilities() (map[string]any, error) {
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodGet, "/v1/capabilities", nil, &result)
+	return result, err
+}
+
+func (s *Service) RuntimeProvisionStatus() (map[string]any, error) {
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodGet, "/v1/runtime/provision", nil, &result)
+	return result, err
+}
+
+func (s *Service) InstallRuntime(target string) (map[string]any, error) {
+	if target != "media" && target != "runtime" && target != "models" && target != "all" {
+		return nil, errors.New("runtime target must be media, runtime, models, or all")
+	}
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/runtime/provision", map[string]any{"target": target}, &result)
+	return result, err
+}
+
+func (s *Service) Settings() (map[string]any, error) {
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodGet, "/v1/settings", nil, &result)
+	return result, err
+}
+
+func (s *Service) SaveKeys(keys map[string]any) (map[string]any, error) {
+	if keys == nil {
+		return nil, errors.New("keys are required")
+	}
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodPut, "/v1/settings/keys", map[string]any{"keys": keys}, &result)
+	return result, err
+}
+
+func (s *Service) Document(videoID string) (map[string]any, error) {
+	endpoint, err := documentEndpoint(videoID, "")
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodGet, endpoint, nil, &result)
+	return result, err
+}
+
+func (s *Service) DocumentPeaks(videoID string) (map[string]any, error) {
+	endpoint, err := documentEndpoint(videoID, "peaks")
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodGet, endpoint, nil, &result)
+	return result, err
+}
+
+func (s *Service) SaveDocument(videoID string, document map[string]any) (map[string]any, error) {
+	if document == nil {
+		return nil, errors.New("document is required")
+	}
+	endpoint, err := documentEndpoint(videoID, "")
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodPut, endpoint, document, &result)
+	return result, err
+}
+
+func (s *Service) StartTask(request map[string]any) (map[string]any, error) {
+	if request == nil {
+		return nil, errors.New("task request is required")
+	}
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/tasks", request, &result)
+	return result, err
+}
+
+func (s *Service) ListTasks() (map[string]any, error) {
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodGet, "/v1/tasks?limit=100", nil, &result)
+	return result, err
+}
+
+func (s *Service) TaskStatus(taskID string) (map[string]any, error) {
+	endpoint, err := taskEndpoint(taskID, "")
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodGet, endpoint, nil, &result)
+	return result, err
+}
+
+func (s *Service) TaskEvents(taskID string, afterCursor int) (map[string]any, error) {
+	if afterCursor < 0 {
+		return nil, errors.New("event cursor must not be negative")
+	}
+	endpoint, err := taskEndpoint(taskID, "events")
+	if err != nil {
+		return nil, err
+	}
+	endpoint += "?after=" + strconv.Itoa(afterCursor)
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodGet, endpoint, nil, &result)
+	return result, err
+}
+
+func (s *Service) TaskArtifacts(taskID string) (map[string]any, error) {
+	endpoint, err := taskEndpoint(taskID, "artifacts")
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodGet, endpoint, nil, &result)
+	return result, err
+}
+
+func (s *Service) CancelTask(taskID string) (map[string]any, error) {
+	return s.taskAction(taskID, "cancel")
+}
+
+func (s *Service) RetryTask(taskID string) (map[string]any, error) {
+	return s.taskAction(taskID, "retry")
+}
+
+func (s *Service) ResumeTask(taskID string) (map[string]any, error) {
+	return s.taskAction(taskID, "resume")
+}
+
+func (s *Service) taskAction(taskID, action string) (map[string]any, error) {
+	endpoint, err := taskEndpoint(taskID, action)
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodPost, endpoint, map[string]any{}, &result)
+	return result, err
+}
+
+func taskEndpoint(taskID, suffix string) (string, error) {
+	if !validTaskID.MatchString(taskID) {
+		return "", fmt.Errorf("invalid task id %q", taskID)
+	}
+	endpoint := "/v1/tasks/" + taskID
+	if suffix != "" {
+		endpoint += "/" + suffix
+	}
+	return endpoint, nil
+}
+
+func documentEndpoint(videoID, suffix string) (string, error) {
+	if len(videoID) == 0 || len(videoID) > 80 {
+		return "", errors.New("invalid document id")
+	}
+	for _, character := range videoID {
+		if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') && (character < '0' || character > '9') && character != '_' && character != '-' {
+			return "", errors.New("invalid document id")
+		}
+	}
+	endpoint := "/v1/documents/" + videoID
+	if suffix != "" {
+		endpoint += "/" + suffix
+	}
+	return endpoint, nil
+}

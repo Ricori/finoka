@@ -1,0 +1,83 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds Finoka for macOS
+    deps:
+      - task: common:build:frontend
+        vars: { DEV: '{{.DEV}}', BUILD_FLAGS: '{{.BUILD_FLAGS}}' }
+      - task: common:stage:resources
+      - task: common:generate:icons
+    cmds:
+      - 'go build {{.BUILD_FLAGS}} -o "{{.OUTPUT}}" .'
+    vars:
+      OUTPUT: '{{.OUTPUT | default (printf "%s/%s" .BIN_DIR .APP_NAME)}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+    env:
+      GOOS: darwin
+      GOARCH: '{{.ARCH | default ARCH}}'
+      CGO_ENABLED: 1
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      CGO_CFLAGS: "-mmacosx-version-min=12.0"
+      CGO_LDFLAGS: "-mmacosx-version-min=12.0"
+
+  build:universal:
+    summary: Builds a universal macOS binary
+    deps:
+      - task: build
+        vars: { ARCH: amd64, OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}-amd64' }
+      - task: build
+        vars: { ARCH: arm64, OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}-arm64' }
+    cmds:
+      - lipo -create -output "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}-amd64" "{{.BIN_DIR}}/{{.APP_NAME}}-arm64"
+
+  bundle:
+    summary: Assembles and ad-hoc signs the macOS app bundle
+    cmds:
+      - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS/{{.APP_NAME}}"
+      - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist"
+      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/icons.icns"
+      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+
+  package:
+    summary: Packages Finoka as a macOS .app bundle
+    deps: [build]
+    cmds:
+      - task: bundle
+
+  package:universal:
+    summary: Packages a universal macOS .app bundle
+    deps:
+      - task: build:universal
+    cmds:
+      - task: bundle
+
+  run:
+    summary: Runs Finoka from a development app bundle
+    cmds:
+      - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"
+      - cp build/darwin/Info.dev.plist "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Info.plist"
+      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources/icons.icns"
+      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
+      - '"{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"'
+
+  sign:
+    summary: Signs an existing macOS app bundle
+    deps: [package]
+    cmds:
+      - '{{.WAILS}} tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" {{.CLI_ARGS}}'
+
+  sign:notarize:
+    summary: Signs and notarizes the macOS app bundle
+    deps: [package]
+    cmds:
+      - '{{.WAILS}} tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" --notarize {{.CLI_ARGS}}'

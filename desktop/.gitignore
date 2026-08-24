@@ -1,0 +1,10 @@
+.task
+.cache
+.env.release
+bin
+frontend/dist
+frontend/node_modules
+scripts/node_modules
+*.syso
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+.claude

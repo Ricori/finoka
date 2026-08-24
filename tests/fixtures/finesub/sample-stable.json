@@ -1,0 +1,27 @@
+{
+  "segments": [
+    {
+      "id": "1",
+      "start": 1.0,
+      "end": 2.0,
+      "text": "おはよう",
+      "words": [{"word": "おはよう", "start": 1.0, "end": 2.0}]
+    },
+    {
+      "id": "2",
+      "start": 2.2,
+      "end": 3.0,
+      "text": "ございます",
+      "words": [{"word": "ございます", "start": 2.2, "end": 3.0}]
+    },
+    {
+      "id": "3",
+      "start": 4.0,
+      "end": 5.0,
+      "text": "またね",
+      "words": [{"word": "またね", "start": 4.0, "end": 5.0}],
+      "confidence_label": "low"
+    }
+  ]
+}
+

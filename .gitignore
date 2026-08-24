@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.local/
+dist/
+node_modules/
+!desktop/frontend/dist/
+desktop/frontend/dist/*
+!desktop/frontend/dist/.gitkeep
+modal_backend/*
+desktop/bin/
+desktop/.tools/
+desktop/wails_windows_*.syso
+desktop/internal/app/bundled/finoka/*
+!desktop/internal/app/bundled/finoka/.gitkeep

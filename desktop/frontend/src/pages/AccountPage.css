@@ -1,0 +1,2 @@
+.cloud-endpoint-note { display: flex; align-items: center; gap: 8px; margin: 0; border: 1px solid var(--line-soft); border-radius: 10px; padding: 10px 11px; background: color-mix(in srgb, var(--bg) 65%, var(--panel)); color: var(--mut); font-size: 10px; }
+.account-card, .sync-policy { padding: 25px; }

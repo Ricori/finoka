@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  engine-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install contract test dependencies
+        run: python -m pip install -e . pytest
+      - name: Verify generated FineSub snapshot
+        run: python scripts/sync_finesub.py check
+      - name: Run repository tests
+        run: python -W error::ResourceWarning -m pytest -q
+      - name: Build reproducible engine bundle
+        run: python -m scripts.build_finesub_bundle
+
+  go-contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Test Windows desktop shell and sidecar supervisor
+        working-directory: desktop
+        run: go test ./...
+
+  windows-runtime-contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install sidecar bootstrap dependencies from a fresh cache
+        run: python -m pip install -e . pytest
+      - name: Verify pinned engine and managed runtime manifests on Windows
+        run: python -m pytest -q tests/test_vendor_contract.py tests/test_sync_finesub.py tests/test_provision.py
+
+  frontend-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: desktop/frontend
+        run: npm ci
+      - name: Typecheck provider and document contracts
+        working-directory: desktop/frontend
+        run: npm run typecheck
+      - name: Test provider behavior
+        working-directory: desktop/frontend
+        run: npm test
+      - name: Build React renderer
+        working-directory: desktop/frontend
+        run: npm run build
+
+  modal-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest
+      - name: Test cloud authentication, quota and storage contracts
+        env:
+          PYTHONPATH: modal_backend:third_party/finesub/src
+        run: python -m pytest -q modal_backend/tests

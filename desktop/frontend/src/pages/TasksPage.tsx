@@ -1,0 +1,63 @@
+import type { MediaEntry } from "../bridge/library.ts";
+import { formatDate, taskProgress, taskStateLabel } from "../app/format.ts";
+import type { TaskHistoryEntry } from "../app/types.ts";
+import { activeStates, recoverableStates } from "../app/types.ts";
+import { Mark } from "../components/Mark.tsx";
+import "./TasksPage.css";
+
+interface TasksPageProps {
+  tasks: TaskHistoryEntry[];
+  media: MediaEntry[];
+  activeCount: number;
+  message: string;
+  pipelineError?: string;
+  onNavigateLibrary: () => void;
+  onOpenEditor: (entry: MediaEntry) => void;
+  onTaskAction: (item: TaskHistoryEntry, action: "cancel" | "resume") => Promise<void>;
+}
+
+export function TasksPage(props: TasksPageProps) {
+  const { tasks, media, activeCount, message, pipelineError, onNavigateLibrary, onOpenEditor, onTaskAction } = props;
+  return (
+    <section className="task-history">
+      <header className="task-history-header">
+        <div>{tasks.length > 0 && <Mark>{tasks.length} 个任务</Mark>}<h2>处理历史</h2><p>本机与云端任务统一显示；应用重启后会自动重新读取任务状态。</p></div>
+        {activeCount > 0 && <span className="running-summary"><i />{activeCount} 个进行中</span>}
+      </header>
+      {message && <p className="task-history-message">{message}</p>}
+      {pipelineError && <p className="task-history-message">{pipelineError}</p>}
+      {tasks.length === 0 ? (
+        <div className="panel task-empty">
+          <div className="task-empty-art" aria-hidden="true"><span /><span /><i>▶</i></div>
+          <h2>从第一个视频开始</h2>
+          <p>在媒体库选择视频并开始转写，任务进度、运行位置和历史结果都会集中显示在这里。</p>
+          <button className="primary-button" onClick={onNavigateLibrary}>前往媒体库</button>
+        </div>
+      ) : (
+        <div className="task-list">
+          {tasks.map((item) => {
+            const snapshot = item.snapshot;
+            const localEntry = media.find((entry) => entry.id === item.mediaId);
+            return (
+              <article className={`task-row task-${snapshot.state}`} key={item.taskId}>
+                <div className="task-state-icon" aria-hidden="true">{snapshot.state === "completed" ? "✓" : activeStates.has(snapshot.state) ? "↻" : recoverableStates.has(snapshot.state) ? "!" : "·"}</div>
+                <div className="task-row-copy">
+                  <div className="task-row-title"><strong>{item.title}</strong><span className={`task-state task-state-${snapshot.state}`}>{taskStateLabel(snapshot.state)}</span><small>{item.provider === "cloud" ? "☁ 云端" : "本机"}</small></div>
+                  <div className="task-row-meta"><span>{snapshot.stage || "等待转写引擎"}</span><code>{item.taskId.slice(0, 12)}</code><time dateTime={snapshot.updated_at}>{formatDate(snapshot.updated_at)}</time></div>
+                  <div className="task-row-progress"><span style={{ width: `${taskProgress(snapshot)}%` }} /></div>
+                  <p>{snapshot.error ? `${snapshot.error.code}: ${snapshot.error.message}` : snapshot.progress?.message || `${snapshot.progress?.completed ?? 0} / ${snapshot.progress?.total ?? "—"} ${snapshot.progress?.unit ?? ""}`}</p>
+                </div>
+                <div className="task-row-actions">
+                  {activeStates.has(snapshot.state) && <button onClick={() => void onTaskAction(item, "cancel")}>取消</button>}
+                  {recoverableStates.has(snapshot.state) && <button className="resume" onClick={() => void onTaskAction(item, "resume")}>继续</button>}
+                  {snapshot.state === "completed" && localEntry?.documentAvailable && <button className="resume" onClick={() => onOpenEditor(localEntry)}>编辑字幕</button>}
+                  {snapshot.state === "completed" && !localEntry?.documentAvailable && <button onClick={onNavigateLibrary}>查看媒体</button>}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}

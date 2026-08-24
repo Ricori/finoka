@@ -1,0 +1,188 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finesub"
+version = "0.4.1"
+description = "Local ASR and subtitle pipeline for long-form audio (finesub)."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "caca2331" }]
+requires-python = ">=3.12"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# Through *-stable.json: vocal separation, VAD, Whisper ASR, JSON/SRT tools.
+# Needs NVIDIA GPU (>=8GB VRAM recommended), >=8GB free system RAM, ffmpeg on PATH.
+asr = [
+  # Exact versions, and they move together or not at all. Four things are keyed
+  # to the torch build: torchaudio and torchvision by their own pins, triton by
+  # nothing at all (it declares no torch constraint, so a range lets the
+  # resolver pair them wrongly), and the patched CTranslate2 by the cuBLAS
+  # SONAME it loads at runtime.
+  #
+  # 2.11 is the last release with a matching torchaudio - it stops there - and
+  # the last on cu128. 2.12 moves to cu130, whose torch ships cublas64_13 while
+  # CT2 looks for cublas64_12, and it changed one ASR transcription in testing.
+  #
+  # 2.9/2.10/2.11 were each run end to end. Against the 2.9 corpus, 2.11 leaves
+  # ASR text identical and separation within 2.75e-4 (SNR 74.42dB, well inside
+  # E0's 71.4dB bar) - close but not bit-identical, so benchmark numbers taken
+  # on 2.9 do not transfer exactly. See README_DEV.md "torch 版本范围".
+  #
+  # Install from download.pytorch.org: the CUDA builds carry a +cu128 local
+  # label, and PyPI may serve a build without CUDA.
+  "torch==2.11.0",
+  "torchaudio==2.11.0",
+  "torchvision==0.26.0",
+  # Ships a bundled TinyCC, so the compiled path needs no Visual Studio.
+  "triton-windows==3.6.0.post26 ; platform_system == 'Windows'",
+  "numpy",
+  "soundfile",
+  # fw-refine is the only ASR backend, so these are not optional. Pinned exactly:
+  # it subclasses faster-whisper internals (seek loop, generate_with_fallback,
+  # word-timestamp assembly) and reads a decoder trace only the patched
+  # CTranslate2 emits, so a minor bump on either side can move output silently.
+  # Upgrade faster-whisper first -- it is what bounds the CTranslate2 range.
+  #
+  # NOTE: stock 4.8.1 satisfies this pin but cannot run fw-refine; that is caught
+  # at runtime by RefinedWhisperModel.__init__. Once the patched wheel is
+  # published, replace this with a direct reference to the release asset so the
+  # resolver rejects stock outright. See tools/wt_refine_port/ct2-patches/README.md.
+  "faster-whisper==1.2.1",
+  "ctranslate2==4.8.1",
+  "scipy",
+  "onnxruntime",
+  "audio-separator",
+  "numba",
+  # Opt-in ghost-interval suppression (--vad-silero-suppress); ships its model.
+  "silero-vad",
+  # Second-model verification evidence (--qwen-verify, docs/vad-asr.md):
+  # Qwen3-ASR-0.6B-hf through native transformers (~100MB pip increment;
+  # the 1.5GB model downloads to the HF cache on first use, like the
+  # separator models). In [asr] rather than an extra so the same command
+  # yields the same stable output on every install. tokenizers 0.22-0.23
+  # and huggingface-hub 1.x from this line sit inside faster-whisper's
+  # declared ranges. (The qwen-asr wrapper + non-hf checkpoints were
+  # rejected: exact transformers pin, an unused gradio/flask/nagisa
+  # payload, and a --no-deps install this file cannot express. Same
+  # weights; parity verified.)
+  "transformers>=5.13,<6",
+]
+# From stable.json onward: LLM correction/translation harness only.
+# No GPU / torch required; >=4GB system RAM; ffmpeg + ffprobe on PATH; API keys in .env.
+harness = [
+  "httpx",
+  "opencc-python-reimplemented",  # 繁→简归一 for knowledge-entry key matching
+  # finesub/llm/rate_limit.py resolves America/Los_Angeles at import time to align the
+  # Gemini daily quota window. Windows ships no tz database, so without this
+  # the whole LLM layer fails to import -- which is how it reached CI as an
+  # ad-hoc `pip install tzdata` line instead of a declared dependency.
+  "tzdata ; platform_system == 'Windows'",
+]
+# What the desktop *worker* needs on top of [asr]+[harness], inside the managed
+# runtime -- a third environment, distinct from both [desktop] and [dev]:
+#
+#   launcher process        <- [desktop]  (pywebview / pystray / cryptography)
+#     `-- spawns worker     <- this lock  (desktop/runtime/pylock.win-py312.toml)
+#           |-- desktop.backend.common.models   needs pydantic
+#           `-- finesub.pipeline         needs [asr]
+#
+# So it cannot fold into [desktop] (that would drag pywebview's CLR bridge into
+# the runtime the worker uses) nor into [dev] (the lock never includes dev, and
+# the worker would ImportError on pydantic). It is compiled into the lock via
+# `--extra desktop-worker`; see desktop/runtime/pylock.win-py312.toml's header.
+desktop-worker = [
+  "pydantic>=2,<3",
+  # yt-dlp is deliberately NOT here: managed runtimes provide it as an
+  # on-demand manifest resource joined via PYTHONPATH (reusing a system copy
+  # when present), and source installs treat it as opt-in. See
+  # finesub_bootstrap.system_tools / runtime-manifest.json.
+  # The direct reference [asr] deliberately avoids (docs/ct2-distribution.md
+  # "安装约束"): it pins the platform triple, which is fine *here* because the
+  # desktop runtime is win_amd64 / cp312 / cu128 and nothing else. Without it
+  # the lock resolves stock 4.8.1 -- installs cleanly, then fails at ASR start,
+  # since only the patched build emits the WT refine trace.
+  "ctranslate2 @ https://github.com/caca2331/finesub/releases/download/ct2-4.8.1%2Bfinesub0.4.0/ctranslate2-4.8.1+finesub0.4.0.cu128-cp312-cp312-win_amd64.whl",
+]
+# Optional Windows desktop launcher runtime.
+desktop = [
+  "cryptography",
+  "httpx",
+  "packaging",
+  "pydantic>=2,<3",
+  "Pillow",
+  "pystray~=0.19.5",
+  "pywebview~=6.2.0",
+]
+dev = [
+  "Pillow",
+  "pyinstaller>=6,<7",
+  "pyinstaller-hooks-contrib>=2026.6",
+  # `finesub_bootstrap` models the manifests it parses with pydantic, and the
+  # root suite now covers that layer (test/bootstrap). It stays out of
+  # `[harness]`: a harness install runs the LLM layer, which only reaches
+  # `finesub_bootstrap.secrets` -- deliberately stdlib-only for that reason.
+  "pydantic>=2,<3",
+  "pytest",
+  # A hung test is otherwise a hung CI job with no output: the suite starts
+  # real subprocesses (agent drivers) and real local HTTP servers.
+  "pytest-timeout",
+  "pytest-xdist",
+  "sudachipy",
+  "sudachidict_core",
+]
+
+# No `[project.scripts]`, on purpose. The one command this project puts on a
+# user's PATH is `finesub`, and it comes from the CLI wheel (`cli/`), which
+# provisions the managed runtime before dispatching. Installing this
+# distribution as well would put a second, unprovisioned `finesub` in the same
+# place. Everything the fourteen former scripts did is reachable as
+# `python -m finesub.<module>`; `test_packaging` keeps those runnable.
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["finesub*", "finesub_bootstrap*"]
+
+[tool.setuptools.package-data]
+"finesub.llm" = ["prompt_templates/*.md"]
+"finesub.llm.routing" = ["model_catalog.psv", "model_routes.toml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+# One desktop module joins the default run: it holds the contract between this
+# file's extras and desktop/runtime/pylock.win-py312.toml, and that contract is
+# broken by editing *this file*, not the desktop tree. Desktop CI only runs on
+# main, so without this the drift surfaces at release time -- exactly how the
+# lock spent a month with no ASR decoder in it.
+#
+# Named as a file, not its directory: the rest of desktop/scripts/tests shells
+# out to powershell.exe or imports cryptography from [desktop], neither of which
+# the root CI job (ubuntu, [harness,dev]) has.
+testpaths = ["test", "desktop/scripts/tests/test_desktop_dependencies.py"]
+python_files = ["test_*.py", "*_test.py"]
+# `-n auto` is affordable again now that the root conftest stops paying for a
+# symlink pytest never reads. `--timeout` bounds a hang rather than a slow
+# test: the slowest single case measures ~3.3s, so 120 is two orders of
+# magnitude of headroom, and heavy-resource cases raise it themselves.
+addopts = "-n auto --timeout=120"
+markers = [
+  "heavy_resource: tests that may load models, process media, or use significant GPU/RAM; skipped unless --run-heavy-resource is passed",
+  "requires_main_checkout: tests whose contract requires the repository to be the main checkout; skipped in linked git worktrees",
+  # The three domain markers partition the suite: every test file carries
+  # exactly one, and test_packaging.py fails if a new file carries none.
+  "llm: LLM harness tests (auto-applied to test_llm_*.py)",
+  "pipeline: pipeline/batch orchestration plus the runtime and provisioning it stands on (GPU and thread budgets, device resolution, separator plumbing, reporting, config, secrets, state)",
+  "asr: the audio -> words -> subtitle path (VAD, decoding, alignment, stabilization, segmentation) and its text utilities",
+]

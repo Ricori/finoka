@@ -1,0 +1,378 @@
+// Package library owns Finoka's local media index and managed video cache.
+// Original media remains user-owned; disposable working copies live below the
+// Finoka data directory.
+package library
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
+
+const (
+	maxMediaDuration  = 2 * time.Hour
+	maxThumbnailBytes = 5 << 20
+)
+
+var supportedExtensions = map[string]struct{}{
+	".mp4": {}, ".m4v": {}, ".mov": {}, ".mkv": {}, ".webm": {},
+}
+
+type Entry struct {
+	ID                 string  `json:"id"`
+	SourcePath         string  `json:"sourcePath"`
+	Title              string  `json:"title"`
+	Size               int64   `json:"size"`
+	Duration           float64 `json:"duration"`
+	Width              int     `json:"width"`
+	Height             int     `json:"height"`
+	Fingerprint        string  `json:"fingerprint"`
+	AddedAt            int64   `json:"addedAt"`
+	LastAccess         int64   `json:"lastAccess"`
+	ThumbnailAvailable bool    `json:"thumbnailAvailable"`
+	Available          bool    `json:"available"`
+	DocumentAvailable  bool    `json:"documentAvailable"`
+	Cached             bool    `json:"cached"`
+}
+
+type ImportFailure struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Message string `json:"message"`
+}
+
+type ImportResult struct {
+	Added  []Entry         `json:"added"`
+	Failed []ImportFailure `json:"failed"`
+}
+
+type Metadata struct {
+	Duration float64
+	Width    int
+	Height   int
+	HasVideo bool
+	HasAudio bool
+}
+
+type prober interface {
+	Probe(context.Context, string) (Metadata, error)
+}
+
+type thumbnailer interface {
+	Generate(context.Context, string, string, float64) error
+}
+
+type Service struct {
+	mu           sync.RWMutex
+	indexPath    string
+	root         string
+	thumbnailDir string
+	cacheDir     string
+	cachePath    string
+	entries      []Entry
+	prober       prober
+	thumbnailer  thumbnailer
+	app          *application.App
+	home         *application.WebviewWindow
+	media        *loopbackMediaServer
+	legacyRoot   string
+	cacheMu      sync.Mutex
+	cacheConfig  CacheConfig
+	activeMedia  string
+}
+
+func New(dataDirectory string) (*Service, error) {
+	return newService(dataDirectory, commandMediaTools{dataDirectory: dataDirectory})
+}
+
+func newService(dataDirectory string, tools commandMediaTools) (*Service, error) {
+	root, err := filepath.Abs(dataDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("resolve media library directory: %w", err)
+	}
+	service := &Service{
+		root:         root,
+		indexPath:    filepath.Join(root, "library.json"),
+		thumbnailDir: filepath.Join(root, "thumbnails"),
+		cacheDir:     filepath.Join(root, "videos"),
+		cachePath:    filepath.Join(root, "cache.json"),
+		prober:       tools,
+		thumbnailer:  tools,
+		entries:      []Entry{},
+		legacyRoot:   defaultLegacyRoot(),
+		cacheConfig:  defaultCacheConfig(),
+	}
+	if err := os.MkdirAll(service.thumbnailDir, 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(service.cacheDir, 0o755); err != nil {
+		return nil, err
+	}
+	if err := service.load(); err != nil {
+		return nil, err
+	}
+	if err := service.loadCacheConfig(); err != nil {
+		return nil, err
+	}
+	if err := service.convergeCache(); err != nil {
+		return nil, err
+	}
+	return service, nil
+}
+
+func newServiceWithTools(dataDirectory string, probe prober, thumbnails thumbnailer) (*Service, error) {
+	service, err := newService(dataDirectory, commandMediaTools{dataDirectory: dataDirectory})
+	if err != nil {
+		return nil, err
+	}
+	service.prober = probe
+	service.thumbnailer = thumbnails
+	return service, nil
+}
+
+func Attach(s *Service, app *application.App, home *application.WebviewWindow) {
+	s.mu.Lock()
+	s.app = app
+	s.home = home
+	s.mu.Unlock()
+}
+
+func (s *Service) List() []Entry {
+	s.mu.RLock()
+	result := append([]Entry(nil), s.entries...)
+	s.mu.RUnlock()
+	for index := range result {
+		result[index].ThumbnailAvailable = fileExists(s.thumbnailPath(result[index].ID))
+		result[index].Cached = s.cachedPath(result[index].ID) != ""
+		result[index].Available = result[index].Cached || fileExists(result[index].SourcePath)
+		result[index].DocumentAvailable = fileExists(filepath.Join(s.root, "documents", result[index].ID, "document.json"))
+	}
+	sort.SliceStable(result, func(left, right int) bool { return result[left].AddedAt > result[right].AddedAt })
+	return result
+}
+
+func (s *Service) PickAndImport() (ImportResult, error) {
+	s.mu.RLock()
+	app, home := s.app, s.home
+	s.mu.RUnlock()
+	if app == nil || home == nil {
+		return ImportResult{}, errors.New("application window is not ready")
+	}
+	paths, err := app.Dialog.OpenFile().
+		SetTitle("选择本地媒体").
+		AttachToWindow(home).
+		AddFilter("视频文件", "*.mp4;*.m4v;*.mov;*.mkv;*.webm").
+		PromptForMultipleSelection()
+	if err != nil || len(paths) == 0 {
+		return ImportResult{Added: []Entry{}, Failed: []ImportFailure{}}, err
+	}
+	return s.Import(paths), nil
+}
+
+func (s *Service) Import(paths []string) ImportResult {
+	result := ImportResult{Added: []Entry{}, Failed: []ImportFailure{}}
+	for _, path := range paths {
+		entry, added, err := s.importOne(path)
+		if err != nil {
+			result.Failed = append(result.Failed, ImportFailure{
+				Path: path, Name: filepath.Base(path), Message: err.Error(),
+			})
+			continue
+		}
+		if added {
+			result.Added = append(result.Added, entry)
+		}
+	}
+	if len(result.Added) > 0 {
+		s.emitChanged()
+	}
+	return result
+}
+
+func (s *Service) ThumbnailDataURL(id string) (string, error) {
+	if !validID(id) {
+		return "", errors.New("invalid media id")
+	}
+	data, err := os.ReadFile(s.thumbnailPath(id))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxThumbnailBytes {
+		return "", errors.New("thumbnail exceeds size limit")
+	}
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+func (s *Service) importOne(path string) (Entry, bool, error) {
+	if strings.TrimSpace(path) == "" {
+		return Entry{}, false, errors.New("media path is empty")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return Entry{}, false, err
+	}
+	if _, supported := supportedExtensions[strings.ToLower(filepath.Ext(absolute))]; !supported {
+		return Entry{}, false, fmt.Errorf("unsupported media format %s", filepath.Ext(absolute))
+	}
+	stat, err := os.Stat(absolute)
+	if err != nil {
+		return Entry{}, false, err
+	}
+	if !stat.Mode().IsRegular() {
+		return Entry{}, false, errors.New("media source is not a regular file")
+	}
+	metadata, err := s.prober.Probe(context.Background(), absolute)
+	if err != nil {
+		return Entry{}, false, err
+	}
+	if !metadata.HasVideo || metadata.Duration <= 0 {
+		return Entry{}, false, errors.New("media source does not contain a readable video track")
+	}
+	if metadata.Duration > maxMediaDuration.Seconds() {
+		return Entry{}, false, fmt.Errorf("media exceeds the %d minute limit", int(maxMediaDuration.Minutes()))
+	}
+	fingerprint, err := fileFingerprint(absolute, stat.Size())
+	if err != nil {
+		return Entry{}, false, err
+	}
+
+	s.mu.Lock()
+	for _, existing := range s.entries {
+		if existing.Fingerprint == fingerprint {
+			s.mu.Unlock()
+			return existing, false, nil
+		}
+	}
+	id, err := randomID()
+	if err != nil {
+		s.mu.Unlock()
+		return Entry{}, false, err
+	}
+	now := time.Now().UnixMilli()
+	entry := Entry{
+		ID: id, SourcePath: absolute, Title: stat.Name(), Size: stat.Size(),
+		Duration: metadata.Duration, Width: metadata.Width, Height: metadata.Height,
+		Fingerprint: fingerprint, AddedAt: now, LastAccess: now,
+		Available: true,
+	}
+	s.entries = append([]Entry{entry}, s.entries...)
+	if err := s.saveLocked(); err != nil {
+		s.entries = s.entries[1:]
+		s.mu.Unlock()
+		return Entry{}, false, err
+	}
+	s.mu.Unlock()
+
+	if err := s.thumbnailer.Generate(context.Background(), absolute, s.thumbnailPath(id), metadata.Duration); err == nil {
+		entry.ThumbnailAvailable = true
+	}
+	return entry, true, nil
+}
+
+func (s *Service) load() error {
+	data, err := os.ReadFile(s.indexPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &s.entries); err != nil {
+		return fmt.Errorf("read media library: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) saveLocked() error {
+	data, err := json.MarshalIndent(s.entries, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(s.indexPath), 0o755); err != nil {
+		return err
+	}
+	temporary := s.indexPath + ".tmp"
+	if err := os.WriteFile(temporary, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, s.indexPath); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
+}
+
+func (s *Service) emitChanged() {
+	s.mu.RLock()
+	app := s.app
+	s.mu.RUnlock()
+	if app != nil {
+		app.Event.Emit("library:changed", s.List())
+	}
+}
+
+func (s *Service) thumbnailPath(id string) string {
+	return filepath.Join(s.thumbnailDir, id+".jpg")
+}
+
+func validID(id string) bool {
+	if !strings.HasPrefix(id, "loc_") || len(id) != 16 {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(id, "loc_"))
+	return err == nil
+}
+
+func randomID() (string, error) {
+	buffer := make([]byte, 6)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+	return "loc_" + hex.EncodeToString(buffer), nil
+}
+
+func fileFingerprint(path string, size int64) (string, error) {
+	const chunkSize int64 = 2 << 20
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	_, _ = fmt.Fprintf(hash, "%d", size)
+	length := min(size, chunkSize)
+	buffer := make([]byte, length)
+	if _, err := io.ReadFull(file, buffer); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", err
+	}
+	_, _ = hash.Write(buffer)
+	if _, err := file.Seek(max(0, size-chunkSize), io.SeekStart); err != nil {
+		return "", err
+	}
+	buffer = make([]byte, length)
+	if _, err := io.ReadFull(file, buffer); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", err
+	}
+	_, _ = hash.Write(buffer)
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func fileExists(path string) bool {
+	stat, err := os.Stat(path)
+	return err == nil && stat.Mode().IsRegular()
+}

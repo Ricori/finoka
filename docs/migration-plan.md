@@ -188,7 +188,8 @@
 
 - 同一短媒体在本地与云端生成兼容 ArtifactManifest。
 - 云端对象存储和任务请求中不出现原视频、截图或关键帧。
-- 云端 UI 不提供视频多模态选项，任务始终记录 `effective_media="audio"`。
+- 云端 UI 不提供视频多模态或网页检索选项，任务始终记录
+  `effective_media="text"`、`retrieval="none"` 和 `web_search=false`。
 - worker 被终止后可在新容器续跑。
 - 云端 Secret 不返回客户端。
 - 本地 LLM Key 永不上传。

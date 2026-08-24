@@ -99,10 +99,11 @@ Finoka 自己定义稳定请求；Adapter 再映射为当前 FineSub 参数。
 }
 ```
 
-云端请求的 `source` 改为音频上传对象 id，不传客户端绝对路径。云端首版只接受音频，
-`correction.media` 必须为 `"audio"`；收到 `"video"` 时返回稳定的
-`unsupported_capability` 错误，不做静默降级。任务 snapshot 必须记录
-`effective_media="audio"` 和 `video_multimodal=false`。
+云端请求的 `source` 改为音频上传对象 id，不传客户端绝对路径。云端只接受音频作为识别
+输入，但纠错与翻译固定使用识别文本：服务端把兼容的 `"audio"` 请求归一化为
+`correction.media="text"`，并强制 `retrieval="none"`。收到 `"video"` 时返回稳定的
+能力错误，不做静默降级。任务 snapshot 必须记录 `effective_media="text"`、
+`retrieval="none"`、`web_search=false` 和 `video_multimodal=false`。
 
 ## 5. TaskSnapshot
 

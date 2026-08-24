@@ -1,0 +1,14 @@
+{
+  "archive_sha256": "6b349f4d62bf3841b1b1f976d39e5bb5f213bc7ab1c8fbd01d5f942823e2d6a5",
+  "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
+  "content_sha256": "cffc023c18ba27299bd83f259a18620884c1864a6fef513412ec2af126386818",
+  "engine_bundle_id": "finesub-0.4.1+2a320ede3f5c",
+  "engine_version": "0.4.1",
+  "files_manifest_sha256": "86db7fa3231295ace2f85e9072feb6a3627c051cadf083dd49367032ce7fb52f",
+  "patches": [],
+  "ref": "v0.4.1",
+  "repository": "https://github.com/caca2331/finesub",
+  "runtime_manifest_sha256": "e3dc9def3282ea90fa4cb51398d96a6bb566799012a7ec2f13ca85bd42078a3a",
+  "sync_schema": 1,
+  "synced_at": "2026-08-19T06:23:39Z"
+}

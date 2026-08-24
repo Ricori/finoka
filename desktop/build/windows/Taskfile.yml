@@ -1,0 +1,53 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Cross-builds Finoka for Windows
+    deps:
+      - task: common:build:frontend
+        vars: { DEV: '{{.DEV}}', BUILD_FLAGS: '{{.BUILD_FLAGS}}' }
+      - task: common:stage:resources
+      - task: common:generate:icons
+    cmds:
+      - task: generate:syso
+        vars: { ARCH: '{{.ARCH}}' }
+      - 'go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .'
+      - cmd: powershell Remove-Item -ErrorAction SilentlyContinue wails_windows_*.syso
+        platforms: [windows]
+      - cmd: rm -f wails_windows_*.syso
+        platforms: [linux, darwin]
+    vars:
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{end}}'
+    env:
+      GOOS: windows
+      GOARCH: '{{.ARCH | default "amd64"}}'
+      CGO_ENABLED: 0
+
+  generate:syso:
+    summary: Generates Windows version and manifest resources
+    dir: build
+    cmds:
+      - '{{.WAILS}} generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso'
+    vars:
+      ARCH: '{{.ARCH | default "amd64"}}'
+
+  package:
+    summary: Produces the self-contained single-file Windows executable
+    deps:
+      - task: build
+    cmds:
+      - 'go version -m "{{.BIN_DIR}}/{{.APP_NAME}}.exe"'
+
+  run:
+    summary: Runs the Windows executable
+    cmds:
+      - '"{{.BIN_DIR}}/{{.APP_NAME}}.exe"'
+
+  sign:
+    summary: Signs the Windows executable
+    deps: [build]
+    cmds:
+      - '{{.WAILS}} tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.exe" {{.CLI_ARGS}}'

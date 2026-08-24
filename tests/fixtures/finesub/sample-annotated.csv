@@ -1,0 +1,4 @@
+# type|position|duration|gap|corrected|translation|conf|char_count|note
+sub|1,2|2.0|1.0|おはようございます|早上好|high|3|
+sub|3|1.0|0.0|またね|再见|low|2|check
+

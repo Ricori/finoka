@@ -1,0 +1,41 @@
+# Wails 3 project metadata and development orchestration.
+# Run `task build-assets` after changing info or fileAssociations.
+version: '3'
+
+info:
+  companyName: "Ricori"
+  productName: "Finoka"
+  productIdentifier: "app.finoka.desktop"
+  description: "Local-first subtitle production"
+  copyright: "© 2026 Ricori"
+  comments: "Local and cloud subtitle production in one media library."
+  version: "0.1.0"
+  cfBundleIconName: "appicon"
+
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 800
+  ignore:
+    dir:
+      - .git
+      - .tools
+      - bin
+      - build
+      - frontend
+    file:
+      - .gitignore
+      - .gitkeep
+      - "*_test.go"
+    watched_extension:
+      - "*.go"
+    git_ignore: true
+  executes:
+    - cmd: go run github.com/wailsapp/wails/v3/cmd/wails3 build DEV=true
+      type: blocking
+    - cmd: go run github.com/wailsapp/wails/v3/cmd/wails3 task common:dev:frontend
+      type: background
+    - cmd: go run github.com/wailsapp/wails/v3/cmd/wails3 task run DEV=true
+      type: primary
+
+fileAssociations: []

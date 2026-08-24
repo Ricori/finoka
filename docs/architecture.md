@@ -80,7 +80,7 @@ FineSub 负责：
 
 - 只监听 `127.0.0.1` 的随机端口。
 - 启动时生成随机会话令牌，前端每个请求必须携带。
-- 读取本地源视频路径，不做 R2 上传或无意义的 localhost 媒体复制。
+- 读取本地源视频路径，不做 R2 上传；视频实际参与任务后建立受容量上限管理的本机工作副本。
 - 启动隔离 worker；应用退出时把任务标成 interrupted，并允许继续。
 - 管理本地 FineSub 运行时、模型、缓存和用户 LLM Key。
 - 将 FineSub 事件投影为 Finoka 的统一任务事件。
@@ -116,11 +116,14 @@ EditDocument      -> t0/t1/ja/zh/words/low_conf/tracks
 
 ### 4.5 Document Store
 
-字幕编辑文档默认始终保存在本地，即使任务由云端执行：
+字幕编辑文档默认始终保存在本地，即使任务由云端执行；用户使用业务 Key 登录后，完成的
+字幕产物还会作为独立同步副本写入云端视频库：
 
 - 云端完成后下载 artifact。
 - 本地 Projector 生成 `EditDocument`。
 - 编辑、版本、轨道、ASS 模板和导出均在本机完成。
+- 本地媒体索引与云端视频记录按指纹合并展示，但仍由各自存储分别维护。
+- 本地任务完成后的字幕同步不上传媒体、不暴露路径，也不扣云端转写次数。
 
 未来若增加协作，应新增独立 `DocumentSyncProvider`。不要把“在哪转写”和“字幕保存在哪”
 再次绑定为一个后端。
@@ -130,7 +133,7 @@ EditDocument      -> t0/t1/ja/zh/words/low_conf/tracks
 | 维度 | 本地 | 云端 |
 | --- | --- | --- |
 | 媒体输入 | 本地路径 | 客户端提取音频后 Presigned URL 上传 |
-| 视频多模态纠错 | 按本地能力启用 | 不支持，固定为纯音频纠错 |
+| 视频多模态纠错 | 按本地能力启用 | 不支持，固定为纯文本纠错 |
 | 业务鉴权 | 无；仅 localhost 会话令牌 | 云端任务 Key |
 | LLM Key | 用户本机配置，禁止上传 | 云端 Secret |
 | FineSub 版本 | 本地 engine bundle | 同版本容器镜像 |
@@ -162,9 +165,10 @@ EditDocument      -> t0/t1/ja/zh/words/low_conf/tracks
 - 桌面端在本机从媒体中提取音频，再通过 Presigned URL 上传。
 - 不上传原视频、截图、关键帧或其他视觉内容。
 - Cloud Provider 的 `capabilities()` 固定返回 `video_multimodal=false`。
-- 云端任务固定使用 `correction.media="audio"`；服务端收到视频多模态请求时直接拒绝，
-  不做静默降级。
-- UI 在云端模式下不显示视频多模态选项，并明确提示纠错只使用音频和文本上下文。
+- 云端识别使用上传音频，纠错与翻译固定使用 `correction.media="text"`。
+- 云端固定 `retrieval="none"`，不启用 FineSub 本地或模型原生网页搜索增强。
+- 服务端收到视频多模态请求时直接拒绝；旧版 `media="audio"` 请求仅兼容归一化为文本纠错。
+- UI 在云端模式下不显示视频多模态与网页检索选项，并明确提示纠错只使用文本上下文。
 
 本地和云端仍使用同版本 FineSub 引擎与相同 artifact schema；这项能力差异必须记录在
 任务的 `requested_capabilities` 和 `effective_capabilities` 中。

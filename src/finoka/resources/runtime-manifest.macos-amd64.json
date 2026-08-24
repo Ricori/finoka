@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "platform": "macos-amd64",
+  "resources": [
+    {
+      "id": "ffmpeg",
+      "version": "9.0.1",
+      "destination": "runtime",
+      "directory": "ffmpeg",
+      "archive_type": "zip",
+      "required_files": ["ffmpeg"],
+      "asset": {
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1787081194_9.0.1/ffmpeg.zip",
+        "size": 33847553,
+        "sha256": "5bdead62ff504ab9b447cc72b212c4fb481e3f7de5877d427a51bee8136dda40"
+      }
+    },
+    {
+      "id": "ffprobe",
+      "version": "9.0.1",
+      "destination": "runtime",
+      "directory": "ffprobe",
+      "archive_type": "zip",
+      "required_files": ["ffprobe"],
+      "asset": {
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1787081194_9.0.1/ffprobe.zip",
+        "size": 33750750,
+        "sha256": "34511bbcf1988ad2886023bf5ace4f44cf62e6defeb3d194d6f7619e5b061f7f"
+      }
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+version: '3'
+
+vars:
+  APP_NAME: "Finoka"
+  BIN_DIR: "bin"
+  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  GOOS: '{{.GOOS | default OS}}'
+  WAILS: 'go run github.com/wailsapp/wails/v3/cmd/wails3'
+
+includes:
+  common: ./build/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+
+tasks:
+  default:
+    summary: Lists available Finoka desktop tasks
+    cmds:
+      - task --list-all
+
+  build:
+    summary: Builds Finoka for GOOS (defaults to the host)
+    cmds:
+      - task: '{{.GOOS}}:build'
+
+  package:
+    summary: Creates the native package for GOOS (defaults to the host)
+    cmds:
+      - task: '{{.GOOS}}:package'
+
+  run:
+    summary: Runs the built application
+    cmds:
+      - task: '{{.GOOS}}:run'
+
+  dev:
+    summary: Starts Wails hot reload and the Vite renderer
+    deps:
+      - task: common:install:frontend:deps
+    cmds:
+      - '{{.WAILS}} dev -config ./build/config.yml -port {{.VITE_PORT}}'
+
+  bindings:
+    summary: Regenerates TypeScript Wails bindings
+    cmds:
+      - task: common:generate:bindings
+
+  icons:
+    summary: Regenerates application icons
+    cmds:
+      - task: common:generate:icons
+
+  build-assets:
+    summary: Regenerates Wails platform metadata from build/config.yml
+    cmds:
+      - task: common:update:build-assets
+
+  verify:
+    summary: Runs Go, frontend, resource, and production build checks
+    cmds:
+      - go test ./...
+      - task: common:generate:bindings
+      - task: common:stage:resources
+      - task: common:generate:icons
+      - npm --prefix frontend run typecheck
+      - npm --prefix frontend test
+      - task: '{{.GOOS}}:build'
