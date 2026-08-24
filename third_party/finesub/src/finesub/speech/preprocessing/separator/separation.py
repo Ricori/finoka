@@ -196,9 +196,9 @@ def output_mode_for(path: Path) -> str:
 MERGE_FORMAT = "flac"
 
 
-def _accel_paths() -> Any:
+def _accel_paths(batch_size: int = 1) -> Any:
     try:
-        return accel.resolve_accel_paths(MODEL_NAME)
+        return accel.resolve_accel_paths(MODEL_NAME, batch_size)
     except Exception:
         return None
 
@@ -217,11 +217,11 @@ def _record_applied_accel(metadata_sink: Any, lease: "_SharedSeparatorLease") ->
     metadata_sink["accel"] = lease.accel_backend
 
 
-def _select_accel_backend(duration_sec: float) -> str:
+def _select_accel_backend(duration_sec: float, batch_size: int = 1) -> str:
     """Choose the compiled tier, or eager when anything is unavailable."""
 
     try:
-        return accel.select_backend(_accel_paths(), duration_sec)
+        return accel.select_backend(_accel_paths(batch_size), duration_sec)
     except Exception:
         return "eager"
 
@@ -336,13 +336,14 @@ def _warm_up_shared_roformer(model_instance: Any, *, use_amp: bool) -> None:
     chunk_size = int(stft_hop_length) * (int(config.inference.dim_t) - 1)
     audio_channels = int(getattr(model, "audio_channels", 2))
 
+    warm_batch_size = max(1, int(getattr(model_instance, "batch_size", 1)))
     with torch.inference_mode(), torch.autocast(
         device_type="cuda",
         enabled=use_amp,
     ):
         output = model(
             torch.zeros(
-                1,
+                warm_batch_size,
                 audio_channels,
                 chunk_size,
                 dtype=torch.float32,
@@ -438,7 +439,7 @@ class _SharedSeparatorPool:
                     self._accel_backend = accel.apply_acceleration(
                         self._master.model_instance,
                         accel_backend,
-                        _accel_paths(),
+                        _accel_paths(batch_size),
                     )
                 except BaseException:
                     self._master = None
@@ -932,9 +933,37 @@ def run_vocal_separation(
     gpu_stage_lease: GpuStageLease | None = None
     temporary_input: Optional[Path] = None
     separation_completed = False
+    stage_started = time.perf_counter()
+    model_setup_sec = 0.0
+    block_pipeline_sec = 0.0
+    delivery_sec = 0.0
     watchdog = stall_watchdog.arm("vocal-separation")
     reset_peak_gpu_memory_stats_for_run(device_for_usage)
     memory_sampler = start_stage_memory_sampling()
+
+    def acquire_separator(
+        output_dir: str,
+        output_format: str,
+        batch_size: int,
+        *,
+        use_amp: bool,
+        accel_backend: str = "eager",
+    ) -> _SharedSeparatorLease:
+        """Acquire the model while accounting for task-visible setup time."""
+
+        nonlocal model_setup_sec
+        started = time.perf_counter()
+        try:
+            return _acquire_separator(
+                output_dir,
+                output_format,
+                batch_size,
+                use_amp=use_amp,
+                accel_backend=accel_backend,
+            )
+        finally:
+            model_setup_sec += time.perf_counter() - started
+
     # Third-party bars and logging are quieted for the whole run by the front
     # end (`reporting.quieted_libraries`), not per stage: the separator was
     # never the only library that narrates itself -- transformers draws a
@@ -992,7 +1021,7 @@ def run_vocal_separation(
         if src_sr <= 0 or total_frames <= 0:
             raise SystemExit(f"Unable to read audio info for {input_path}")
         duration_sec = total_frames / float(src_sr)
-        accel_backend = _select_accel_backend(duration_sec)
+        accel_backend = _select_accel_backend(duration_sec, selected_batch_size)
         gpu_stage_lease = GPU_STAGE_GATE.acquire(
             "separator",
             enabled=device_for_usage is not None,
@@ -1007,6 +1036,7 @@ def run_vocal_separation(
                 {
                     "profile_limit": resource_profile.vocal_separator_instances,
                     "effective": 1,
+                    "batch_size": selected_batch_size,
                     "device": "cuda" if device_for_usage is not None else "cpu",
                     "amp": amp_enabled,
                     "accel": "pending",
@@ -1019,7 +1049,7 @@ def run_vocal_separation(
                 else None
             )
             try:
-                separator_lease = _acquire_separator(
+                separator_lease = acquire_separator(
                     str(merge_path.parent),
                     MERGE_FORMAT,
                     selected_batch_size,
@@ -1030,7 +1060,9 @@ def run_vocal_separation(
                 _record_applied_accel(metadata_sink, separator_lease)
 
                 output_names = {"Vocals": merge_path.stem}
+                pipeline_started = time.perf_counter()
                 output_files = separator.separate(str(input_path), output_names)
+                block_pipeline_sec += time.perf_counter() - pipeline_started
                 if not output_files:
                     raise SystemExit(
                         "No output files were produced by audio-separator."
@@ -1038,7 +1070,9 @@ def run_vocal_separation(
             finally:
                 if slot is not None:
                     slot.release()
+            delivery_started = time.perf_counter()
             _finish_delivery(merge_path, output_path, output_mode)
+            delivery_sec += time.perf_counter() - delivery_started
             separation_completed = True
             return output_path
 
@@ -1062,7 +1096,7 @@ def run_vocal_separation(
         )
 
         with tempfile.TemporaryDirectory(prefix="vocal_blocks_") as tmpdir:
-            separator_lease = _acquire_separator(
+            separator_lease = acquire_separator(
                 tmpdir,
                 MERGE_FORMAT,
                 selected_batch_size,
@@ -1071,6 +1105,7 @@ def run_vocal_separation(
             )
             separator = separator_lease.separator
             _record_applied_accel(metadata_sink, separator_lease)
+            pipeline_started = time.perf_counter()
 
             if separator_instances > 1 and len(blocks) > 1:
                 max_workers = min(separator_instances, len(blocks))
@@ -1181,7 +1216,7 @@ def run_vocal_separation(
                                     torch.cuda.empty_cache()
                                 except Exception:
                                     pass
-                            separator_lease = _acquire_separator(
+                            separator_lease = acquire_separator(
                                 tmpdir,
                                 MERGE_FORMAT,
                                 selected_batch_size,
@@ -1220,11 +1255,15 @@ def run_vocal_separation(
                     gc.collect()
                     progress.block_finished()
 
+            block_pipeline_sec += time.perf_counter() - pipeline_started
+
         if out_file is None:
             raise SystemExit("No output files were produced by audio-separator.")
         out_file.close()
         out_file = None
+        delivery_started = time.perf_counter()
         _finish_delivery(merge_path, output_path, output_mode)
+        delivery_sec += time.perf_counter() - delivery_started
         separation_completed = True
         return output_path
     finally:
@@ -1262,6 +1301,15 @@ def run_vocal_separation(
         print_peak_resource_usage(
             device_for_usage, resource_profile, sampler=memory_sampler
         )
+        separator_timing = {
+            "model_setup_sec": round(model_setup_sec, 3),
+            "block_pipeline_sec": round(block_pipeline_sec, 3),
+            "delivery_sec": round(delivery_sec, 3),
+            "total_sec": round(time.perf_counter() - stage_started, 3),
+        }
+        if metadata_sink is not None:
+            metadata_sink["timing"] = separator_timing
+        current_reporter().debug("separator timing", separator_timing)
         watchdog.disarm()
 
 

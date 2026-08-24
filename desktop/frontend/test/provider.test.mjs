@@ -182,6 +182,7 @@ test("CloudExecutionProvider delegates the local media id to the native upload b
     lastAccess: 0, thumbnailAvailable: false, available: true, documentAvailable: false,
   });
   assert.equal((await provider.capabilities()).features.video_multimodal, false);
+  assert.equal(value.knowledge, "none");
   assert.equal((await provider.start(value)).provider, "cloud");
   assert.equal(calls[0][0], "loc_0123456789ab");
   assert.equal(calls[0][1].source.kind, "uploaded_audio");

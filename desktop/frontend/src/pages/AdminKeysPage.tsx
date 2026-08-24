@@ -8,6 +8,8 @@ interface KeyDraft {
   remaining: string;
 }
 
+const plaintextKeyPattern = /^[A-Za-z0-9._~-]{1,256}$/;
+
 function generateKey(): string {
   const bytes = new Uint8Array(18);
   crypto.getRandomValues(bytes);
@@ -46,8 +48,8 @@ export function AdminKeysPage() {
 
   const create = async () => {
     const quota = Number(remaining);
-    if (!name.trim() || !key.trim() || !Number.isInteger(quota) || quota < 0) {
-      setMessage("请填写名称、自定义 Key 和不小于 0 的整数余量。");
+    if (!name.trim() || !plaintextKeyPattern.test(key.trim()) || !Number.isInteger(quota) || quota < 0) {
+      setMessage("请填写名称、1–256 位 URL 安全字符 Key 和不小于 0 的整数余量。");
       return;
     }
     setBusy(true);
@@ -103,7 +105,7 @@ export function AdminKeysPage() {
 
   const copy = async (value: string) => {
     if (!value) {
-      setMessage("这是旧版 Key，服务端只有哈希，原密钥无法恢复。");
+      setMessage("Key 为空。");
       return;
     }
     try {
@@ -139,7 +141,7 @@ export function AdminKeysPage() {
                   <label><span>名称</span><input value={draft.name} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, name: event.target.value } }))} /></label>
                   <label><span>剩余次数</span><input type="number" min="0" max="1000000" step="1" value={draft.remaining} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, remaining: event.target.value } }))} /></label>
                 </div>
-                <div className="admin-key-value"><span>完整 Key</span><code>{item.key || "旧版记录：原密钥不可恢复"}</code><button className="quiet-button" disabled={!item.key} onClick={() => void copy(item.key)}>复制</button></div>
+                <div className="admin-key-value"><span>完整 Key</span><code>{item.key || "—"}</code><button className="quiet-button" disabled={!item.key} onClick={() => void copy(item.key)}>复制</button></div>
                 <div className="admin-key-stats"><span>已提交 {item.submitted ?? 0}</span><span className={(item.running ?? 0) > 0 ? "running" : ""}>进行中 {item.running ?? 0}</span><span>创建于 {item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"}</span></div>
                 <div className="admin-key-actions"><button className="danger-link" disabled={busy} onClick={() => setPendingDelete(item)}>删除</button><button className="primary-button" disabled={busy} onClick={() => void update(item)}>保存修改</button></div>
               </section>;

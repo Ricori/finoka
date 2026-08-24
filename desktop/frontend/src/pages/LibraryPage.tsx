@@ -2,7 +2,8 @@ import type { Dispatch, SetStateAction } from "react";
 import type { CloudEntry } from "../bridge/cloud.ts";
 import type { MediaEntry } from "../bridge/library.ts";
 import { CloudMediaCard, LocalMediaCard } from "../components/MediaCard.tsx";
-import type { ExecutionMode, LibraryFilter, LibraryItem, SortMode, ViewMode } from "../app/types.ts";
+import { CustomSelect } from "../components/CustomSelect.tsx";
+import type { LibraryFilter, LibraryItem, SortMode, ViewMode } from "../app/types.ts";
 import "./LibraryPage.css";
 
 interface LibraryPageProps {
@@ -14,15 +15,11 @@ interface LibraryPageProps {
   filterCounts: Record<LibraryFilter, number>;
   sort: SortMode;
   view: ViewMode;
-  query: string;
   busy: boolean;
   message: string;
   localRunningID?: string;
   runningProgress: number;
   taskActive: boolean;
-  executionMode: ExecutionMode;
-  runtimeReady: boolean;
-  cloudAuthenticated: boolean;
   syncing: boolean;
   setFilter: Dispatch<SetStateAction<LibraryFilter>>;
   setSort: Dispatch<SetStateAction<SortMode>>;
@@ -38,7 +35,7 @@ interface LibraryPageProps {
 }
 
 export function LibraryPage(props: LibraryPageProps) {
-  const { items, visibleItems, thumbnails, remoteByFingerprint, filter, filterCounts, sort, view, query, busy, message, localRunningID, runningProgress, taskActive, executionMode, runtimeReady, cloudAuthenticated, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onRename, onRemove, onDeleteCloud, onRelink } = props;
+  const { items, visibleItems, thumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, localRunningID, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onRename, onRemove, onDeleteCloud, onRelink } = props;
   return (
     <section className="library-view">
       <div className="library-toolbar">
@@ -46,7 +43,13 @@ export function LibraryPage(props: LibraryPageProps) {
           <button className={filter === value ? "active" : ""} key={value} onClick={() => setFilter(value)}>{label} <span>{filterCounts[value]}</span></button>
         ))}
         <span className="toolbar-spacer" />
-        <select aria-label="媒体排序" value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="recent">最近使用</option><option value="name">按标题</option><option value="duration">按时长</option></select>
+        <CustomSelect<SortMode>
+          ariaLabel="媒体排序"
+          compact
+          value={sort}
+          options={[{ value: "recent", label: "最近使用" }, { value: "name", label: "按标题" }, { value: "duration", label: "按时长" }]}
+          onChange={setSort}
+        />
         <div className="view-switch" aria-label="视图切换"><button className={view === "grid" ? "active" : ""} aria-label="网格视图" onClick={() => setView("grid")}>▦</button><button className={view === "list" ? "active" : ""} aria-label="列表视图" onClick={() => setView("list")}>☷</button></div>
       </div>
       {message && <p className="library-message">{message}</p>}
@@ -62,7 +65,7 @@ export function LibraryPage(props: LibraryPageProps) {
       ) : (
         <div className={`media-grid ${view === "list" ? "list-view" : ""}`}>
           {visibleItems.map((item) => item.kind === "local" ? (
-            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={thumbnails[item.entry.id]} running={item.entry.id === localRunningID} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive && (executionMode === "local" ? runtimeReady : cloudAuthenticated)} executionMode={executionMode} onOpen={onOpen} onStart={onStart} onRename={onRename} onRemove={onRemove} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
+            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={thumbnails[item.entry.id]} running={item.entry.id === localRunningID} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive} onOpen={onOpen} onStart={onStart} onRename={onRename} onRemove={onRemove} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
           ) : <CloudMediaCard key={`cloud:${item.entry.id}`} entry={item.entry} onAssociate={onImport} onDelete={onDeleteCloud} />)}
         </div>
       )}

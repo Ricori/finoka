@@ -1,5 +1,5 @@
 import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/finoka/desktop/internal/sidecar/models.js";
-import type { RuntimeProvisionState } from "../bridge/runtime.ts";
+import type { RuntimeItem, RuntimeProvisionState } from "../bridge/runtime.ts";
 import { Mark } from "../components/Mark.tsx";
 import type { Capabilities } from "../providers/types.ts";
 import "./RuntimePage.css";
@@ -133,7 +133,7 @@ export function RuntimePage({ capabilities, message, provision, ready, sidecar, 
         {job?.state === "running" && !mediaInstalling && <ProvisionProgress job={job} />}
         {job?.state !== "running" && job?.message && <p className={`provision-message ${job.state}`}>{job.message}</p>}
         <div className="asset-grid">
-          {[provision?.runtime, ...(provision?.resources ?? []), ...(provision?.models ?? [])].filter((item) => item !== undefined && item.id !== "ffmpeg" && item.id !== "ffprobe").map((item) => (
+          {[provision?.runtime, ...(provision?.resources ?? []), ...(provision?.models ?? [])].filter((item): item is RuntimeItem => item !== undefined && item.id !== "ffmpeg" && item.id !== "ffprobe").map((item) => (
             <div key={`${item.id}:${item.version ?? ""}`}><span className={item.state === "ready" ? "asset-ready" : "asset-missing"}>{item.state === "ready" ? "✓" : "↓"}</span><div><strong>{item.id}</strong><small>{item.version ? `${item.version} · ` : ""}{item.state}</small></div></div>
           ))}
         </div>

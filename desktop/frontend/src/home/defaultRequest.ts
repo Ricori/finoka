@@ -55,7 +55,7 @@ export function cloudTaskRequest(entry: MediaEntry): TaskRequest {
       extra_info: "",
       extra_style: "",
     },
-    knowledge: "update",
+    knowledge: "none",
     cleanup_intermediate: false,
   };
 }

@@ -11,14 +11,14 @@ import { fineSubRuntime } from "../bridge/runtime.ts";
 import type { RuntimeProvisionState } from "../bridge/runtime.ts";
 import { desktopPreferences } from "../bridge/preferences.ts";
 import { localProviderBridge, sidecarStatus } from "../bridge/wails.ts";
-import { cloudTaskRequest, localTaskRequest } from "../home/defaultRequest.ts";
 import { PipelineController } from "../home/pipelineController.ts";
 import { CloudExecutionProvider } from "../providers/cloudProvider.ts";
 import type { PipelineState } from "../home/pipelineController.ts";
 import { LocalExecutionProvider } from "../providers/localProvider.ts";
-import type { Capabilities, TaskSnapshot } from "../providers/types.ts";
+import type { Capabilities, TaskRequest, TaskSnapshot } from "../providers/types.ts";
 import { Editor } from "../editor/Editor.tsx";
 import { MediaDialog } from "../components/MediaDialog.tsx";
+import { TranscriptionDialog } from "../components/TranscriptionDialog.tsx";
 import { WindowDropOverlay } from "../components/WindowDropOverlay.tsx";
 import { AccountPage } from "../pages/AccountPage.tsx";
 import { AdminKeysPage } from "../pages/AdminKeysPage.tsx";
@@ -52,8 +52,9 @@ export default function App() {
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("local");
   const localProvider = useMemo(() => new LocalExecutionProvider(localProviderBridge), []);
   const cloudProvider = useMemo(() => new CloudExecutionProvider(cloudAccount), []);
-  const provider = executionMode === "local" ? localProvider : cloudProvider;
-  const controller = useMemo(() => new PipelineController(provider), [provider]);
+  const localController = useMemo(() => new PipelineController(localProvider), [localProvider]);
+  const cloudController = useMemo(() => new PipelineController(cloudProvider), [cloudProvider]);
+  const controller = executionMode === "local" ? localController : cloudController;
   const [section, setSection] = useState<Section>("library");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
@@ -83,6 +84,7 @@ export default function App() {
   const [keysMessage, setKeysMessage] = useState("");
   const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
   const [cloudMedia, setCloudMedia] = useState<CloudEntry[]>([]);
+  const [cloudCapabilities, setCloudCapabilities] = useState<Capabilities | null>(null);
   const [cloudLoading, setCloudLoading] = useState(true);
   const [loginKey, setLoginKey] = useState("");
   const [accountBusy, setAccountBusy] = useState(false);
@@ -91,6 +93,9 @@ export default function App() {
   const [editorMedia, setEditorMedia] = useState<MediaEntry | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
+  const [transcriptionMedia, setTranscriptionMedia] = useState<MediaEntry | null>(null);
+  const [transcriptionBusy, setTranscriptionBusy] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState("");
   const syncedTasks = useRef(new Set<string>());
   const openedTasks = useRef(new Set<string>());
   const taskHistoryHydrated = useRef(false);
@@ -196,9 +201,11 @@ export default function App() {
       setCloudSession(session);
       if (!session.authenticated) {
         setCloudMedia([]);
+        setCloudCapabilities(null);
         return;
       }
       setCloudMedia(await cloudAccount.library());
+      setCloudCapabilities(await cloudProvider.capabilities().catch(() => null));
       if (session.synced || session.syncFailed || session.syncError) {
         setAccountMessage(
           session.syncError
@@ -209,12 +216,13 @@ export default function App() {
     } catch (value) {
       setCloudSession({ authenticated: false, running: 0 });
       setCloudMedia([]);
+      setCloudCapabilities(null);
       const detail = value instanceof Error ? value.message : String(value ?? "");
       if (detail && !detail.includes("Wails")) setAccountMessage(detail);
     } finally {
       setCloudLoading(false);
     }
-  }, []);
+  }, [cloudProvider]);
 
   const acceptImport = useCallback(async (result: ImportResult) => {
     const failures = result.failed ?? [];
@@ -354,11 +362,42 @@ export default function App() {
     }
   }, [cloudProvider, cloudSession?.authenticated, localProvider]);
 
+  const refreshActiveTaskHistory = useCallback(async () => {
+    const active = taskHistoryRef.current.filter((item) => activeStates.has(item.snapshot.state));
+    if (active.length === 0) return;
+    const updates = await Promise.all(active.map(async (item) => {
+      if (item.provider === "cloud" && !cloudSession?.authenticated) return null;
+      try {
+        const taskProvider = item.provider === "local" ? localProvider : cloudProvider;
+        return await taskProvider.status(item.taskId);
+      } catch {
+        return null;
+      }
+    }));
+    if (!updates.some((snapshot) => snapshot !== null)) return;
+    const byTask = new Map(active.map((item, index) => [item.taskId, updates[index]]));
+    setTaskHistory((current) => current.map((item) => {
+      const snapshot = byTask.get(item.taskId);
+      return snapshot ? { ...item, snapshot } : item;
+    }));
+  }, [cloudProvider, cloudSession?.authenticated, localProvider]);
+
   useEffect(() => {
     if (taskHistoryHydrated.current || loadState === "loading" || taskHistory.length === 0) return;
     taskHistoryHydrated.current = true;
     void refreshTaskHistory();
   }, [loadState, refreshTaskHistory, taskHistory.length]);
+
+  const hasActiveHistory = taskHistory.some((item) => activeStates.has(item.snapshot.state));
+  useEffect(() => {
+    if (!hasActiveHistory) return;
+    void refreshActiveTaskHistory();
+    const timer = window.setInterval(
+      () => void refreshActiveTaskHistory(),
+      taskPollIntervalMs,
+    );
+    return () => window.clearInterval(timer);
+  }, [hasActiveHistory, refreshActiveTaskHistory]);
 
   const actOnHistoryTask = useCallback(async (item: TaskHistoryEntry, action: "cancel" | "resume") => {
     const taskProvider = item.provider === "local" ? localProvider : cloudProvider;
@@ -377,21 +416,34 @@ export default function App() {
 
   const startMedia = useCallback(async (entry: MediaEntry) => {
     setLibraryMessage("");
+    setTranscriptionError("");
+    setTranscriptionMedia(entry);
+  }, []);
+
+  const confirmTranscription = useCallback(async (mode: ExecutionMode, request: TaskRequest) => {
+    if (!transcriptionMedia) return;
+    setTranscriptionBusy(true);
+    setTranscriptionError("");
     try {
-      if (executionMode === "cloud" && !cloudSession?.authenticated) {
+      if (mode === "cloud" && !cloudSession?.authenticated) {
         throw new Error("请先使用 Key 登录云端账户");
       }
-      const snapshot = await controller.start(executionMode === "local" ? localTaskRequest(entry) : cloudTaskRequest(entry));
-      setActiveMedia(entry);
-      rememberTask(snapshot, entry);
+      const taskController = mode === "local" ? localController : cloudController;
+      setExecutionMode(mode);
+      const snapshot = await taskController.start(request);
+      setActiveMedia(transcriptionMedia);
+      rememberTask(snapshot, transcriptionMedia);
+      setTranscriptionMedia(null);
       setSection("tasks");
-      void mediaLibrary.cacheMedia(entry.id).then(() => Promise.all([loadLibrary(), loadCacheStatus()])).catch((value) => {
+      void mediaLibrary.cacheMedia(transcriptionMedia.id).then(() => Promise.all([loadLibrary(), loadCacheStatus()])).catch((value) => {
         setLibraryMessage(`任务已启动，但视频缓存创建失败：${value instanceof Error ? value.message : String(value)}`);
       });
     } catch (value) {
-      setLibraryMessage(value instanceof Error ? value.message : String(value));
+      setTranscriptionError(value instanceof Error ? value.message : String(value));
+    } finally {
+      setTranscriptionBusy(false);
     }
-  }, [cloudSession?.authenticated, controller, executionMode, loadCacheStatus, loadLibrary, rememberTask]);
+  }, [cloudController, cloudSession?.authenticated, loadCacheStatus, loadLibrary, localController, rememberTask, transcriptionMedia]);
 
   useEffect(() => {
     const id = section === "editor" ? editorMedia?.id ?? "" : "";
@@ -518,6 +570,7 @@ export default function App() {
       setCloudSession(session);
       setLoginKey("");
       setCloudMedia(await cloudAccount.library());
+      setCloudCapabilities(await cloudProvider.capabilities().catch(() => null));
       setAccountMessage(
         session.syncError
           ? `登录成功，但自动同步检查失败：${session.syncError}`
@@ -530,12 +583,13 @@ export default function App() {
       setAccountBusy(false);
       setCloudLoading(false);
     }
-  }, [loginKey]);
+  }, [cloudProvider, loginKey]);
 
   const logout = useCallback(async () => {
     await cloudAccount.logout();
     setCloudSession({ authenticated: false, running: 0 });
     setCloudMedia([]);
+    setCloudCapabilities(null);
     setAccountMessage("已退出；本地媒体库保持不变。");
   }, []);
 
@@ -667,7 +721,7 @@ export default function App() {
           <div className="sidebar-provider-status">
             <span className={`status-dot ${executionMode === "cloud" ? "online" : sidecar?.running ? "local" : ""}`} />
             <div>
-              <strong>{executionMode === "cloud" ? "Finoka Cloud" : "本地运行"}</strong>
+              <strong>{executionMode === "cloud" ? "Nonoka Cloud" : "本地运行"}</strong>
               <small>{executionMode === "cloud" ? cloudSession?.admin ? "管理员 · 不限次" : `剩余 ${cloudSession?.remaining ?? "—"} 次` : runtimeReady ? "运行环境已就绪" : "需要检查环境"}</small>
             </div>
           </div>
@@ -733,15 +787,11 @@ export default function App() {
             filterCounts={filterCounts}
             sort={sortMode}
             view={viewMode}
-            query={query}
             busy={libraryBusy}
             message={libraryMessage}
             localRunningID={localRunningID}
             runningProgress={pipeline.snapshot?.progress?.total ? Math.min(100, pipeline.snapshot.progress.completed / pipeline.snapshot.progress.total * 100) : 8}
             taskActive={taskActive}
-            executionMode={executionMode}
-            runtimeReady={runtimeReady}
-            cloudAuthenticated={cloudSession?.authenticated === true}
             syncing={cloudLoading}
             setFilter={setLibraryFilter}
             setSort={setSortMode}
@@ -802,6 +852,22 @@ export default function App() {
       </main>
 
       {dialog && <MediaDialog dialog={dialog} busy={dialogBusy} setDialog={setDialog} onSubmit={submitDialog} />}
+      {transcriptionMedia && <TranscriptionDialog
+        entry={transcriptionMedia}
+        initialMode={executionMode}
+        localReady={runtimeReady}
+        localCapabilities={capabilities}
+        cloudCapabilities={cloudCapabilities}
+        localIssue={message || issues[0]?.message}
+        cloudAuthenticated={cloudSession?.authenticated === true}
+        cloudRemaining={cloudSession?.remaining ?? undefined}
+        busy={transcriptionBusy}
+        error={transcriptionError}
+        onClose={() => { if (!transcriptionBusy) setTranscriptionMedia(null); }}
+        onOpenRuntime={() => { setTranscriptionMedia(null); setSection("runtime"); }}
+        onOpenAccount={() => { setTranscriptionMedia(null); setSection("account"); }}
+        onStart={confirmTranscription}
+      />}
     </div>
   );
 }

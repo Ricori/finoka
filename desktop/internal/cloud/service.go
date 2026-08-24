@@ -34,7 +34,7 @@ var validTaskID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 var validCloudTaskID = regexp.MustCompile(`^vid_[0-9a-f]{24}$`)
 var validUploadID = regexp.MustCompile(`^upl_[0-9a-f]{32}$`)
 var validLocalMediaID = regexp.MustCompile(`^loc_[0-9a-f]{12}$`)
-var validKeyID = regexp.MustCompile(`^key_[0-9a-f]{64}$`)
+var validPlaintextKey = regexp.MustCompile(`^[A-Za-z0-9._~-]{1,256}$`)
 
 type providerCaller interface {
 	DoJSON(context.Context, string, string, any, any) error
@@ -531,8 +531,8 @@ func (s *Service) CreateAdminKey(name, key string, remaining int) (IssuedAdminKe
 	if name == "" || utf8.RuneCountInString(name) > 100 {
 		return IssuedAdminKey{}, errors.New("key name must contain 1 to 100 characters")
 	}
-	if key == "" || len(key) > 256 {
-		return IssuedAdminKey{}, errors.New("custom key must contain 1 to 256 characters")
+	if !validPlaintextKey.MatchString(key) {
+		return IssuedAdminKey{}, errors.New("custom key must contain 1 to 256 URL-safe characters")
 	}
 	if remaining < 0 || remaining > 1_000_000 {
 		return IssuedAdminKey{}, errors.New("remaining must be between 0 and 1000000")
@@ -546,7 +546,7 @@ func (s *Service) CreateAdminKey(name, key string, remaining int) (IssuedAdminKe
 
 func (s *Service) UpdateAdminKey(identifier, name string, remaining int) (AdminKey, error) {
 	name = strings.TrimSpace(name)
-	if !validKeyID.MatchString(identifier) {
+	if !validPlaintextKey.MatchString(identifier) {
 		return AdminKey{}, errors.New("invalid key id")
 	}
 	if name == "" || utf8.RuneCountInString(name) > 100 {
@@ -563,7 +563,7 @@ func (s *Service) UpdateAdminKey(identifier, name string, remaining int) (AdminK
 }
 
 func (s *Service) DeleteAdminKey(identifier string) error {
-	if !validKeyID.MatchString(identifier) {
+	if !validPlaintextKey.MatchString(identifier) {
 		return errors.New("invalid key id")
 	}
 	return s.authenticatedDo(context.Background(), http.MethodDelete, "/v1/admin/keys/"+identifier, nil, nil)

@@ -23,8 +23,11 @@
 .task-row-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-row-meta code { color: var(--faint); }
 .task-row-meta time { margin-left: auto; white-space: nowrap; }
-.task-row-progress { height: 3px; overflow: hidden; border-radius: 99px; background: var(--raised); }
-.task-row-progress span { display: block; height: 100%; min-width: 3px; border-radius: inherit; background: var(--grad); transition: width .3s ease; }
+.task-row-progress-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; gap: 8px; }
+.task-row-progress-wrap > small { color: var(--faint); font-size: 8px; font-variant-numeric: tabular-nums; text-align: right; }
+.task-row-progress { height: 4px; overflow: hidden; border-radius: 99px; background: var(--raised); }
+.task-row-progress span { position: relative; display: block; height: 100%; min-width: 3px; overflow: hidden; border-radius: inherit; background: var(--grad); transition: width .55s ease; }
+.task-row-progress.estimated span::after { position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, white 62%, transparent) 50%, transparent 100%); content: ""; transform: translateX(-100%); animation: task-progress-flow 1.45s ease-in-out infinite; }
 .task-completed .task-row-progress span { background: var(--ok); }
 .task-failed .task-row-progress span, .task-interrupted .task-row-progress span { background: var(--warn); }
 .task-row-copy > p { overflow: hidden; margin: 0; color: var(--mut); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
@@ -42,6 +45,11 @@
 .task-empty-art i { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid var(--accent-line); border-radius: 15px; background: color-mix(in srgb, var(--panel) 88%, var(--accent-dim)); color: var(--accent); box-shadow: 0 15px 36px color-mix(in srgb, var(--accent) 15%, transparent); font-size: 15px; font-style: normal; }
 .task-history .task-empty .primary-button { margin-top: 18px; border: 0; border-radius: 9px; padding: 9px 13px; }
 @keyframes task-pulse { 50% { opacity: .45; transform: scale(.86); } }
+@keyframes task-progress-flow { 100% { transform: translateX(100%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .running-summary i, .task-row-progress.estimated span::after { animation: none; }
+}
 
 @media (max-width: 1050px) {
   .task-row { grid-template-columns: 32px minmax(0, 1fr); }

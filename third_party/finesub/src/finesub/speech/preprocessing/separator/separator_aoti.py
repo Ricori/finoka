@@ -269,12 +269,16 @@ def _capture_module_inputs(
         model.get_submodule(path).register_forward_pre_hook(capture(name))
         for name, path in SINGLE_MODULES.items()
     ]
+    handles.extend(
+        model.layers[0][module_index].register_forward_pre_hook(capture(axis))
+        for axis, (module_index, _shape) in AXES.items()
+    )
     try:
         _separation()._warm_up_shared_roformer(model_instance, use_amp=True)
     finally:
         for handle in handles:
             handle.remove()
-    missing = sorted(set(SINGLE_MODULES) - set(captured))
+    missing = sorted((set(SINGLE_MODULES) | set(AXES)) - set(captured))
     if missing:
         raise RuntimeError(f"Never reached during a forward: {missing}")
     return captured
@@ -345,12 +349,18 @@ def build_packages(
 
     packages: dict[str, Any] = {}
     with _build_target(model_instance) as target_instance:
+        compiled_batch_size = max(1, int(getattr(target_instance, "batch_size", 1)))
         model = target_instance.model_run
         examples = (
             _capture_module_inputs(target_instance, model) if targets == "all" else {}
         )
 
-        for axis, (module_index, shape) in AXES.items():
+        for axis, (module_index, default_shape) in AXES.items():
+            shape = (
+                tuple(examples[axis].shape)
+                if axis in examples
+                else default_shape
+            )
             module = model.layers[0][module_index].eval()
             example = torch.randn(shape, device="cuda", dtype=torch.float16)
             _populate_rotary_cache(module, shape[1])
@@ -505,6 +515,7 @@ def build_packages(
         "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(),
         "sm": _device_arch(),
+        "batch_size": compiled_batch_size,
         "compiler": compiler,
         "weights_serialized": False,
         "emulate_precision_casts": emulate_precision_casts,
@@ -533,6 +544,7 @@ def load_packages(model_instance: Any, package_dir: Path) -> int:
         ("torch", torch.__version__),
         ("cuda", torch.version.cuda),
         ("sm", _device_arch()),
+        ("batch_size", max(1, int(getattr(model_instance, "batch_size", 1)))),
     ):
         recorded = manifest.get(field)
         if recorded != actual:

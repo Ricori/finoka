@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import type { MediaEntry } from "../bridge/library.ts";
-import { formatDate, taskProgress, taskStateLabel } from "../app/format.ts";
+import { formatDate, taskActivityText, taskProgress, taskStageLabel, taskStateLabel } from "../app/format.ts";
 import type { TaskHistoryEntry } from "../app/types.ts";
 import { activeStates, recoverableStates } from "../app/types.ts";
 import { Mark } from "../components/Mark.tsx";
@@ -14,6 +15,63 @@ interface TasksPageProps {
   onNavigateLibrary: () => void;
   onOpenEditor: (entry: MediaEntry) => void;
   onTaskAction: (item: TaskHistoryEntry, action: "cancel" | "resume") => Promise<void>;
+}
+
+function AnimatedTaskProgress({ snapshot }: { snapshot: TaskHistoryEntry["snapshot"] }) {
+  const stageStartedAt = useRef(Date.now());
+  const [display, setDisplay] = useState(() => taskProgress(snapshot));
+  const active = activeStates.has(snapshot.state);
+
+  useEffect(() => {
+    stageStartedAt.current = Date.now();
+    setDisplay((current) => snapshot.state === "completed"
+      ? 100
+      : Math.max(current, taskProgress(snapshot)));
+  }, [snapshot.stage, snapshot.state]);
+
+  useEffect(() => {
+    const next = taskProgress(snapshot, Date.now() - stageStartedAt.current);
+    setDisplay((current) => snapshot.state === "completed"
+      ? 100
+      : active ? Math.max(current, next) : next);
+  }, [active, snapshot]);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => {
+      const next = taskProgress(snapshot, Date.now() - stageStartedAt.current);
+      setDisplay((current) => Math.max(current, next));
+    }, 750);
+    return () => window.clearInterval(timer);
+  }, [active, snapshot]);
+
+  return (
+    <div className="task-row-progress-wrap">
+      <div
+        className={`task-row-progress ${active ? "estimated" : ""}`}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(display)}
+      >
+        <span style={{ width: `${display}%` }} />
+      </div>
+      <small>{Math.round(display)}%</small>
+    </div>
+  );
+}
+
+function TaskActivityText({ snapshot }: { snapshot: TaskHistoryEntry["snapshot"] }) {
+  const [now, setNow] = useState(Date.now());
+  const active = activeStates.has(snapshot.state);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+
+  return <p>{taskActivityText(snapshot, now)}</p>;
 }
 
 export function TasksPage(props: TasksPageProps) {
@@ -43,9 +101,9 @@ export function TasksPage(props: TasksPageProps) {
                 <div className="task-state-icon" aria-hidden="true">{snapshot.state === "completed" ? "✓" : activeStates.has(snapshot.state) ? "↻" : recoverableStates.has(snapshot.state) ? "!" : "·"}</div>
                 <div className="task-row-copy">
                   <div className="task-row-title"><strong>{item.title}</strong><span className={`task-state task-state-${snapshot.state}`}>{taskStateLabel(snapshot.state)}</span><small>{item.provider === "cloud" ? "☁ 云端" : "本机"}</small></div>
-                  <div className="task-row-meta"><span>{snapshot.stage || "等待转写引擎"}</span><code>{item.taskId.slice(0, 12)}</code><time dateTime={snapshot.updated_at}>{formatDate(snapshot.updated_at)}</time></div>
-                  <div className="task-row-progress"><span style={{ width: `${taskProgress(snapshot)}%` }} /></div>
-                  <p>{snapshot.error ? `${snapshot.error.code}: ${snapshot.error.message}` : snapshot.progress?.message || `${snapshot.progress?.completed ?? 0} / ${snapshot.progress?.total ?? "—"} ${snapshot.progress?.unit ?? ""}`}</p>
+                  <div className="task-row-meta"><span>{taskStageLabel(snapshot.stage)}</span><code>{item.taskId.slice(0, 12)}</code><time dateTime={snapshot.updated_at}>{formatDate(snapshot.updated_at)}</time></div>
+                  <AnimatedTaskProgress snapshot={snapshot} />
+                  <TaskActivityText snapshot={snapshot} />
                 </div>
                 <div className="task-row-actions">
                   {activeStates.has(snapshot.state) && <button onClick={() => void onTaskAction(item, "cancel")}>取消</button>}

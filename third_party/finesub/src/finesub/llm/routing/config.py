@@ -459,6 +459,25 @@ def planning_limits_for(
     )
 
 
+def session_output_limit_for(
+    task_group_id: str,
+    difficulty: str = "quality",
+    *,
+    routes=None,
+    requested: int = SESSION_OUTPUT_MAX_TOKENS,
+) -> int:
+    """Clamp a non-correction session to its routed group's output envelope."""
+
+    return min(
+        max(1, int(requested)),
+        planning_limits_for(
+            task_group_id,
+            difficulty or "quality",
+            routes=routes,
+        ).output_limit,
+    )
+
+
 def default_role_configs() -> Dict[LLMRole, RoleModelConfig]:
     """Role-indexed view over the default preset's ``high`` cells.
 

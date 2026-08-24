@@ -3,7 +3,6 @@ import type { CloudEntry } from "../bridge/cloud.ts";
 import { mediaLibrary } from "../bridge/library.ts";
 import type { MediaEntry } from "../bridge/library.ts";
 import { formatDate, formatDuration, formatSize } from "../app/format.ts";
-import type { ExecutionMode } from "../app/types.ts";
 
 interface LocalMediaCardProps {
   entry: MediaEntry;
@@ -12,7 +11,6 @@ interface LocalMediaCardProps {
   runningProgress: number;
   cloudEntry?: CloudEntry;
   canStart: boolean;
-  executionMode: ExecutionMode;
   onOpen: (entry: MediaEntry) => void;
   onStart: (entry: MediaEntry) => Promise<void>;
   onRename: (entry: MediaEntry) => void;
@@ -61,7 +59,7 @@ function CardMenu({ actions }: { actions: MenuAction[] }) {
 }
 
 export function LocalMediaCard(props: LocalMediaCardProps) {
-  const { entry, thumbnail, running, runningProgress, cloudEntry, canStart, executionMode, onOpen, onStart, onRename, onRemove, onDeleteCloud, onRelink } = props;
+  const { entry, thumbnail, running, runningProgress, cloudEntry, canStart, onOpen, onStart, onRename, onRemove, onDeleteCloud, onRelink } = props;
   const menuActions: MenuAction[] = [
     { label: "重命名", onSelect: () => onRename(entry) },
     ...(entry.available ? [{ label: "在文件夹中显示", onSelect: () => void mediaLibrary.revealInFolder(entry.sourcePath) }] : []),
@@ -88,7 +86,7 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
           {!entry.available ? (
             <button className="primary-card-action" onClick={() => void onRelink(entry)}>重新定位</button>
           ) : (
-            <button className={entry.documentAvailable ? "secondary-card-action" : "primary-card-action"} disabled={!canStart} onClick={() => void onStart(entry)}>{running ? "处理中…" : executionMode === "cloud" ? "云端转写" : entry.documentAvailable ? "重新转写" : "开始转写"}</button>
+            <button className={entry.documentAvailable ? "secondary-card-action" : "primary-card-action"} disabled={!canStart} onClick={() => void onStart(entry)}>{running ? "处理中…" : entry.documentAvailable ? "重新转写" : "开始转写"}</button>
           )}
         </div>
       </div>

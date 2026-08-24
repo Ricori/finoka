@@ -31,6 +31,7 @@ from ...routing.config import (
     QUERY_ROUND_MAX_TOKENS,
     WINDOW_NOTES_MAX_TOKENS,
     injection_block_token_limit,
+    session_output_limit_for,
 )
 from ...content_filter import (
     ContentFilterExhaustedError,
@@ -175,6 +176,12 @@ def run_window_query_round(
     # 纠错 r1 always uses the multimodal lightweight role (same 3.5-lite
     # chain as LIGHTWEIGHT); search-loop judge stays on LIGHTWEIGHT.
     query_role = LLMRole.LIGHTWEIGHT_MULTIMODAL
+    query_max_tokens = session_output_limit_for(
+        planning_task_group(profile),
+        profile.difficulty,
+        routes=getattr(getattr(client, "router", None), "routes", None),
+        requested=QUERY_ROUND_MAX_TOKENS,
+    )
     checkpoint_store = checkpoint_store or SessionCheckpointStore(
         task_artifact_dir, enabled=resume
     )
@@ -183,7 +190,7 @@ def run_window_query_round(
         prompt_version=PROMPT_VERSION,
         call_config={
             "role": query_role.value,
-            "max_tokens": QUERY_ROUND_MAX_TOKENS,
+            "max_tokens": query_max_tokens,
             "file_backed": bool(profile.planning_use_audio and file_ref is not None),
         },
         extra_identity=checkpoint_extra_identity,
@@ -220,7 +227,7 @@ def run_window_query_round(
         result = client.complete(
             query_role,
             messages,
-            max_tokens=QUERY_ROUND_MAX_TOKENS,
+            max_tokens=query_max_tokens,
             file_ref=file_ref if profile.planning_use_audio else None,
             task_group=planning_task_group(profile),
             difficulty=profile.difficulty,
@@ -319,7 +326,7 @@ def run_window_query_round(
             query_attempt += 1
     finish_reason = _response_finish_reason(result.raw_response)
     output_limit_check = _output_limit_check(
-        result.raw_response, QUERY_ROUND_MAX_TOKENS
+        result.raw_response, query_max_tokens
     )
     output_limited = bool(output_limit_check["limited"])
     if token_rows is not None and not checkpoint_replayed:
@@ -388,7 +395,7 @@ def run_window_query_round(
         context_general=pack.general_prompt_text(),
         context_window=context_window,
         messages=messages,
-        max_output_tokens=QUERY_ROUND_MAX_TOKENS,
+        max_output_tokens=query_max_tokens,
         file_ref=file_ref,
         video_high_resolution=result_uses_high_resolution_video(result),
     )

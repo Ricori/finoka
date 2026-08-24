@@ -331,8 +331,14 @@ class LocalProvider:
             "stage": "",
             "progress": None,
             "engine": {"version": self._upstream["engine_version"], "commit": self._upstream["commit"]},
-            "requested_capabilities": {"video_multimodal": validated["correction"].get("media") == "video"},
-            "effective_capabilities": {"video_multimodal": validated["correction"].get("media") == "video"},
+            "requested_capabilities": {
+                "video_multimodal": validated["correction"].get("media") == "video",
+                "target": validated["target"],
+            },
+            "effective_capabilities": {
+                "video_multimodal": validated["correction"].get("media") == "video",
+                "target": validated["target"],
+            },
             "error": None,
             "last_cursor": 0,
             "created_at": now,

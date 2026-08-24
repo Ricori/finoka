@@ -6,8 +6,6 @@
 .library-toolbar > button.active { border-color: var(--accent-line); background: var(--accent-dim); color: var(--accent); font-weight: 720; }
 .library-toolbar > button span { min-width: 14px; margin-left: 4px; border-radius: 999px; padding: 1px 4px; background: color-mix(in srgb, currentColor 9%, transparent); color: currentColor; font-size: 8px; }
 .toolbar-spacer { flex: 1; }
-.library-toolbar select { height: 31px; border: 1px solid var(--line-soft); border-radius: 9px; padding: 0 28px 0 9px; background: var(--panel); color: var(--mut); outline: none; font-size: 10px; cursor: pointer; }
-.library-toolbar select:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
 .view-switch { display: flex; gap: 2px; border: 1px solid var(--line-soft); border-radius: 9px; padding: 3px; background: var(--panel); }
 .view-switch button { display: grid; place-items: center; width: 26px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--faint); cursor: pointer; }
 .view-switch button:hover { color: var(--text); }
@@ -34,7 +32,7 @@
 
 .media-grid { grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 16px; margin-top: 18px; }
 .media-grid.list-view { grid-template-columns: 1fr; }
-.media-card { position: relative; overflow: visible; border-color: var(--line-soft); border-radius: 16px; background: color-mix(in srgb, var(--panel) 97%, var(--raised)); box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 3%, transparent), 0 8px 24px rgba(0, 0, 0, .10); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.library-view .media-card { position: relative; overflow: visible; border-color: var(--line-soft); border-radius: 16px; background: color-mix(in srgb, var(--panel) 97%, var(--raised)); box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 3%, transparent), 0 8px 24px rgba(0, 0, 0, .10); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
 .media-card:hover { z-index: 2; transform: translateY(-2px); border-color: var(--accent-border); box-shadow: 0 14px 34px rgba(0, 0, 0, .19), 0 0 0 3px var(--accent-dim); }
 .media-card:has(.card-menu.open) { z-index: 10; }
 .list-view .media-card { display: grid; grid-template-columns: 210px minmax(0, 1fr); }

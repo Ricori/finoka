@@ -46,8 +46,99 @@ export function taskStateLabel(state: TaskSnapshot["state"]): string {
   }[state];
 }
 
-export function taskProgress(snapshot: TaskSnapshot): number {
+export function taskStageLabel(stage: string): string {
+  return {
+    queued: "等待调度",
+    starting: "准备运行环境",
+    "gpu-queued": "等待语音处理",
+    pipeline: "准备处理",
+    vocal: "处理音频",
+    aligned: "语音识别",
+    "postprocess-queued": "等待字幕处理",
+    stable: "整理识别结果",
+    "raw-srt": "生成字幕",
+    "llm-queued": "等待纠错与翻译",
+    "translated-srt": "纠错与翻译",
+    "final-srt": "整理最终字幕",
+    completed: "处理完成",
+    failed: "处理失败",
+    cancelled: "已取消",
+    interrupted: "已中断",
+  }[stage] ?? "处理中";
+}
+
+const INTERNAL_BLOCK_TIMECODE = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+
+export function taskActivityText(snapshot: TaskSnapshot, nowMs = Date.now()): string {
+  if (snapshot.error) return `${snapshot.error.code}: ${snapshot.error.message}`;
+  if (activeStates.has(snapshot.state)) {
+    const created = Date.parse(snapshot.created_at);
+    const elapsed = Number.isFinite(created)
+      ? formatDuration(Math.max(0, (nowMs - created) / 1000))
+      : "0:00";
+    const detail = String(snapshot.progress?.message ?? "").trim();
+    const usefulDetail = detail && !INTERNAL_BLOCK_TIMECODE.test(detail) ? detail : "";
+    return usefulDetail ? `已用时 ${elapsed} · ${usefulDetail}` : `已用时 ${elapsed}`;
+  }
+  if (snapshot.state === "completed") return snapshot.progress?.message || "字幕已完成";
+  return snapshot.progress?.message || taskStateLabel(snapshot.state);
+}
+
+interface ProgressBand {
+  start: number;
+  end: number;
+  timeConstantSeconds: number;
+}
+
+const FINAL_STAGE_PROGRESS: Record<string, ProgressBand> = {
+  queued: { start: 2, end: 4, timeConstantSeconds: 15 },
+  starting: { start: 4, end: 8, timeConstantSeconds: 20 },
+  "gpu-queued": { start: 6, end: 8, timeConstantSeconds: 20 },
+  pipeline: { start: 7, end: 9, timeConstantSeconds: 8 },
+  vocal: { start: 9, end: 36, timeConstantSeconds: 75 },
+  aligned: { start: 36, end: 64, timeConstantSeconds: 120 },
+  "postprocess-queued": { start: 64, end: 66, timeConstantSeconds: 15 },
+  stable: { start: 66, end: 70, timeConstantSeconds: 15 },
+  "raw-srt": { start: 70, end: 73, timeConstantSeconds: 10 },
+  "llm-queued": { start: 73, end: 75, timeConstantSeconds: 20 },
+  "translated-srt": { start: 75, end: 94, timeConstantSeconds: 210 },
+  "final-srt": { start: 94, end: 99, timeConstantSeconds: 60 },
+};
+
+const RAW_STAGE_PROGRESS: Record<string, ProgressBand> = {
+  queued: { start: 2, end: 4, timeConstantSeconds: 15 },
+  starting: { start: 4, end: 8, timeConstantSeconds: 20 },
+  "gpu-queued": { start: 6, end: 8, timeConstantSeconds: 20 },
+  pipeline: { start: 7, end: 9, timeConstantSeconds: 8 },
+  vocal: { start: 9, end: 48, timeConstantSeconds: 75 },
+  aligned: { start: 48, end: 88, timeConstantSeconds: 120 },
+  "postprocess-queued": { start: 88, end: 90, timeConstantSeconds: 15 },
+  stable: { start: 90, end: 95, timeConstantSeconds: 15 },
+  "raw-srt": { start: 95, end: 99, timeConstantSeconds: 10 },
+};
+
+function progressBand(snapshot: TaskSnapshot): ProgressBand | undefined {
+  const target = snapshot.requested_capabilities?.target;
+  const stages = target === "raw-srt" ? RAW_STAGE_PROGRESS : FINAL_STAGE_PROGRESS;
+  return stages[snapshot.stage] ?? stages.starting;
+}
+
+/**
+ * Hybrid task progress: real stage counters win when available; otherwise an
+ * elapsed-time estimate approaches (but never reaches) the current stage cap.
+ */
+export function taskProgress(snapshot: TaskSnapshot, stageElapsedMs = 0): number {
   if (snapshot.state === "completed") return 100;
-  if (!snapshot.progress?.total) return activeStates.has(snapshot.state) ? 8 : 0;
-  return Math.min(100, Math.max(0, snapshot.progress.completed / snapshot.progress.total * 100));
+  const band = progressBand(snapshot);
+  if (!band) return activeStates.has(snapshot.state) ? 2 : 0;
+  const total = Number(snapshot.progress?.total ?? 0);
+  const completed = Number(snapshot.progress?.completed ?? 0);
+  const realFraction = total > 0 ? Math.min(1, Math.max(0, completed / total)) : 0;
+  const elapsedSeconds = Math.max(0, stageElapsedMs / 1000);
+  const estimatedFraction = Math.min(
+    0.92,
+    1 - Math.exp(-elapsedSeconds / band.timeConstantSeconds),
+  );
+  const fraction = Math.max(realFraction, estimatedFraction);
+  return Math.min(99, Math.max(0, band.start + (band.end - band.start) * fraction));
 }

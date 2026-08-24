@@ -37,6 +37,7 @@ from .routing.config import (
     EVIDENCE_PACK_MAX_TOKENS,
     PROGRESS_UPDATE_MAX_TOKENS,
     injection_block_token_limit,
+    session_output_limit_for,
 )
 from .content_filter import (
     run_injection_ladder,
@@ -384,6 +385,12 @@ def run_search_loop(
     """
 
     max_rounds = max(1, int(max_rounds))
+    search_loop_max_tokens = session_output_limit_for(
+        "search_judge",
+        difficulty,
+        routes=getattr(getattr(client, "router", None), "routes", None),
+        requested=SEARCH_LOOP_MAX_TOKENS,
+    )
     if token_counter is None:
         token_counter = default_token_counter(
             execution_settings=getattr(client, "execution_settings", None)
@@ -775,7 +782,7 @@ def run_search_loop(
                 prompt_version=PROMPT_VERSION,
                 call_config={
                     "role": LLMRole.LIGHTWEIGHT.value,
-                    "max_tokens": SEARCH_LOOP_MAX_TOKENS,
+                    "max_tokens": search_loop_max_tokens,
                     "loop_version": loop_version,
                     # In the checkpoint key: difficulty can bind a different
                     # model group (and thinking knob) for search_judge, so a
@@ -817,7 +824,7 @@ def run_search_loop(
                 call = client.complete(
                     LLMRole.LIGHTWEIGHT,
                     messages,
-                    max_tokens=SEARCH_LOOP_MAX_TOKENS,
+                    max_tokens=search_loop_max_tokens,
                     task_group="search_judge",
                     difficulty=difficulty,
                     **validation_retry_sampling_kwargs(0),
@@ -884,7 +891,7 @@ def run_search_loop(
                     call = client.complete(
                         LLMRole.LIGHTWEIGHT,
                         messages,
-                        max_tokens=SEARCH_LOOP_MAX_TOKENS,
+                        max_tokens=search_loop_max_tokens,
                         task_group="search_judge",
                         difficulty=difficulty,
                         **validation_retry_sampling_kwargs(attempt),

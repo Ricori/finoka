@@ -144,7 +144,7 @@ func TestLoginLibraryAndArtifactSync(t *testing.T) {
 
 func TestAdminKeyManagement(t *testing.T) {
 	root := t.TempDir()
-	identifier := "key_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	identifier := "custom-secret"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer admin-token" {
 			http.Error(writer, `{"detail":"unauthorized"}`, http.StatusUnauthorized)
@@ -157,7 +157,7 @@ func TestAdminKeyManagement(t *testing.T) {
 		case request.Method == http.MethodGet && request.URL.Path == "/v1/library":
 			_, _ = writer.Write([]byte(`{"videos":[]}`))
 		case request.Method == http.MethodGet && request.URL.Path == "/v1/admin/keys":
-			_, _ = writer.Write([]byte(`{"keys":[{"id":"` + identifier + `","name":"剪辑组","key":"demo-secret","keyPreview":"demo…cret","remaining":3,"submitted":2,"running":1}]}`))
+			_, _ = writer.Write([]byte(`{"keys":[{"id":"` + identifier + `","name":"剪辑组","key":"demo-secret","keyPreview":"demo-secret","remaining":3,"submitted":2,"running":1}]}`))
 		case request.Method == http.MethodPost && request.URL.Path == "/v1/admin/keys":
 			var body map[string]any
 			_ = json.NewDecoder(request.Body).Decode(&body)
@@ -165,9 +165,9 @@ func TestAdminKeyManagement(t *testing.T) {
 				http.Error(writer, `{"detail":"invalid body"}`, http.StatusBadRequest)
 				return
 			}
-			_, _ = writer.Write([]byte(`{"id":"` + identifier + `","name":"字幕组","keyPreview":"cust…cret","remaining":5,"key":"custom-secret","generated":false}`))
+			_, _ = writer.Write([]byte(`{"id":"` + identifier + `","name":"字幕组","keyPreview":"custom-secret","remaining":5,"key":"custom-secret","generated":false}`))
 		case request.Method == http.MethodPut && request.URL.Path == "/v1/admin/keys/"+identifier:
-			_, _ = writer.Write([]byte(`{"id":"` + identifier + `","name":"终审组","keyPreview":"cust…cret","remaining":8}`))
+			_, _ = writer.Write([]byte(`{"id":"` + identifier + `","name":"终审组","key":"custom-secret","keyPreview":"custom-secret","remaining":8}`))
 		case request.Method == http.MethodDelete && request.URL.Path == "/v1/admin/keys/"+identifier:
 			_, _ = writer.Write([]byte(`{"removed":"` + identifier + `"}`))
 		default:
@@ -189,7 +189,7 @@ func TestAdminKeyManagement(t *testing.T) {
 		t.Fatalf("admin keys = %#v, %v", keys, err)
 	}
 	issued, err := service.CreateAdminKey("字幕组", "custom-secret", 5)
-	if err != nil || issued.Key != "custom-secret" || issued.Name != "字幕组" {
+	if err != nil || issued.ID != "custom-secret" || issued.Key != "custom-secret" || issued.Name != "字幕组" {
 		t.Fatalf("issued key = %#v, %v", issued, err)
 	}
 	updated, err := service.UpdateAdminKey(identifier, "终审组", 8)
