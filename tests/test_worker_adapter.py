@@ -85,6 +85,7 @@ class WorkerAdapterTests(unittest.TestCase):
             self.assertEqual(captured["input"], str(source))
             self.assertEqual(captured["stage"], "raw-srt")
             self.assertEqual(captured["device"], "cuda:0")
+            self.assertEqual(captured["execution_profile"], "local")
             self.assertTrue(captured["resume"])
             events = [json.loads(line) for line in output.getvalue().splitlines()]
             completed = next(event for event in events if event["type"] == "completed")
@@ -96,4 +97,3 @@ class WorkerAdapterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

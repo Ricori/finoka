@@ -1,14 +1,35 @@
 {
   "archive_sha256": "6b349f4d62bf3841b1b1f976d39e5bb5f213bc7ab1c8fbd01d5f942823e2d6a5",
   "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
-  "content_sha256": "cffc023c18ba27299bd83f259a18620884c1864a6fef513412ec2af126386818",
+  "content_sha256": "94c5103e5e2b3e2a1572119eb1d26f0915489e7a1e98b8302008711ffc89717f",
   "engine_bundle_id": "finesub-0.4.1+2a320ede3f5c",
   "engine_version": "0.4.1",
-  "files_manifest_sha256": "86db7fa3231295ace2f85e9072feb6a3627c051cadf083dd49367032ce7fb52f",
-  "patches": [],
+  "files_manifest_sha256": "96c2c129b95b0bf11108f5c1afd64fefc1f1f11d99eaf83128c244e5d6c59940",
+  "patches": [
+    {
+      "path": "0001-execution-profile-core.patch",
+      "sha256": "86f4d5c5e951d2737d3a16bcb0672108834d915ed05451de32a5d4ca6238ae17"
+    },
+    {
+      "path": "0002-cloud-llm-routing.patch",
+      "sha256": "8791df453859d3eb927cbf302d2f658f71768c2eab401ef6a16a235b64e4cc57"
+    },
+    {
+      "path": "0003-cloud-vad-qwen.patch",
+      "sha256": "dfa454406d93612aacf57be647accf90e5850f54cdac641f801e4f47eee6e2ef"
+    },
+    {
+      "path": "0004-cloud-separator.patch",
+      "sha256": "cb88df9aecd3bd18a6c253ddccaf6a93162ee1f473adb62218d174d61befb176"
+    },
+    {
+      "path": "0005-shared-resources.patch",
+      "sha256": "23d917f2d022fb68c337b5e3bef217df0be3b89bf48d661b651350403c550f4b"
+    }
+  ],
   "ref": "v0.4.1",
   "repository": "https://github.com/caca2331/finesub",
   "runtime_manifest_sha256": "e3dc9def3282ea90fa4cb51398d96a6bb566799012a7ec2f13ca85bd42078a3a",
   "sync_schema": 1,
-  "synced_at": "2026-08-19T06:23:39Z"
+  "synced_at": "2026-08-25T05:17:44Z"
 }

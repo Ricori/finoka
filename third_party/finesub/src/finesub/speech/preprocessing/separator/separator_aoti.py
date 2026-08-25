@@ -24,6 +24,8 @@ from typing import Any
 
 import torch
 
+from ....execution import cloud_execution_enabled
+
 
 AXES = {
     "time": (0, (62, 801, 512)),
@@ -124,13 +126,13 @@ def cxx_toolchain_available() -> bool:
     worker image; Windows activates MSVC as before.
     """
 
-    if os.name != "nt":
+    if cloud_execution_enabled() and os.name != "nt":
         return any(shutil.which(name) is not None for name in ("g++", "clang++"))
     return shutil.which("cl.exe") is not None or _find_vcvars() is not None
 
 
 def _activate_cxx_toolchain() -> str:
-    if os.name != "nt":
+    if cloud_execution_enabled() and os.name != "nt":
         # Modal's image exposes clang first, but TorchInductor then links its
         # OpenMP objects with -lomp. Ubuntu's build-essential image only ships
         # libgomp, so that otherwise fails after an expensive compile. Prefer
@@ -258,7 +260,7 @@ def _inductor_configs(emulate_precision_casts: bool) -> dict[str, Any]:
         # _CROSS_BLOCK_ERROR_TOLERANCE.
         "aot_inductor.use_runtime_constant_folding": True,
     }
-    if os.name == "nt":
+    if not cloud_execution_enabled() or os.name == "nt":
         # Windows AOTI link list omits cudart although the generated wrapper
         # uses that API. Linux resolves it through Torch's CUDA link settings.
         configs["aot_inductor.custom_op_libs"] = ["cudart"]
@@ -287,16 +289,20 @@ def _capture_module_inputs(
         model.get_submodule(path).register_forward_pre_hook(capture(name))
         for name, path in SINGLE_MODULES.items()
     ]
-    handles.extend(
-        model.layers[0][module_index].register_forward_pre_hook(capture(axis))
-        for axis, (module_index, _shape) in AXES.items()
-    )
+    if cloud_execution_enabled():
+        handles.extend(
+            model.layers[0][module_index].register_forward_pre_hook(capture(axis))
+            for axis, (module_index, _shape) in AXES.items()
+        )
     try:
         _separation()._warm_up_shared_roformer(model_instance, use_amp=True)
     finally:
         for handle in handles:
             handle.remove()
-    missing = sorted((set(SINGLE_MODULES) | set(AXES)) - set(captured))
+    expected = set(SINGLE_MODULES)
+    if cloud_execution_enabled():
+        expected.update(AXES)
+    missing = sorted(expected - set(captured))
     if missing:
         raise RuntimeError(f"Never reached during a forward: {missing}")
     return captured
@@ -376,7 +382,7 @@ def build_packages(
         for axis, (module_index, default_shape) in AXES.items():
             shape = (
                 tuple(examples[axis].shape)
-                if axis in examples
+                if cloud_execution_enabled() and axis in examples
                 else default_shape
             )
             module = model.layers[0][module_index].eval()
@@ -533,12 +539,13 @@ def build_packages(
         "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(),
         "sm": _device_arch(),
-        "batch_size": compiled_batch_size,
         "compiler": compiler,
         "weights_serialized": False,
         "emulate_precision_casts": emulate_precision_casts,
         "packages": packages,
     }
+    if cloud_execution_enabled():
+        manifest["batch_size"] = compiled_batch_size
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
@@ -558,12 +565,16 @@ def load_packages(model_instance: Any, package_dir: Path) -> int:
     manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("weights_serialized") is not False:
         raise RuntimeError("AOTI manifest does not describe weightless packages")
-    for field, actual in (
+    expected_runtime = [
         ("torch", torch.__version__),
         ("cuda", torch.version.cuda),
         ("sm", _device_arch()),
-        ("batch_size", max(1, int(getattr(model_instance, "batch_size", 1)))),
-    ):
+    ]
+    if cloud_execution_enabled():
+        expected_runtime.append(
+            ("batch_size", max(1, int(getattr(model_instance, "batch_size", 1))))
+        )
+    for field, actual in expected_runtime:
         recorded = manifest.get(field)
         if recorded != actual:
             # An ABI or architecture mismatch is not a slow path, it is an

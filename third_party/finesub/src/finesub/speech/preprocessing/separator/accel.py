@@ -30,12 +30,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from ....execution import cloud_execution_enabled
 from ....reporting import current_reporter
 
 # Bumped when the build configuration changes in a way that invalidates
 # artefacts the key alone would not distinguish -- a different target set, a
 # different inductor flag. Part of the key, so old directories go unread.
-BUILD_FORMAT = "4"
+LOCAL_BUILD_FORMAT = "1"
+CLOUD_BUILD_FORMAT = "4"
 
 # JIT pays ~35s of graph reconstruction per process against ~2s for AOTI, so it
 # only earns its keep on long inputs. Measured break-even is ~800s; 600s is used
@@ -118,9 +120,14 @@ def cache_key(model_name: str, batch_size: int = 1) -> Optional[str]:
     # (a CPU wheel carries none), so the runtime version is kept separately --
     # spelled differently so the pair does not read as a duplicate.
     cuda = torch.version.cuda or "none"
+    if cloud_execution_enabled():
+        return (
+            f"v{CLOUD_BUILD_FORMAT}-{torch.__version__}-cuda{cuda}-sm{major}{minor}"
+            f"-bs{max(1, int(batch_size))}-{digest}"
+        )
     return (
-        f"v{BUILD_FORMAT}-{torch.__version__}-cuda{cuda}-sm{major}{minor}"
-        f"-bs{max(1, int(batch_size))}-{digest}"
+        f"v{LOCAL_BUILD_FORMAT}-{torch.__version__}-cuda{cuda}-sm{major}{minor}"
+        f"-{digest}"
     )
 
 

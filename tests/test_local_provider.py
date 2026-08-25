@@ -83,6 +83,13 @@ class LocalProviderTests(unittest.TestCase):
         self.assertIn("stable_json", provider.artifacts(task["task_id"])["artifacts"])
         provider.shutdown()
 
+    def test_local_provider_rejects_cloud_vocal_profile(self) -> None:
+        provider = self.provider()
+        request = self.request()
+        request["vocal_profile"] = "cost"
+        with self.assertRaisesRegex(ProviderError, "only supports vocal_profile=quality"):
+            provider.start(request)
+
     def test_task_list_recovers_persisted_source_metadata(self) -> None:
         provider = self.provider()
         request = self.request()

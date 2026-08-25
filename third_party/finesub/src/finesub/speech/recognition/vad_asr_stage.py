@@ -34,6 +34,7 @@ from ..preprocessing import vad as vad_detection
 from ..preprocessing.audio import ensure_decodable_input
 from ...run_metadata import record_scratch_file
 from ... import config as app_config
+from ...execution import cloud_execution_enabled, execution_profiled
 from ...reporting import current_reporter, reporting_to, terminal_reporter
 
 
@@ -76,15 +77,19 @@ def _energy_track_from_payload(payload: Mapping[str, object]) -> vad_energy.VadE
     )
 
 
+@execution_profiled
 def prepare_vad_asr(
     input_path: str | Path,
     *,
     prepared_path: str | Path,
+    execution_profile: str | None = None,
     vad_silero_assist: bool = False,
     run_metadata_path: str | Path | None = None,
 ) -> Path:
     """Run the CPU-only VAD/energy prefix and persist its complete state."""
 
+    if not cloud_execution_enabled():
+        raise RuntimeError("prepared VAD is only available in the cloud profile")
     started = time.perf_counter()
     source = Path(input_path).expanduser().resolve()
     if not source.is_file():
@@ -178,7 +183,11 @@ def _load_prepared_vad(
     return payload
 
 
-def prepared_vad_has_speech(prepared_path: str | Path) -> bool:
+def prepared_vad_has_speech(
+    prepared_path: str | Path, *, execution_profile: str | None = None
+) -> bool:
+    if not cloud_execution_enabled(execution_profile):
+        return False
     payload = torch.load(
         Path(prepared_path).expanduser().resolve(),
         map_location="cpu",
@@ -192,10 +201,15 @@ def prepared_vad_has_speech(prepared_path: str | Path) -> bool:
 
 
 def prepared_vad_matches(
-    input_path: str | Path, prepared_path: str | Path
+    input_path: str | Path,
+    prepared_path: str | Path,
+    *,
+    execution_profile: str | None = None,
 ) -> bool:
     """Return whether a trusted prepared artifact belongs to this audio."""
 
+    if not cloud_execution_enabled(execution_profile):
+        return False
     try:
         _load_prepared_vad(
             Path(input_path).expanduser().resolve(),
@@ -338,6 +352,7 @@ def write_aligned_json(
     )
 
 
+@execution_profiled
 def finalize_qwen_verification(
     input_path: str | Path,
     aligned_path: str | Path,
@@ -345,6 +360,7 @@ def finalize_qwen_verification(
     device: str = "cpu",
     qwen_verify: str = "auto",
     referee=None,
+    execution_profile: str | None = None,
 ) -> Path:
     """Attach Qwen evidence after GPU Whisper has released its container.
 
@@ -355,6 +371,8 @@ def finalize_qwen_verification(
     metadata.
     """
 
+    if not cloud_execution_enabled():
+        raise RuntimeError("split Qwen verification is only available in the cloud profile")
     if qwen_verify not in {"auto", "on", "off"}:
         raise ValueError(f"unsupported qwen verification mode: {qwen_verify}")
     source = Path(input_path).expanduser().resolve()
@@ -403,6 +421,7 @@ def finalize_qwen_verification(
         raise RuntimeError("aligned JSON VAD intervals must be a list of objects")
 
     started = time.perf_counter()
+    owns_referee = referee is None
     active_referee = referee or qwen_referee.QwenReferee(device=device)
     try:
         verified, verify_stats = qwen_referee.apply_verification(
@@ -412,7 +431,8 @@ def finalize_qwen_verification(
             referee=active_referee,
         )
     finally:
-        active_referee.close()
+        if owns_referee:
+            active_referee.close()
     elapsed = time.perf_counter() - started
     payload["segments"] = verified
     align_meta["qwen_verify"] = verify_stats
@@ -494,6 +514,7 @@ def resolve_split_params(
         raise ValueError(f"{exc} (from {source})") from exc
 
 
+@execution_profiled
 def run_vad_asr(
     input_path: str | Path,
     *,
@@ -503,6 +524,7 @@ def run_vad_asr(
     language: Optional[str] = None,
     gap_sec: float = asr_align.DEFAULT_GAP_SEC,
     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
+    execution_profile: str | None = None,
     vad_silero_assist: bool = False,
     qwen_verify: str = "auto",
     split_length_scale: float | None = None,
@@ -511,6 +533,8 @@ def run_vad_asr(
 ) -> Path:
     # Before anything else: an out-of-range knob must not surface after the
     # GPU work is already done.
+    if prepared_path is not None and not cloud_execution_enabled():
+        raise RuntimeError("prepared VAD is only available in the cloud profile")
     split_params = resolve_split_params(split_length_scale)
     input_path = Path(input_path).expanduser().resolve()
     if not input_path.exists():

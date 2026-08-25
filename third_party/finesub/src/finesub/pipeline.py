@@ -12,6 +12,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Mapping, NamedTuple, Optional
 
+from .execution import execution_profiled
 from .paths import resolve_logs_dir, resolve_name_output_path
 from .reporting import (
     LEVELS,
@@ -521,6 +522,7 @@ def _stage_record_for_current_run(
     return chosen
 
 
+@execution_profiled
 def run_pipeline(
     input_path: str | Path,
     *,
@@ -530,6 +532,7 @@ def run_pipeline(
     language: Optional[str] = None,
     gap_sec: float = asr_align.DEFAULT_GAP_SEC,
     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
+    execution_profile: str | None = None,
     vocal_profile: str = vocal_separation.VOCAL_PROFILE_QUALITY,
     vad_silero_assist: bool = False,
     prepared_vad_path: str | Path | None = None,
@@ -714,6 +717,7 @@ def run_pipeline(
                         source_path,
                         output_path=temporary,
                         gpu_budget_gb=gpu_budget_gb,
+                        execution_profile=execution_profile,
                         vocal_profile=vocal_profile,
                         metadata_sink=separator_metadata,
                         run_metadata_path=paths.metadata_json,
@@ -777,6 +781,7 @@ def run_pipeline(
                 language=language,
                 gap_sec=gap_sec,
                 gpu_budget_gb=gpu_budget_gb,
+                execution_profile=execution_profile,
                 vad_silero_assist=vad_silero_assist,
                 prepared_path=prepared_vad_path,
                 qwen_verify=qwen_verify,

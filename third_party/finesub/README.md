@@ -4,7 +4,8 @@
 
 规则：
 
-- 不要手工复制或修改 `src/finesub`。
+- 开发调试时可以直接修改 `src/finesub`；提交前必须生成对应 patch 并更新快照哈希。
+- 已提交的 vendor 必须能由固定基线和 `patches/finesub` 完整重建。
 - 不要把机器上安装的 `site-packages/finesub` 复制到这里。
 - 只接受来自 FineSub 官方仓库固定 tag/commit 的 source archive。
 - 每次同步必须生成并校验 `UPSTREAM.json` 与 `FILES.json`。

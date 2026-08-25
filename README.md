@@ -47,8 +47,8 @@ Key 登录与媒体库合并、自动字幕同步，以及 JASSUB 预览和 SRT/
   `2a320ede3f5c29e431a4525aab01d97945f349c2`
 
 该 commit 已由同步脚本从 FineSub 官方仓库重新校验，并记录在
-`third_party/finesub/UPSTREAM.json`。升级时仍必须通过同步脚本生成新快照，不能手工修改
-vendor 文件。
+`third_party/finesub/UPSTREAM.json`。开发时可以直接修改 vendor；交付时必须生成对应
+patch、更新快照哈希，并通过补丁栈正反向重放测试。升级流程见同步与升级策略文档。
 
 ## 桌面开发与打包
 

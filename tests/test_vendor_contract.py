@@ -7,7 +7,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from scripts.sync_finesub import DEFAULT_VENDOR, verify_snapshot
+from scripts.sync_finesub import DEFAULT_VENDOR, sha256_file, verify_snapshot
 
 
 class VendorContractTests(unittest.TestCase):
@@ -54,6 +54,19 @@ class VendorContractTests(unittest.TestCase):
         bootstrap = DEFAULT_VENDOR / "src/finesub_bootstrap"
         self.assertTrue((bootstrap / "model-manifest.json").is_file())
         self.assertTrue((bootstrap / "download-sources.json").is_file())
+
+    def test_recorded_finesub_patches_are_present_and_hashed(self) -> None:
+        patch_root = DEFAULT_VENDOR.parents[1] / "patches" / "finesub"
+        patches = self.upstream.get("patches") or []
+        self.assertTrue(patches)
+        self.assertEqual(
+            [entry["path"] for entry in patches],
+            [path.name for path in sorted(patch_root.glob("*.patch"))],
+        )
+        for entry in patches:
+            path = patch_root / entry["path"]
+            self.assertTrue(path.is_file())
+            self.assertEqual(sha256_file(path), entry["sha256"])
 
 
 if __name__ == "__main__":

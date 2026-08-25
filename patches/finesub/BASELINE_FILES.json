@@ -1,5 +1,5 @@
 {
-  "content_sha256": "94c5103e5e2b3e2a1572119eb1d26f0915489e7a1e98b8302008711ffc89717f",
+  "content_sha256": "a271631226d28afa0d1aa4394bc937793f2a17706a0d392b0fcb8f3e7c99459a",
   "files": [
     {
       "bytes": 1734,
@@ -52,24 +52,14 @@
       "sha256": "38f20acdfce0c7008f8773bd8ec10bbb1de34a082d83f8c8cffa91401c872126"
     },
     {
-      "bytes": 25862,
+      "bytes": 25542,
       "path": "src/finesub/batch.py",
-      "sha256": "b187fd842c8f4e73d64a144dfae17586484626bae5aa4c7663e0d9758b6da599"
+      "sha256": "cae904707bf4c6b7d9dc697352d6d670414caee87c4c6dcc5c1ea1a9a03e6f45"
     },
     {
       "bytes": 5870,
       "path": "src/finesub/config.py",
       "sha256": "b6011d0d9588c7851e31a8ecdca8c16085ddf23f2401fbd4dd721e00dc00a64b"
-    },
-    {
-      "bytes": 1966,
-      "path": "src/finesub/execution.py",
-      "sha256": "a83d5c20d130c7787567189b26db69fb52e32af7e43a29ff44fa2a94d96ed064"
-    },
-    {
-      "bytes": 893,
-      "path": "src/finesub/execution_policy.py",
-      "sha256": "159c57e57dd569c7ff22837de633eab02fffd0a6c21dd85ad93cbf814e023145"
     },
     {
       "bytes": 180,
@@ -207,9 +197,9 @@
       "sha256": "0cc048e084bf88682f4a81474ee86ef81f288e02e72ec84f686f1a1941a46c7c"
     },
     {
-      "bytes": 45744,
+      "bytes": 45279,
       "path": "src/finesub/llm/knowledge/update.py",
-      "sha256": "d67e37d81288c8b92208a953680a4ca83789d3d965f24c2773cf4bb1325ada21"
+      "sha256": "749ed988bbf0809f54d5f126d72b9354f7c981c9ae9b4f57abcf86d201e4e2fc"
     },
     {
       "bytes": 26250,
@@ -692,9 +682,9 @@
       "sha256": "03f2b9c3a21d85117d7eaabd124526b72195d08acc8c6ebcb18d19998b7ee0dd"
     },
     {
-      "bytes": 63786,
+      "bytes": 63607,
       "path": "src/finesub/llm/research.py",
-      "sha256": "669c8168c2929038eff59446396c04d7bb0460db61b5a5f01eb684a018e9a194"
+      "sha256": "08914af4e07ce7ca9fbbd94d20a1d90b17d4c2ecf78baae0c4e89d168ac5b776"
     },
     {
       "bytes": 1250,
@@ -712,9 +702,9 @@
       "sha256": "a429a96969e5159320ac45994a3675a40fae4f71d911c93f1594ff927abf5c26"
     },
     {
-      "bytes": 20720,
+      "bytes": 20055,
       "path": "src/finesub/llm/routing/config.py",
-      "sha256": "d40a04b6562815edbc889caa78b4572377132ae47c3be857214be02df1503a2a"
+      "sha256": "478f944afc26c92d87a6ef1cad296f2f2a76ceba5f23bd0e9d2ea29fdc5d2577"
     },
     {
       "bytes": 8532,
@@ -752,9 +742,9 @@
       "sha256": "2f1fee54224d21a4a2f655c6578e4d7618c4d7552e1e3454f5c8181d7c802669"
     },
     {
-      "bytes": 51499,
+      "bytes": 51249,
       "path": "src/finesub/llm/search_loop.py",
-      "sha256": "6e0912350df425a00f4dcb2e73f63ad92e75534c8a3c3dace558fc4c0720a27e"
+      "sha256": "dd69628e7e34aeb8de9dc3f925c6df2def67d0189a63ab8e9a8065decabc039f"
     },
     {
       "bytes": 9011,
@@ -802,9 +792,9 @@
       "sha256": "3268d14e9727842e4f5457199c5c2fd683721c855f4b9e013f115bd61c283b5a"
     },
     {
-      "bytes": 20521,
+      "bytes": 20279,
       "path": "src/finesub/llm/stages/correction/query_round.py",
-      "sha256": "8c9ee96e1341919745414aafe2f496dab198b3d3e3b9b47b652622a826e53a77"
+      "sha256": "f103cde71a0db522c68338d9067089c3a223fed78072d95873655581d0905ad8"
     },
     {
       "bytes": 28454,
@@ -877,9 +867,9 @@
       "sha256": "24e4cc74dfa9482bfa98991dfa99a186a6715421caaec68736af74466c1590d5"
     },
     {
-      "bytes": 49855,
+      "bytes": 49024,
       "path": "src/finesub/pipeline.py",
-      "sha256": "6b8ca6ea175097215a0a846e08ade519b6fc569e11773cf90fe51065093cf732"
+      "sha256": "1e59f9c879d11548f903c0b49478e5e8e95454bbcbb4b331112849f45005c699"
     },
     {
       "bytes": 25174,
@@ -932,19 +922,19 @@
       "sha256": "95b18b3ee9073e32c7c7dbaa75226473673945abc3aa4ab156afdbf7e95ae5f9"
     },
     {
-      "bytes": 14943,
+      "bytes": 14585,
       "path": "src/finesub/speech/preprocessing/separator/accel.py",
-      "sha256": "07a229091655d7ab9ede73df33ed87c5bde88164d94cc04bce6ccead793d63f8"
+      "sha256": "6cc1812dbd2120e888508467c94edee7df1cbbf63affa8ec2ef794f6dcd8e197"
     },
     {
-      "bytes": 54155,
+      "bytes": 48617,
       "path": "src/finesub/speech/preprocessing/separator/separation.py",
-      "sha256": "837104891f59d6489ba4ae83ce3e9ca5136e9f84819b6abd8513bfca1aa03d91"
+      "sha256": "961a188e9182dc80c25b8a517fe6d291d8915cfd277830bf3f4c03ea8ae2c03d"
     },
     {
-      "bytes": 25825,
+      "bytes": 23773,
       "path": "src/finesub/speech/preprocessing/separator/separator_aoti.py",
-      "sha256": "2eb087f75920af84373d314e1f3d16705f54fbae052830521c3d974a86ea1788"
+      "sha256": "a568786b520ba4e581a786b05dda403a013f08672d24df66cee5ebd7b3b8c96d"
     },
     {
       "bytes": 20004,
@@ -992,9 +982,9 @@
       "sha256": "47cdc4d2d7ff5c3d47059733374c6962dcca68ec0a05cc0af5837e1ed87dfbd3"
     },
     {
-      "bytes": 26840,
+      "bytes": 26926,
       "path": "src/finesub/speech/recognition/fw_refine_backend.py",
-      "sha256": "533e19ec14b11c50efe29b5b3f23f1a466770ef5a4827fc15f8048ecfce4565b"
+      "sha256": "164d50bdd4a4205d6f9bc192097ecaf63078a54eceaf988f1f6efea6db44faf1"
     },
     {
       "bytes": 10280,
@@ -1007,9 +997,9 @@
       "sha256": "26d4d312fb41145745f1b3fffa06450777f8cc320de9ee26bfc490d2d0ff86f8"
     },
     {
-      "bytes": 36330,
+      "bytes": 24003,
       "path": "src/finesub/speech/recognition/vad_asr_stage.py",
-      "sha256": "62e314a5a94db228aa42d16b82c71b7232b5307d5b01fb4ea2ec2926e37c64a4"
+      "sha256": "8884fafc537dea82418366317a9bfcfef00abb47271dac0b83310345e4614803"
     },
     {
       "bytes": 16499,
@@ -1037,9 +1027,9 @@
       "sha256": "9e5f6fccdcab9028d6fcef2ad32bd4f799c5e211f0da1f363277f80eae26bf53"
     },
     {
-      "bytes": 2558,
+      "bytes": 2224,
       "path": "src/finesub/speech/runtime/resources.py",
-      "sha256": "d901cd9dd2db5d09b9f5243f0e3d3fba8afc2b59cf32a131746696ae98b95f57"
+      "sha256": "4ed236fc3536878d87a7747f5577e6f63d9cff0435777faffca50c1daf8c3680"
     },
     {
       "bytes": 6583,
@@ -1057,9 +1047,9 @@
       "sha256": "97cd9b82801fce5273233cb57a76eff3171b24f4ba9ff5000c55adae876a16b0"
     },
     {
-      "bytes": 14149,
+      "bytes": 13778,
       "path": "src/finesub/speech/verification/qwen_referee.py",
-      "sha256": "a1fe8a5f88996544295b2b98913dd2a59c96f8392acd6909ae1a0ec45510c8f7"
+      "sha256": "d860542c5f540c7d313b90223329dfa88e502fe753f06366fe7ae6d7ec61af1f"
     },
     {
       "bytes": 4323,

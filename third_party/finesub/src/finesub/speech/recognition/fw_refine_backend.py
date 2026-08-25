@@ -13,6 +13,7 @@ from typing import Any, Iterable
 import numpy as np
 from faster_whisper.transcribe import WhisperModel, get_compression_ratio
 
+from ...execution_policy import refine_compute_type
 from .fw_refine import (
     AlignedSpan,
     TimestampSpan,
@@ -684,14 +685,7 @@ class FwRefineModelPool:
                 return RefinedWhisperModel(
                     self._model_name,
                     device=self._device,
-                    compute_type=(
-                        "float16"
-                        if self._device.strip().lower().startswith("cuda")
-                        # The cloud CTranslate2 build intentionally omits an
-                        # SGEMM library; int8 uses the compiled RUY backend and
-                        # is also the practical compute type for CPU Whisper.
-                        else "int8"
-                    ),
+                    compute_type=refine_compute_type(self._device),
                     refine_sec=self._refine_sec,
                 )
         except BaseException:

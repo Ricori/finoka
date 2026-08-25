@@ -207,9 +207,9 @@ def validate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     request.setdefault("device", "cuda")
     request.setdefault("gpu_budget_gb", 8)
     vocal_profile = request.setdefault("vocal_profile", "quality")
-    if vocal_profile not in {"cost", "quality"}:
+    if vocal_profile != "quality":
         raise ProviderError(
-            "invalid_request", "vocal_profile must be cost or quality"
+            "invalid_request", "Local Provider only supports vocal_profile=quality"
         )
     request.setdefault("knowledge", "update")
     request.setdefault("cleanup_intermediate", False)

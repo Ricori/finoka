@@ -43,6 +43,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from ...execution import cloud_execution_enabled
 from ...reporting import current_reporter
 from ...text import normalized_compact
 from ..preprocessing.audio import (
@@ -224,9 +225,11 @@ class QwenReferee:
             self._model = model
         return self._model
 
-    def warm(self) -> None:
+    def warm(self, *, execution_profile: str | None = None) -> None:
         """Load processor and weights without running a transcription."""
 
+        if not cloud_execution_enabled(execution_profile):
+            raise RuntimeError("Qwen preloading is only available in the cloud profile")
         self._ensure_model()
 
     def transcribe_batch(

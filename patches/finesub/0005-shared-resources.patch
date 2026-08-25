@@ -1,0 +1,32 @@
+Subject: [PATCH 5/5] Update shared worker resource budgets
+
+Reason: These resource budgets are part of Finoka's shared engine contract and
+intentionally apply to both execution profiles.
+Removal: Delete once the same budgets are present in the pinned upstream.
+
+diff --git a/src/finesub/speech/runtime/resources.py b/src/finesub/speech/runtime/resources.py
+index bc0a242..cb33abd 100644
+--- a/src/finesub/speech/runtime/resources.py
++++ b/src/finesub/speech/runtime/resources.py
+@@ -8,7 +8,7 @@ from typing import Optional
+ BYTES_PER_GIB = 1024**3
+ DEFAULT_GPU_BUDGET_GB = 4
+ GPU_SYSTEM_RESERVE_GB = 1.0
+-RAM_BUDGET_GB = 8
++RAM_BUDGET_GB = 12
+ 
+ 
+ @dataclass(frozen=True)
+@@ -31,6 +31,12 @@ class ResourceProfile:
+     def ram_limit_bytes(self) -> int:
+         return int(float(self.ram_budget_gb) * BYTES_PER_GIB)
+ 
++
++# The L4 batch-2 production probe raised peak VRAM from 2.26 to 3.41 GiB but
++# left the same 67-second block pipeline at 67.48 seconds. Keep one internal
++# file batch; larger GPU profiles gain throughput through independent outer
++# workers on long inputs instead of spending memory on an ineffective inner
++# batch for short inputs.
+ RESOURCE_PROFILES = {
+     budget: ResourceProfile(
+         gpu_budget_gb=budget,

@@ -21,7 +21,7 @@ Finoka 希望未来所有本地和云端转写都由 FineSub 流水线执行，�
 
 - 不 fork FineSub。
 - 自动同步完整 `src/finesub`、`src/finesub_bootstrap` 和必要 runtime metadata。
-- vendor 目录禁止人工修改。
+- vendor 目录可用于直接开发调试，但提交内容必须能由已登记 patch 从固定基线重建。
 - Finoka Adapter 定义稳定任务协议和 Artifact Projector。
 - 本地 runtime 与云端镜像消费同一 engine bundle。
 - 只有缺少必要扩展点时才维护独立 patch，并优先推动上游合并。
@@ -52,7 +52,7 @@ Finoka 希望未来所有本地和云端转写都由 FineSub 流水线执行，�
 
 ## 约束
 
-- `third_party/finesub` 不接受手工提交的业务改动。
+- `third_party/finesub` 不接受无法由 `patches/finesub` 重建的业务改动。
 - 构建必须验证 `UPSTREAM.json`、archive hash 和 package 内容。
 - 前端不得 import 或解析 FineSub artifact。
 - 云端不得安装 floating `main`/`latest`。

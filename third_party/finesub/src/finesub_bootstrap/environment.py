@@ -396,7 +396,7 @@ class RuntimeEnvironment:
                 return self._status(
                     "missing",
                     f"已检测到系统 Python {self.python_version}：{system_python}；"
-                    "将直接复用，只需安装 AI 依赖。",
+                    "将直接复用，只需安装 FineSub AI 依赖。",
                     reuses_system_python=True,
                 )
             return self._status("missing")

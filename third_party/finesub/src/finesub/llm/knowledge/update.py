@@ -25,6 +25,7 @@ import sys
 from typing import Any, Dict, List, Mapping
 
 from finesub.paths import is_linked_worktree
+from finesub.execution import cloud_execution_enabled
 
 from ..client import (
     GeminiPromptBlockedError,
@@ -435,15 +436,19 @@ def run_knowledge_update(
     # member holds 32k passes here and is then skipped at dispatch as
     # ``input_limit`` -- the model the user bound never answers, and a
     # single-member group fails outright.
-    knowledge_limits = planning_limits_for(
-        "knowledge",
-        difficulty,
-        routes=getattr(getattr(llm_client, "router", None), "routes", None),
-    )
-    knowledge_max_tokens = min(
-        SESSION_OUTPUT_MAX_TOKENS,
-        knowledge_limits.output_limit,
-    )
+    if cloud_execution_enabled():
+        knowledge_limits = planning_limits_for(
+            "knowledge",
+            difficulty,
+            routes=getattr(getattr(llm_client, "router", None), "routes", None),
+        )
+        knowledge_max_tokens = min(
+            SESSION_OUTPUT_MAX_TOKENS,
+            knowledge_limits.output_limit,
+        )
+    else:
+        knowledge_limits = planning_limits_for("knowledge", difficulty)
+        knowledge_max_tokens = SESSION_OUTPUT_MAX_TOKENS
 
     materials = build_knowledge_materials(
         stable_json=stable_json,

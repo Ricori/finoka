@@ -14,6 +14,7 @@ from enum import Enum
 import math
 from typing import Dict, Mapping, Tuple
 
+from ...execution import cloud_execution_enabled
 
 GEMINI_37_FLASH = "gemini/gemini-3.7-flash"
 GEMINI_36_FLASH = "gemini/gemini-3.6-flash"
@@ -465,11 +466,15 @@ def session_output_limit_for(
     *,
     routes=None,
     requested: int = SESSION_OUTPUT_MAX_TOKENS,
+    execution_profile: str | None = None,
 ) -> int:
     """Clamp a non-correction session to its routed group's output envelope."""
 
+    requested_limit = max(1, int(requested))
+    if not cloud_execution_enabled(execution_profile):
+        return requested_limit
     return min(
-        max(1, int(requested)),
+        requested_limit,
         planning_limits_for(
             task_group_id,
             difficulty or "quality",
