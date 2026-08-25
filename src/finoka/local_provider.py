@@ -206,6 +206,11 @@ def validate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     request.setdefault("language", "ja")
     request.setdefault("device", "cuda")
     request.setdefault("gpu_budget_gb", 8)
+    vocal_profile = request.setdefault("vocal_profile", "quality")
+    if vocal_profile not in {"cost", "quality"}:
+        raise ProviderError(
+            "invalid_request", "vocal_profile must be cost or quality"
+        )
     request.setdefault("knowledge", "update")
     request.setdefault("cleanup_intermediate", False)
     return request

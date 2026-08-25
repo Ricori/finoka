@@ -224,6 +224,11 @@ class QwenReferee:
             self._model = model
         return self._model
 
+    def warm(self) -> None:
+        """Load processor and weights without running a transcription."""
+
+        self._ensure_model()
+
     def transcribe_batch(
         self, clips: Sequence[np.ndarray]
     ) -> List[Tuple[str, Optional[str]]]:

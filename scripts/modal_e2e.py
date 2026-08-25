@@ -10,6 +10,7 @@ import json
 import re
 import secrets
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -22,7 +23,11 @@ import modal
 
 
 DEFAULT_ENDPOINT = "https://ricori--finoka-cloud-api.modal.run"
-APP_NAME = "finoka-cloud"
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+MODAL_BACKEND_ROOT = REPOSITORY_ROOT / "modal_backend"
+if str(MODAL_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(MODAL_BACKEND_ROOT))
 
 
 class ApiError(RuntimeError):
@@ -190,7 +195,16 @@ def main() -> int:
             raise RuntimeError("one or more concurrent API requests failed")
         print("[e2e] 64 concurrent authenticated API requests passed", flush=True)
 
-        verify = modal.Function.from_name(APP_NAME, "verify_patched_ctranslate2").remote()
+        # Image verification is a test concern, so run it in an anonymous,
+        # temporary Modal app instead of keeping a test function deployed in
+        # the production app.
+        from finoka_modal.verify_container import (
+            app as verify_app,
+            verify_patched_ctranslate2,
+        )
+
+        with verify_app.run():
+            verify = verify_patched_ctranslate2.remote()
         if verify.get("fwRefineTrace") is not True:
             raise RuntimeError(f"patched CTranslate2 verification failed: {verify}")
         print(f"[e2e] patched CTranslate2 runtime passed ({verify.get('version')})", flush=True)

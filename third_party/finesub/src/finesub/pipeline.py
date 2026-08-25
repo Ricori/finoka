@@ -215,6 +215,15 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_GPU_BUDGET_GB,
         help="GPU memory budget profile in GiB (default: 4).",
     )
+    parser.add_argument(
+        "--vocal-profile",
+        choices=vocal_separation.VOCAL_PROFILES,
+        default=vocal_separation.VOCAL_PROFILE_QUALITY,
+        help=(
+            "Vocal separation profile: quality uses standard 44.1 kHz; cost "
+            "uses 16 kHz for fewer BS-Roformer windows (default: quality)."
+        ),
+    )
     parser.add_argument("--language", default=None, help="Language override (e.g. ja, en). Use 'auto' or omit for auto-detection.")
     parser.add_argument(
         "--gap",
@@ -521,6 +530,7 @@ def run_pipeline(
     language: Optional[str] = None,
     gap_sec: float = asr_align.DEFAULT_GAP_SEC,
     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
+    vocal_profile: str = vocal_separation.VOCAL_PROFILE_QUALITY,
     vad_silero_assist: bool = False,
     prepared_vad_path: str | Path | None = None,
     qwen_verify: str = "auto",
@@ -704,6 +714,7 @@ def run_pipeline(
                         source_path,
                         output_path=temporary,
                         gpu_budget_gb=gpu_budget_gb,
+                        vocal_profile=vocal_profile,
                         metadata_sink=separator_metadata,
                         run_metadata_path=paths.metadata_json,
                     ),
@@ -1219,6 +1230,7 @@ def main() -> int:
                     language=args.language,
                     gap_sec=args.gap,
                     gpu_budget_gb=args.gpu_budget_gb,
+                    vocal_profile=args.vocal_profile,
                     vad_silero_assist=args.vad_silero_assist,
                     qwen_verify=args.qwen_verify,
                     split_length_scale=args.split_length_scale,

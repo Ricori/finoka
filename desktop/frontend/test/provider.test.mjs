@@ -51,6 +51,7 @@ const request = () => ({
   language: "ja",
   device: "cuda:0",
   gpu_budget_gb: 8,
+  vocal_profile: "quality",
   correction: {
     enabled: false,
     media: "audio",

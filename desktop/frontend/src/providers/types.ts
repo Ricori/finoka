@@ -70,6 +70,7 @@ export interface TaskRequest {
   language: string;
   device: string;
   gpu_budget_gb: 4 | 8 | 12 | 16;
+  vocal_profile: "cost" | "quality";
   correction: {
     enabled: boolean;
     media: "text" | "audio" | "video";

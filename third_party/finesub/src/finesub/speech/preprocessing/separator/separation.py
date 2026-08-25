@@ -66,6 +66,14 @@ from ...runtime.resource_usage import (
 MODEL_NAME = SEPARATOR_CHECKPOINT
 BATCH_SIZE = get_resource_profile(DEFAULT_GPU_BUDGET_GB).vocal_separation_batch_size
 
+VOCAL_PROFILE_COST = "cost"
+VOCAL_PROFILE_QUALITY = "quality"
+VOCAL_PROFILES = (VOCAL_PROFILE_COST, VOCAL_PROFILE_QUALITY)
+VOCAL_PROFILE_SAMPLE_RATES = {
+    VOCAL_PROFILE_COST: ASR_TARGET_SR,
+    VOCAL_PROFILE_QUALITY: 44100,
+}
+
 
 class _BlockProgress:
     """One progress line for the whole stage, counted as blocks finish.
@@ -145,6 +153,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="Override separator batch size (default: selected GPU budget profile).",
+    )
+    parser.add_argument(
+        "--vocal-profile",
+        choices=VOCAL_PROFILES,
+        default=VOCAL_PROFILE_QUALITY,
+        help=(
+            "Vocal profile: quality runs BS-Roformer at its standard 44.1 kHz; "
+            "cost runs at 16 kHz for fewer model windows (default: quality)."
+        ),
     )
     return parser.parse_args()
 
@@ -262,7 +279,13 @@ def place_separator_files() -> None:
         )
 
 
-def _build_separator(output_dir: str, output_format: str, batch_size: int) -> Separator:
+def _build_separator(
+    output_dir: str,
+    output_format: str,
+    batch_size: int,
+    *,
+    sample_rate: int = VOCAL_PROFILE_SAMPLE_RATES[VOCAL_PROFILE_QUALITY],
+) -> Separator:
     place_separator_files()
     try:
         from audio_separator.separator import Separator
@@ -277,6 +300,7 @@ def _build_separator(output_dir: str, output_format: str, batch_size: int) -> Se
         output_dir=output_dir,
         output_format=output_format,
         output_single_stem="Vocals",
+        sample_rate=sample_rate,
         model_file_dir=str(resolve_separator_model_dir()),
         mdxc_params={"batch_size": batch_size},
         mdx_params={"batch_size": batch_size},
@@ -417,6 +441,7 @@ class _SharedSeparatorPool:
         *,
         use_amp: bool,
         accel_backend: str = "eager",
+        sample_rate: int = VOCAL_PROFILE_SAMPLE_RATES[VOCAL_PROFILE_QUALITY],
     ) -> _SharedSeparatorLease:
         with self._lock:
             built_master = False
@@ -425,6 +450,7 @@ class _SharedSeparatorPool:
                     output_dir,
                     output_format,
                     batch_size,
+                    sample_rate=sample_rate,
                 )
                 built_master = True
                 try:
@@ -536,6 +562,7 @@ def _acquire_separator(
     *,
     use_amp: bool,
     accel_backend: str = "eager",
+    sample_rate: int = VOCAL_PROFILE_SAMPLE_RATES[VOCAL_PROFILE_QUALITY],
 ) -> _SharedSeparatorLease:
     # CUDA workers share a model only after the Roformer rotary-position cache
     # has been warmed. Preserve independent instances on other backends instead
@@ -543,7 +570,12 @@ def _acquire_separator(
     if not cuda_usable():
         lease = _SharedSeparatorLease(
             None,
-            _build_separator(output_dir, output_format, batch_size),
+            _build_separator(
+                output_dir,
+                output_format,
+                batch_size,
+                sample_rate=sample_rate,
+            ),
         )
     else:
         lease = _SHARED_SEPARATOR_POOL.acquire(
@@ -552,6 +584,7 @@ def _acquire_separator(
             batch_size,
             use_amp=use_amp,
             accel_backend=accel_backend,
+            sample_rate=sample_rate,
         )
     # `separate()` reads this flag per call, and a pooled worker is a shallow copy
     # carrying the master's value. Pin it on the way out so every caller runs at
@@ -699,6 +732,7 @@ def _process_parallel_block(
     batch_size: int,
     use_amp: bool,
     accel_backend: str,
+    sample_rate: int,
     instances: int,
     block: _SeparationBlock,
 ) -> tuple[_SeparationBlock, Path]:
@@ -730,6 +764,7 @@ def _process_parallel_block(
             batch_size,
             use_amp=use_amp,
             accel_backend=accel_backend,
+            sample_rate=sample_rate,
         )
         separator = lease.separator
         output_files = separator.separate(str(block_input), output_names)
@@ -742,6 +777,7 @@ def _process_parallel_block(
                 batch_size,
                 use_amp=use_amp,
                 accel_backend=accel_backend,
+                sample_rate=sample_rate,
             )
             separator = lease.separator
             output_files = separator.separate(str(block_input), output_names)
@@ -912,9 +948,16 @@ def run_vocal_separation(
     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
     batch_size: Optional[int] = None,
     use_amp: bool = True,
+    vocal_profile: str = VOCAL_PROFILE_QUALITY,
     metadata_sink: dict[str, Any] | None = None,
     run_metadata_path: str | Path | None = None,
 ) -> Path:
+    if vocal_profile not in VOCAL_PROFILES:
+        expected = ", ".join(VOCAL_PROFILES)
+        raise ValueError(
+            f"unsupported vocal profile {vocal_profile!r}; expected {expected}"
+        )
+    separator_sample_rate = VOCAL_PROFILE_SAMPLE_RATES[vocal_profile]
     resource_profile = get_resource_profile(gpu_budget_gb)
     selected_batch_size = (
         resource_profile.vocal_separation_batch_size
@@ -960,6 +1003,7 @@ def run_vocal_separation(
                 batch_size,
                 use_amp=use_amp,
                 accel_backend=accel_backend,
+                sample_rate=separator_sample_rate,
             )
         finally:
             model_setup_sec += time.perf_counter() - started
@@ -1021,7 +1065,11 @@ def run_vocal_separation(
         if src_sr <= 0 or total_frames <= 0:
             raise SystemExit(f"Unable to read audio info for {input_path}")
         duration_sec = total_frames / float(src_sr)
-        accel_backend = _select_accel_backend(duration_sec, selected_batch_size)
+        accel_backend = (
+            "eager"
+            if vocal_profile == VOCAL_PROFILE_COST
+            else _select_accel_backend(duration_sec, selected_batch_size)
+        )
         gpu_stage_lease = GPU_STAGE_GATE.acquire(
             "separator",
             enabled=device_for_usage is not None,
@@ -1039,6 +1087,8 @@ def run_vocal_separation(
                     "batch_size": selected_batch_size,
                     "device": "cuda" if device_for_usage is not None else "cpu",
                     "amp": amp_enabled,
+                    "profile": vocal_profile,
+                    "sample_rate": separator_sample_rate,
                     "accel": "pending",
                 }
             )
@@ -1147,6 +1197,7 @@ def run_vocal_separation(
                                 batch_size=selected_batch_size,
                                 use_amp=amp_enabled,
                                 accel_backend=accel_backend,
+                                sample_rate=separator_sample_rate,
                                 instances=separator_instances,
                                 block=block,
                             )
@@ -1328,6 +1379,7 @@ def main() -> int:
                 pad_seconds=args.pad_seconds,
                 gpu_budget_gb=args.gpu_budget_gb,
                 batch_size=args.batch_size,
+                vocal_profile=args.vocal_profile,
             )
         print(output)
     except Exception as exc:

@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
                 language=request.get("language", "ja"),
                 device=request.get("device", "cuda"),
                 gpu_budget_gb=int(request.get("gpu_budget_gb", 8)),
+                vocal_profile=request.get("vocal_profile", "quality"),
                 llm_media=correction.get("media", "audio"),
                 llm_retrieval=correction.get("retrieval", "local"),
                 llm_difficulty=correction.get("difficulty", "quality"),
@@ -105,4 +106,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

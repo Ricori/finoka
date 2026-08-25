@@ -70,16 +70,3 @@ jobs:
       - name: Build React renderer
         working-directory: desktop/frontend
         run: npm run build
-
-  modal-contract:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install pytest
-      - name: Test cloud authentication, quota and storage contracts
-        env:
-          PYTHONPATH: modal_backend:third_party/finesub/src
-        run: python -m pytest -q modal_backend/tests

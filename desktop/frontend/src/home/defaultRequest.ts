@@ -17,6 +17,7 @@ export function localTaskRequest(entry: MediaEntry): TaskRequest {
     language: "ja",
     device: "cuda",
     gpu_budget_gb: 8,
+    vocal_profile: "quality",
     correction: {
       enabled: false,
       media: "audio",
@@ -46,6 +47,7 @@ export function cloudTaskRequest(entry: MediaEntry): TaskRequest {
     language: "ja",
     device: "cuda",
     gpu_budget_gb: 8,
+    vocal_profile: "cost",
     correction: {
       enabled: true,
       media: "text",

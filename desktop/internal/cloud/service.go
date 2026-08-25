@@ -234,6 +234,7 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 		"language":             stringOption(options, "language", "ja"),
 		"device":               "cuda",
 		"gpu_budget_gb":        numberOption(options, "gpu_budget_gb", 8),
+		"vocal_profile":        "cost",
 		"correction":           map[string]any{"enabled": target == "final-srt", "media": "text", "retrieval": "none", "difficulty": "quality", "fast": "auto", "extra_info": "", "extra_style": ""},
 		"knowledge":            stringOption(options, "knowledge", "update"),
 		"cleanup_intermediate": false,

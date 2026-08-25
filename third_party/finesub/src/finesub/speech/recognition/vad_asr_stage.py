@@ -338,6 +338,116 @@ def write_aligned_json(
     )
 
 
+def finalize_qwen_verification(
+    input_path: str | Path,
+    aligned_path: str | Path,
+    *,
+    device: str = "cpu",
+    qwen_verify: str = "auto",
+    referee=None,
+) -> Path:
+    """Attach Qwen evidence after GPU Whisper has released its container.
+
+    The regular stage keeps this work in-process for local execution. Cloud
+    execution calls this seam from its CPU tail so the short-lived L4 only
+    carries CTranslate2 Whisper inference. The operation is idempotent: a
+    resumed task reuses an aligned artifact that already contains referee
+    metadata.
+    """
+
+    if qwen_verify not in {"auto", "on", "off"}:
+        raise ValueError(f"unsupported qwen verification mode: {qwen_verify}")
+    source = Path(input_path).expanduser().resolve()
+    destination = Path(aligned_path).expanduser().resolve()
+    payload = json.loads(destination.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("aligned JSON root must be an object")
+    metadata = payload.setdefault("metadata", {})
+    if not isinstance(metadata, dict):
+        raise RuntimeError("aligned JSON metadata must be an object")
+    align_meta = metadata.setdefault("asr_align", {})
+    if not isinstance(align_meta, dict):
+        raise RuntimeError("aligned JSON ASR metadata must be an object")
+    if "qwen_verify" in align_meta or qwen_verify == "off":
+        return destination
+
+    try:
+        from transformers import AutoModelForMultimodalLM  # noqa: F401
+
+        from ..verification import qwen_referee
+    except Exception as exc:
+        if qwen_verify == "on":
+            raise RuntimeError(
+                "Missing dependency for Qwen verification finalization"
+            ) from exc
+        current_reporter().warning(
+            "qwen-verify-unavailable",
+            "transformers 5.x not available; skipping second-model "
+            "verification evidence.",
+            impact="少一层校验证据",
+        )
+        return destination
+
+    segments = payload.get("segments")
+    if not isinstance(segments, list) or not all(
+        isinstance(item, dict) for item in segments
+    ):
+        raise RuntimeError("aligned JSON segments must be a list of objects")
+    vad_timeline = payload.get("vad_timeline") or {}
+    if not isinstance(vad_timeline, dict):
+        raise RuntimeError("aligned JSON VAD timeline must be an object")
+    intervals = vad_timeline.get("intervals") or []
+    if not isinstance(intervals, list) or not all(
+        isinstance(item, dict) for item in intervals
+    ):
+        raise RuntimeError("aligned JSON VAD intervals must be a list of objects")
+
+    started = time.perf_counter()
+    active_referee = referee or qwen_referee.QwenReferee(device=device)
+    try:
+        verified, verify_stats = qwen_referee.apply_verification(
+            segments,
+            vad_intervals=intervals,
+            audio_path=str(source),
+            referee=active_referee,
+        )
+    finally:
+        active_referee.close()
+    elapsed = time.perf_counter() - started
+    payload["segments"] = verified
+    align_meta["qwen_verify"] = verify_stats
+    timing = align_meta.setdefault("timing", {})
+    if not isinstance(timing, dict):
+        raise RuntimeError("aligned JSON timing metadata must be an object")
+    timing["qwen_verify_sec"] = round(elapsed, 3)
+    timing["hybrid_total_sec"] = round(
+        float(timing.get("total_sec") or 0.0) + elapsed,
+        3,
+    )
+    align_meta["qwen_execution"] = {"device": device, "split_from_whisper": True}
+
+    temporary = destination.with_name(f".{destination.name}.qwen-part")
+    temporary.unlink(missing_ok=True)
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    current_reporter().debug(
+        "qwen finalize timing",
+        {
+            "device": device,
+            "elapsed_sec": f"{elapsed:.3f}",
+            "suspects": verify_stats.get("suspects", 0),
+            "gaps": verify_stats.get("gaps_probed", 0),
+        },
+    )
+    return destination
+
+
 def annotate_segments_with_vad_energy(
     segments: list[dict[str, object]],
     energy_track: vad_energy.VadEnergyTrack,
