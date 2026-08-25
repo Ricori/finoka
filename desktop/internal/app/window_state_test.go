@@ -47,7 +47,7 @@ func TestEditorWindowStartsInSavedDarkTheme(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Save(map[string]any{"theme": "dark"}); err != nil {
+	if _, err := store.Save(map[string]any{"editorTheme": "dark"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,6 +58,22 @@ func TestEditorWindowStartsInSavedDarkTheme(t *testing.T) {
 	target, err := url.Parse(options.URL)
 	if err != nil || target.Query().Get("theme") != "dark" {
 		t.Fatalf("window URL = %q, want dark theme query", options.URL)
+	}
+}
+
+func TestWindowThemesUseSeparatePreferences(t *testing.T) {
+	store, err := preferences.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Save(map[string]any{"homeTheme": "dark"}); err != nil {
+		t.Fatal(err)
+	}
+
+	home := applyWindowTheme(store, "home", application.WebviewWindowOptions{URL: "/index.html"})
+	editor := applyWindowTheme(store, "editor", application.WebviewWindowOptions{URL: "/editor.html"})
+	if home.Windows.Theme != application.Dark || editor.Windows.Theme != application.Light {
+		t.Fatalf("window themes = %v / %v, want dark / light", home.Windows.Theme, editor.Windows.Theme)
 	}
 }
 

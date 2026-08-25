@@ -132,7 +132,6 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
               <label>原始语言<CustomSelect value={request.language} options={languageOptions.map(([value, label]) => ({ value, label }))} onChange={(language) => setRequest((current) => ({ ...current, language }))} /></label>
               {mode === "local" && <label>计算设备<CustomSelect value={request.device} options={devices.length > 0 ? devices.map((device) => ({ value: device.id, label: `${device.name} · ${Math.round(device.memory_mb / 1024)} GB` })) : [{ value: "cuda", label: "自动选择 NVIDIA GPU" }]} onChange={(device) => setRequest((current) => ({ ...current, device }))} /></label>}
               {mode === "local" && <label>显存预算<CustomSelect value={request.gpu_budget_gb} options={([4, 8, 12, 16] as const).map((value) => ({ value, label: `${value} GB` }))} onChange={(gpu_budget_gb) => setRequest((current) => ({ ...current, gpu_budget_gb }))} /></label>}
-              {mode === "local" && <label>Vocal 分离<CustomSelect value={request.vocal_profile} options={[{ value: "quality", label: "质量优先 · 44.1 kHz" }, { value: "cost", label: "成本优先 · 16 kHz" }]} onChange={(vocal_profile) => setRequest((current) => ({ ...current, vocal_profile }))} /></label>}
             </section>
 
             {finalOutput && <>

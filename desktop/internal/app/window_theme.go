@@ -10,8 +10,12 @@ import (
 // applyWindowTheme keeps the native window background and the webview's first
 // render on the saved theme. The frontend reads the query value synchronously,
 // before its stylesheet or React tree can paint.
-func applyWindowTheme(store *preferences.Service, options application.WebviewWindowOptions) application.WebviewWindowOptions {
-	theme := store.Get().Theme
+func applyWindowTheme(store *preferences.Service, kind string, options application.WebviewWindowOptions) application.WebviewWindowOptions {
+	state := store.Get()
+	theme := state.HomeTheme
+	if kind == "editor" {
+		theme = state.EditorTheme
+	}
 	if theme == "dark" {
 		options.BackgroundColour = application.NewRGB(23, 27, 42)
 		options.Windows.Theme = application.Dark

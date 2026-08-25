@@ -94,7 +94,7 @@ func Run(assets fs.FS) error {
 		},
 		Windows: application.WindowsOptions{WebviewUserDataPath: filepath.Join(dataDirectory, "webview")},
 	})
-	homeOptions := applyWindowOptions(preferencesService, "home", applyWindowTheme(preferencesService, application.WebviewWindowOptions{
+	homeOptions := applyWindowOptions(preferencesService, "home", applyWindowTheme(preferencesService, "home", application.WebviewWindowOptions{
 		Name:            "home",
 		Title:           "Finoka",
 		Width:           1180,

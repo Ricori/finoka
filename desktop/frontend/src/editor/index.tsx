@@ -21,7 +21,7 @@ function EditorWindow() {
     const id = new URLSearchParams(window.location.search).get("id") ?? "";
     Promise.all([mediaLibrary.get(id), desktopPreferences.get()])
       .then(([entry, preferences]) => {
-        const nextTheme = preferences.theme === "light" ? "light" : "dark";
+        const nextTheme = preferences.editorTheme === "dark" ? "dark" : "light";
         // 在挂载编辑器前同步落主题，隐藏窗口首次显示时就已经是最终配色。
         applyTheme(nextTheme);
         setMedia(entry);
@@ -46,7 +46,7 @@ function EditorWindow() {
   const toggleTheme = useCallback(() => {
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
-      void desktopPreferences.save({ theme: next }).catch(() => undefined);
+      void desktopPreferences.save({ editorTheme: next }).catch(() => undefined);
       return next;
     });
   }, []);

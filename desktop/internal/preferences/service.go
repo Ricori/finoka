@@ -10,7 +10,8 @@ import (
 
 type State struct {
 	Schema           int                     `json:"schema"`
-	Theme            string                  `json:"theme"`
+	HomeTheme        string                  `json:"homeTheme"`
+	EditorTheme      string                  `json:"editorTheme"`
 	SidebarCollapsed bool                    `json:"sidebarCollapsed"`
 	LibraryView      string                  `json:"libraryView"`
 	Bounds           map[string]WindowBounds `json:"bounds"`
@@ -39,7 +40,7 @@ func New(dataDirectory string) (*Service, error) {
 	}
 	service := &Service{
 		path: filepath.Join(root, "preferences.json"),
-		data: State{Schema: 1, Theme: "light", LibraryView: "grid", Bounds: map[string]WindowBounds{}},
+		data: State{Schema: 2, HomeTheme: "light", EditorTheme: "light", LibraryView: "grid", Bounds: map[string]WindowBounds{}},
 	}
 	if err := service.load(); err != nil {
 		return nil, err
@@ -60,12 +61,19 @@ func (s *Service) Save(patch map[string]any) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	next := s.data
-	if value, exists := patch["theme"]; exists {
+	if value, exists := patch["homeTheme"]; exists {
 		theme, ok := value.(string)
 		if !ok || (theme != "dark" && theme != "light") {
-			return s.data, errors.New("theme must be dark or light")
+			return s.data, errors.New("homeTheme must be dark or light")
 		}
-		next.Theme = theme
+		next.HomeTheme = theme
+	}
+	if value, exists := patch["editorTheme"]; exists {
+		theme, ok := value.(string)
+		if !ok || (theme != "dark" && theme != "light") {
+			return s.data, errors.New("editorTheme must be dark or light")
+		}
+		next.EditorTheme = theme
 	}
 	if value, exists := patch["sidebarCollapsed"]; exists {
 		collapsed, ok := value.(bool)
@@ -143,13 +151,16 @@ func (s *Service) load() error {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return err
 	}
-	if state.Theme != "dark" && state.Theme != "light" {
-		state.Theme = "light"
+	if state.HomeTheme != "dark" && state.HomeTheme != "light" {
+		state.HomeTheme = "light"
+	}
+	if state.EditorTheme != "dark" && state.EditorTheme != "light" {
+		state.EditorTheme = "light"
 	}
 	if state.LibraryView != "grid" && state.LibraryView != "list" {
 		state.LibraryView = "grid"
 	}
-	state.Schema = 1
+	state.Schema = 2
 	if state.Bounds == nil {
 		state.Bounds = map[string]WindowBounds{}
 	}

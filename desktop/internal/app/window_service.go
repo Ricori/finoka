@@ -116,7 +116,7 @@ func (s *WindowService) handleEditorReady(event *application.CustomEvent) {
 }
 
 func editorWindowOptions(store *preferences.Service, id, title string) application.WebviewWindowOptions {
-	return applyWindowOptions(store, "editor", applyWindowTheme(store, application.WebviewWindowOptions{
+	return applyWindowOptions(store, "editor", applyWindowTheme(store, "editor", application.WebviewWindowOptions{
 		Name:            "editor",
 		Title:           "Finoka · " + title,
 		Width:           1440,

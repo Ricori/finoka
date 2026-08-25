@@ -1,8 +1,8 @@
 {
   "name": "finoka-desktop",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
+  "author": "Takamichika",
   "scripts": {
     "dev": "vite",
     "build:dev": "vite build --minify false --mode development",

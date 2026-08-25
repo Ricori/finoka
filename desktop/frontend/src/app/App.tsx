@@ -117,7 +117,7 @@ export default function App() {
 
   useEffect(() => {
     void desktopPreferences.get().then((value) => {
-      setTheme(value.theme === "light" ? "light" : "dark");
+      setTheme(value.homeTheme === "dark" ? "dark" : "light");
       setSidebarCollapsed(value.sidebarCollapsed);
       setViewMode(value.libraryView === "list" ? "list" : "grid");
       setTaskHistory(parseTaskHistory(value.taskHistory));
@@ -128,8 +128,8 @@ export default function App() {
 
   useEffect(() => {
     applyTheme(theme);
-    if (preferencesHydrated.current) void desktopPreferences.save({ theme }).catch(() => undefined);
-  }, [section, theme]);
+    if (preferencesHydrated.current) void desktopPreferences.save({ homeTheme: theme }).catch(() => undefined);
+  }, [theme]);
 
   useEffect(() => {
     if (preferencesHydrated.current) void desktopPreferences.save({ sidebarCollapsed }).catch(() => undefined);
@@ -318,7 +318,7 @@ export default function App() {
   useEffect(() => Events.On("home:refresh", () => {
     void loadLibrary();
     void desktopPreferences.get().then((value) => {
-      setTheme(value.theme === "light" ? "light" : "dark");
+      setTheme(value.homeTheme === "dark" ? "dark" : "light");
     }).catch(() => undefined);
   }), [loadLibrary]);
 

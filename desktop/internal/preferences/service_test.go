@@ -14,8 +14,8 @@ func TestPreferencesPersistValidatedPartialUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := []any{map[string]any{"taskId": "task-1", "provider": "local"}}
-	updated, err := service.Save(map[string]any{"theme": "light", "sidebarCollapsed": true, "taskHistory": history})
-	if err != nil || updated.Theme != "light" || !updated.SidebarCollapsed || updated.LibraryView != "grid" {
+	updated, err := service.Save(map[string]any{"homeTheme": "dark", "editorTheme": "light", "sidebarCollapsed": true, "taskHistory": history})
+	if err != nil || updated.HomeTheme != "dark" || updated.EditorTheme != "light" || !updated.SidebarCollapsed || updated.LibraryView != "grid" {
 		t.Fatalf("updated = %#v, %v", updated, err)
 	}
 	if len(updated.TaskHistory) != 1 || updated.TaskHistory[0]["taskId"] != "task-1" {
@@ -34,12 +34,34 @@ func TestPreferencesPersistValidatedPartialUpdates(t *testing.T) {
 	}
 }
 
-func TestPreferencesDefaultToLightTheme(t *testing.T) {
+func TestPreferencesDefaultBothWindowsToLightTheme(t *testing.T) {
 	service, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := service.Get().Theme; got != "light" {
-		t.Fatalf("theme = %q, want light", got)
+	state := service.Get()
+	if state.HomeTheme != "light" || state.EditorTheme != "light" {
+		t.Fatalf("themes = %q / %q, want light / light", state.HomeTheme, state.EditorTheme)
+	}
+}
+
+func TestPreferencesSaveWindowThemesIndependently(t *testing.T) {
+	service, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := service.Save(map[string]any{"editorTheme": "dark"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.HomeTheme != "light" || state.EditorTheme != "dark" {
+		t.Fatalf("themes = %q / %q, want light / dark", state.HomeTheme, state.EditorTheme)
+	}
+	state, err = service.Save(map[string]any{"homeTheme": "dark"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.HomeTheme != "dark" || state.EditorTheme != "dark" {
+		t.Fatalf("themes = %q / %q, want dark / dark", state.HomeTheme, state.EditorTheme)
 	}
 }

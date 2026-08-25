@@ -3,7 +3,8 @@
 
 export interface State {
     "schema": number;
-    "theme": string;
+    "homeTheme": string;
+    "editorTheme": string;
     "sidebarCollapsed": boolean;
     "libraryView": string;
     "bounds": { [_ in string]?: WindowBounds } | null;
