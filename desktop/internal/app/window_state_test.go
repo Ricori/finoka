@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/Ricori/finoka/desktop/internal/preferences"
@@ -31,6 +32,32 @@ func TestEditorWindowDefaultsToCenteredNormalSize(t *testing.T) {
 	}
 	if options.Mac.InvisibleTitleBarHeight != 48 {
 		t.Fatalf("macOS draggable titlebar height = %d, want 48", options.Mac.InvisibleTitleBarHeight)
+	}
+	if options.BackgroundColour != application.NewRGB(247, 245, 239) || options.Windows.Theme != application.Light {
+		t.Fatalf("default window theme = %#v / %v, want light", options.BackgroundColour, options.Windows.Theme)
+	}
+	target, err := url.Parse(options.URL)
+	if err != nil || target.Query().Get("theme") != "light" {
+		t.Fatalf("window URL = %q, want light theme query", options.URL)
+	}
+}
+
+func TestEditorWindowStartsInSavedDarkTheme(t *testing.T) {
+	store, err := preferences.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Save(map[string]any{"theme": "dark"}); err != nil {
+		t.Fatal(err)
+	}
+
+	options := editorWindowOptions(store, "fixture", "Fixture")
+	if options.BackgroundColour != application.NewRGB(23, 27, 42) || options.Windows.Theme != application.Dark {
+		t.Fatalf("saved window theme = %#v / %v, want dark", options.BackgroundColour, options.Windows.Theme)
+	}
+	target, err := url.Parse(options.URL)
+	if err != nil || target.Query().Get("theme") != "dark" {
+		t.Fatalf("window URL = %q, want dark theme query", options.URL)
 	}
 }
 

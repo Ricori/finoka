@@ -1372,6 +1372,12 @@ dd {
   font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Microsoft YaHei UI", "PingFang SC", sans-serif;
 }
 
+:root.light {
+  color-scheme: light;
+  color: #2f2b27;
+  background: #f7f5ef;
+}
+
 body.light {
   color-scheme: light;
   --bg: #f7f5ef;

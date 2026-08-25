@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Events } from "@wailsio/runtime";
 import type { Theme } from "../app/types.ts";
+import { applyTheme, initialTheme } from "../app/theme.ts";
 import { mediaLibrary } from "../bridge/library.ts";
 import type { MediaEntry } from "../bridge/library.ts";
 import { desktopPreferences } from "../bridge/preferences.ts";
@@ -13,7 +14,7 @@ import "./Editor.css";
 
 function EditorWindow() {
   const [media, setMedia] = useState<MediaEntry | null>(null);
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -22,9 +23,7 @@ function EditorWindow() {
       .then(([entry, preferences]) => {
         const nextTheme = preferences.theme === "light" ? "light" : "dark";
         // 在挂载编辑器前同步落主题，隐藏窗口首次显示时就已经是最终配色。
-        document.body.classList.toggle("light", nextTheme === "light");
-        const color = nextTheme === "light" ? "#f7f5ef" : "#171b2a";
-        document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", color);
+        applyTheme(nextTheme);
         setMedia(entry);
         setTheme(nextTheme);
       })
@@ -39,9 +38,7 @@ function EditorWindow() {
   }, [error]);
 
   useEffect(() => {
-    document.body.classList.toggle("light", theme === "light");
-    const color = theme === "light" ? "#f7f5ef" : "#171b2a";
-    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", color);
+    applyTheme(theme);
   }, [theme]);
 
   useEffect(() => Events.On("editor:request-close", () => requestClose()), []);

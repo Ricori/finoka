@@ -33,3 +33,13 @@ func TestPreferencesPersistValidatedPartialUpdates(t *testing.T) {
 		t.Fatalf("preferences permissions = %v, %v", info.Mode().Perm(), err)
 	}
 }
+
+func TestPreferencesDefaultToLightTheme(t *testing.T) {
+	service, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := service.Get().Theme; got != "light" {
+		t.Fatalf("theme = %q, want light", got)
+	}
+}

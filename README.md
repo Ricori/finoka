@@ -10,10 +10,10 @@ EditDocument。Wails/React 已包含侧边栏、本地/云端 Provider 切换、
 Key 登录与媒体库合并、自动字幕同步，以及 JASSUB 预览和 SRT/ASS/内嵌视频导出。
 
 独立 `modal_backend` 只运行同版本 FineSub：桌面仅提取并上传最长 2 小时的 AAC 音频，
-后端复用旧 VOD 的 gz/codeyu OpenAI 兼容中转，以 `gpt-5.6-luna` 进行纯文本纠错/翻译，
+后端复用旧 VOD 的 OpenAI 兼容，以 `gpt-5.6-luna` 进行纯文本纠错/翻译，
 并固定关闭网页检索；同时保留 Key
 次数/并发限制、字幕库、任务事件、取消/继续和产物下载。当前剩余发布门槛是
-需要外部基础设施的验收：Windows NVIDIA 真机完整媒体、Modal L4 部署及抢占/取消演练。
+需要外部基础设施的验收：Windows NVIDIA 真机完整媒体、L4 部署及抢占/取消演练。
 
 ## 已确定的方向
 
@@ -52,8 +52,8 @@ vendor 文件。
 
 ## 桌面开发与打包
 
-桌面工程使用 Wails 3 与 Taskfile 统一启动和打包。Wails CLI 固定跟随 `desktop/go.mod`，
-Taskfile 通过 `go run` 调用，因此无需另外安装全局 `wails3`。
+桌面工程使用 Wails 3 与 Taskfile 统一启动和打包。Wails Go 模块、CLI 与前端 runtime
+固定为同一发行版本；Taskfile 通过 Go tool dependency 调用，因此无需另外安装全局 `wails3`。
 
 ```bash
 cd desktop

@@ -27,6 +27,7 @@ import { SettingsPage } from "../pages/SettingsPage.tsx";
 import { TasksPage } from "../pages/TasksPage.tsx";
 import { LibraryPage } from "../pages/LibraryPage.tsx";
 import { parseTaskHistory } from "./format.ts";
+import { applyTheme, initialTheme } from "./theme.ts";
 import type { DialogState, ExecutionMode, LibraryFilter, LibraryItem, LoadState, NavigationSection, Section, SortMode, TaskHistoryEntry, Theme, ViewMode } from "./types.ts";
 import { activeStates, taskHistoryLimit } from "./types.ts";
 
@@ -57,7 +58,7 @@ export default function App() {
   const controller = executionMode === "local" ? localController : cloudController;
   const [section, setSection] = useState<Section>("library");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("recent");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -126,7 +127,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.body.classList.toggle("light", theme === "light");
+    applyTheme(theme);
     if (preferencesHydrated.current) void desktopPreferences.save({ theme }).catch(() => undefined);
   }, [section, theme]);
 

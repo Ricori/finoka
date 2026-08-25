@@ -6,7 +6,7 @@ vars:
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
   GOOS: '{{.GOOS | default OS}}'
-  WAILS: 'go run github.com/wailsapp/wails/v3/cmd/wails3'
+  WAILS: 'go tool wails3'
 
 includes:
   common: ./build/Taskfile.yml

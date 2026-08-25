@@ -11,7 +11,7 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@wailsio/runtime": "3.0.0-beta.5",
+    "@wailsio/runtime": "3.0.0-beta.12",
     "jassub": "2.5.7",
     "react": "19.2.8",
     "react-dom": "19.2.8"

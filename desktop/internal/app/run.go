@@ -94,23 +94,21 @@ func Run(assets fs.FS) error {
 		},
 		Windows: application.WindowsOptions{WebviewUserDataPath: filepath.Join(dataDirectory, "webview")},
 	})
-	homeOptions := applyWindowOptions(preferencesService, "home", application.WebviewWindowOptions{
-		Name:             "home",
-		Title:            "Finoka",
-		Width:            1180,
-		Height:           760,
-		MinWidth:         960,
-		MinHeight:        620,
-		InitialPosition:  application.WindowCentered,
-		BackgroundColour: application.NewRGB(12, 17, 25),
-		URL:              "/index.html",
-		EnableFileDrop:   true,
-		Frameless:        runtime.GOOS == "windows",
+	homeOptions := applyWindowOptions(preferencesService, "home", applyWindowTheme(preferencesService, application.WebviewWindowOptions{
+		Name:            "home",
+		Title:           "Finoka",
+		Width:           1180,
+		Height:          760,
+		MinWidth:        960,
+		MinHeight:       620,
+		InitialPosition: application.WindowCentered,
+		URL:             "/index.html",
+		EnableFileDrop:  true,
+		Frameless:       runtime.GOOS == "windows",
 		Windows: application.WindowsWindow{
-			Theme:                  application.Dark,
 			NonClientRegionSupport: true,
 		},
-	})
+	}))
 	homeOptions, deferredState := deferWindowStart(homeOptions)
 	home := applicationInstance.Window.NewWithOptions(homeOptions)
 	windowService.attach(applicationInstance, home)

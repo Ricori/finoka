@@ -1,12 +1,20 @@
 <!doctype html>
-<html lang="zh-CN" class="editor-page">
+<html lang="zh-CN" class="editor-page light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#171b2a" />
+    <meta name="theme-color" content="#f7f5ef" />
     <title>Finoka · 字幕编辑器</title>
   </head>
-  <body>
+  <body class="light">
+    <script>
+      (() => {
+        const dark = new URLSearchParams(location.search).get("theme") === "dark";
+        document.documentElement.classList.toggle("light", !dark);
+        document.body.classList.toggle("light", !dark);
+        document.querySelector('meta[name="theme-color"]').content = dark ? "#171b2a" : "#f7f5ef";
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/editor/index.tsx"></script>
   </body>

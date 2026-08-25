@@ -17,7 +17,7 @@ let leaving = false;
 export const editorSession = createStore<EditorSession & { theme: Theme }>({
   media: null,
   document: null,
-  theme: "dark",
+  theme: "light",
   onClose: noop,
   onSaved: noop,
   toggleTheme: noop,

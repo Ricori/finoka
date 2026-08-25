@@ -116,30 +116,28 @@ func (s *WindowService) handleEditorReady(event *application.CustomEvent) {
 }
 
 func editorWindowOptions(store *preferences.Service, id, title string) application.WebviewWindowOptions {
-	return applyWindowOptions(store, "editor", application.WebviewWindowOptions{
-		Name:             "editor",
-		Title:            "Finoka · " + title,
-		Width:            1440,
-		Height:           900,
-		MinWidth:         960,
-		MinHeight:        620,
-		InitialPosition:  application.WindowCentered,
-		StartState:       application.WindowStateNormal,
-		Hidden:           true,
-		BackgroundColour: application.NewRGB(23, 27, 42),
-		URL:              "/editor.html?id=" + url.QueryEscape(id),
-		Frameless:        runtime.GOOS == "windows",
+	return applyWindowOptions(store, "editor", applyWindowTheme(store, application.WebviewWindowOptions{
+		Name:            "editor",
+		Title:           "Finoka · " + title,
+		Width:           1440,
+		Height:          900,
+		MinWidth:        960,
+		MinHeight:       620,
+		InitialPosition: application.WindowCentered,
+		StartState:      application.WindowStateNormal,
+		Hidden:          true,
+		URL:             "/editor.html?id=" + url.QueryEscape(id),
+		Frameless:       runtime.GOOS == "windows",
 		Mac: application.MacWindow{
 			TitleBar:                application.MacTitleBarHiddenInsetUnified,
 			InvisibleTitleBarHeight: 48,
 			TabbingMode:             application.MacWindowTabbingModeDisallowed,
 		},
 		Windows: application.WindowsWindow{
-			Theme:                      application.Dark,
 			NonClientRegionSupport:     true,
 			WebView2CompositionHosting: true,
 		},
-	})
+	}))
 }
 
 // CloseEditor is called only after the editor has resolved its unsaved state.
