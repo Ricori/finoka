@@ -114,7 +114,7 @@ func TestLoginLibraryAndArtifactSync(t *testing.T) {
 		Artifacts: map[string]struct {
 			URI string `json:"uri"`
 		}{
-			"final_srt": {URI: "file://" + filepath.ToSlash(artifactPath)},
+			"final_srt": {URI: localFileURI(artifactPath)},
 		},
 	}}
 	service, err := New(root, provider)
@@ -250,7 +250,7 @@ func TestLoginMergesExistingLocalDocumentsAndSkipsRemoteFingerprints(t *testing.
 		TaskID: taskID, EngineCommit: "commit",
 		Artifacts: map[string]struct {
 			URI string `json:"uri"`
-		}{"final_srt": {URI: "file://" + filepath.ToSlash(artifactPath)}},
+		}{"final_srt": {URI: localFileURI(artifactPath)}},
 	}
 	documentRoot := filepath.Join(root, "documents", localID)
 	if err := os.MkdirAll(documentRoot, 0o755); err != nil {
@@ -346,7 +346,7 @@ func TestRealModalLoginMergesAnIsolatedLocalLibrary(t *testing.T) {
 		TaskID: taskID, EngineCommit: "modal-integration",
 		Artifacts: map[string]struct {
 			URI string `json:"uri"`
-		}{"final_srt": {URI: "file://" + filepath.ToSlash(artifactPath)}},
+		}{"final_srt": {URI: localFileURI(artifactPath)}},
 	}
 	documentRoot := filepath.Join(root, "documents", localID)
 	if err := os.MkdirAll(documentRoot, 0o755); err != nil {

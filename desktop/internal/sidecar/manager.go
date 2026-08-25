@@ -248,8 +248,17 @@ func (m *Manager) Stop(ctx context.Context) error {
 	if process == nil {
 		return nil
 	}
-	if err := terminateProcessTree(process.cmd); err != nil {
-		return fmt.Errorf("terminate sidecar: %w", err)
+	terminateErr := terminateProcessTree(process.cmd)
+	if terminateErr != nil {
+		// Windows may report a taskkill/TerminateProcess error after the child
+		// has already exited. Let the process waiter settle that race before
+		// treating termination as failed.
+		select {
+		case <-process.done:
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("terminate sidecar: %w", errors.Join(terminateErr, ctx.Err()))
+		}
 	}
 	select {
 	case <-process.done:

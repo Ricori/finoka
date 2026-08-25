@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# FineSub snapshots and their patch stack are verified byte-for-byte. Keep Git
+# from rewriting line endings on Windows runners.
+third_party/finesub/** -text
+patches/finesub/** -text

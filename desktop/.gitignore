@@ -2,7 +2,6 @@
 .cache
 .env.release
 bin
-frontend/dist
 frontend/node_modules
 scripts/node_modules
 *.syso

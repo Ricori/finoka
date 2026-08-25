@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestPreferencesPersistValidatedPartialUpdates(t *testing.T) {
 		t.Fatal("invalid view was accepted")
 	}
 	info, err := os.Stat(filepath.Join(root, "preferences.json"))
-	if err != nil || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0) {
 		t.Fatalf("preferences permissions = %v, %v", info.Mode().Perm(), err)
 	}
 }
