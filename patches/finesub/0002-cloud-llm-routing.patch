@@ -10,10 +10,10 @@ index 6789f7f..57db410 100644
 +++ b/src/finesub/llm/knowledge/update.py
 @@ -25,6 +25,7 @@ import sys
  from typing import Any, Dict, List, Mapping
- 
+
  from finesub.paths import is_linked_worktree
 +from finesub.execution import cloud_execution_enabled
- 
+
  from ..client import (
      GeminiPromptBlockedError,
 @@ -435,7 +436,19 @@ def run_knowledge_update(
@@ -34,7 +34,7 @@ index 6789f7f..57db410 100644
 +    else:
 +        knowledge_limits = planning_limits_for("knowledge", difficulty)
 +        knowledge_max_tokens = SESSION_OUTPUT_MAX_TOKENS
- 
+
      materials = build_knowledge_materials(
          stable_json=stable_json,
 @@ -654,7 +667,7 @@ def run_knowledge_update(
@@ -113,15 +113,15 @@ index d3f1fe3..7e4d534 100644
 @@ -14,6 +14,7 @@ from enum import Enum
  import math
  from typing import Dict, Mapping, Tuple
- 
+
 +from ...execution import cloud_execution_enabled
- 
+
  GEMINI_37_FLASH = "gemini/gemini-3.7-flash"
  GEMINI_36_FLASH = "gemini/gemini-3.6-flash"
 @@ -459,6 +460,29 @@ def planning_limits_for(
      )
- 
- 
+
+
 +def session_output_limit_for(
 +    task_group_id: str,
 +    difficulty: str = "quality",
@@ -147,7 +147,7 @@ index d3f1fe3..7e4d534 100644
 +
  def default_role_configs() -> Dict[LLMRole, RoleModelConfig]:
      """Role-indexed view over the default preset's ``high`` cells.
- 
+
 diff --git a/src/finesub/llm/search_loop.py b/src/finesub/llm/search_loop.py
 index d9fc190..0061628 100644
 --- a/src/finesub/llm/search_loop.py
@@ -162,7 +162,7 @@ index d9fc190..0061628 100644
      run_injection_ladder,
 @@ -384,6 +385,12 @@ def run_search_loop(
      """
- 
+
      max_rounds = max(1, int(max_rounds))
 +    search_loop_max_tokens = session_output_limit_for(
 +        "search_judge",

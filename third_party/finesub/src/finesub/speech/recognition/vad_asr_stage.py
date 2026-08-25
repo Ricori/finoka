@@ -614,8 +614,6 @@ def run_vad_asr(
             if vad_silero_assist:
                 from ..preprocessing import silero_ghost
 
-                # Rides along on the VAD's normalized blocks: the probabilities
-                # are ready by the time detect_segments returns.
                 collector = silero_ghost.SileroProbCollector(device)
 
             try:
@@ -630,8 +628,6 @@ def run_vad_asr(
                 raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
 
             if collector is not None:
-                # The probabilities were scored inside the VAD pass, so their
-                # cost sits in vad_sec; report it rather than hide it there.
                 timing["silero_probs_sec"] = collector.seconds
                 t_ghost = time.perf_counter()
                 raw_segments, assist_stats = silero_ghost.assist_segments(

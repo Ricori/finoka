@@ -31,12 +31,6 @@ class ResourceProfile:
     def ram_limit_bytes(self) -> int:
         return int(float(self.ram_budget_gb) * BYTES_PER_GIB)
 
-
-# The L4 batch-2 production probe raised peak VRAM from 2.26 to 3.41 GiB but
-# left the same 67-second block pipeline at 67.48 seconds. Keep one internal
-# file batch; larger GPU profiles gain throughput through independent outer
-# workers on long inputs instead of spending memory on an ineffective inner
-# batch for short inputs.
 RESOURCE_PROFILES = {
     budget: ResourceProfile(
         gpu_budget_gb=budget,

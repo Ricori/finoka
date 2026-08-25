@@ -1028,8 +1028,6 @@ def run_vocal_separation(
         use_amp: bool,
         accel_backend: str = "eager",
     ) -> _SharedSeparatorLease:
-        """Acquire the model while accounting for task-visible setup time."""
-
         nonlocal model_setup_sec
         started = time.perf_counter()
         try:

@@ -153,7 +153,7 @@ index b94bfb1..10e9fe4 100644
 @@ -12,6 +12,7 @@ import traceback
  from pathlib import Path
  from typing import Any, Mapping, NamedTuple, Optional
- 
+
 +from .execution import execution_profiled
  from .paths import resolve_logs_dir, resolve_name_output_path
  from .reporting import (
@@ -176,8 +176,8 @@ index b94bfb1..10e9fe4 100644
          "--gap",
 @@ -512,6 +522,7 @@ def _stage_record_for_current_run(
      return chosen
- 
- 
+
+
 +@execution_profiled
  def run_pipeline(
      input_path: str | Path,

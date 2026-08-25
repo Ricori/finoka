@@ -11,7 +11,7 @@ index 450fa84..fb257ac 100644
 @@ -13,6 +13,7 @@ from typing import Any, Iterable
  import numpy as np
  from faster_whisper.transcribe import WhisperModel, get_compression_ratio
- 
+
 +from ...execution_policy import refine_compute_type
  from .fw_refine import (
      AlignedSpan,
@@ -30,7 +30,7 @@ index 450fa84..fb257ac 100644
                  )
          except BaseException:
 diff --git a/src/finesub/speech/recognition/vad_asr_stage.py b/src/finesub/speech/recognition/vad_asr_stage.py
-index 2be0f05..3dd976d 100644
+index 2be0f05..b13f55d 100644
 --- a/src/finesub/speech/recognition/vad_asr_stage.py
 +++ b/src/finesub/speech/recognition/vad_asr_stage.py
 @@ -5,7 +5,9 @@ from __future__ import annotations
@@ -49,8 +49,8 @@ index 2be0f05..3dd976d 100644
  from ... import config as app_config
 +from ...execution import cloud_execution_enabled, execution_profiled
  from ...reporting import current_reporter, reporting_to, terminal_reporter
- 
- 
+
+
 +PREPARED_VAD_SCHEMA = 1
 +
 +
@@ -238,8 +238,8 @@ index 2be0f05..3dd976d 100644
      parser.add_argument("input", help="Path to vocal audio.")
 @@ -167,6 +352,122 @@ def write_aligned_json(
      )
- 
- 
+
+
 +@execution_profiled
 +def finalize_qwen_verification(
 +    input_path: str | Path,
@@ -361,8 +361,8 @@ index 2be0f05..3dd976d 100644
      energy_track: vad_energy.VadEnergyTrack,
 @@ -213,6 +514,7 @@ def resolve_split_params(
          raise ValueError(f"{exc} (from {source})") from exc
- 
- 
+
+
 +@execution_profiled
  def run_vad_asr(
      input_path: str | Path,
@@ -385,17 +385,13 @@ index 2be0f05..3dd976d 100644
      split_params = resolve_split_params(split_length_scale)
      input_path = Path(input_path).expanduser().resolve()
      if not input_path.exists():
-@@ -289,52 +595,73 @@ def run_vad_asr(
+@@ -289,52 +595,69 @@ def run_vad_asr(
                  },
              )
- 
+
 -        collector = None
 -        if vad_silero_assist:
 -            from ..preprocessing import silero_ghost
--
--            # Rides along on the VAD's normalized blocks: the probabilities are
--            # ready by the time detect_segments returns.
--            collector = silero_ghost.SileroProbCollector(device)
 +        if prepared_path is not None:
 +            prepared = _load_prepared_vad(input_path, prepared_path)
 +            raw_segments = list(prepared.get("raw_segments") or [])
@@ -414,11 +410,12 @@ index 2be0f05..3dd976d 100644
 +            collector = None
 +            if vad_silero_assist:
 +                from ..preprocessing import silero_ghost
-+
-+                # Rides along on the VAD's normalized blocks: the probabilities
-+                # are ready by the time detect_segments returns.
+
+-            # Rides along on the VAD's normalized blocks: the probabilities are
+-            # ready by the time detect_segments returns.
+-            collector = silero_ghost.SileroProbCollector(device)
 +                collector = silero_ghost.SileroProbCollector(device)
- 
+
 -        try:
 -            (
 -                raw_segments,
@@ -441,8 +438,6 @@ index 2be0f05..3dd976d 100644
 +                raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
 +
 +            if collector is not None:
-+                # The probabilities were scored inside the VAD pass, so their
-+                # cost sits in vad_sec; report it rather than hide it there.
 +                timing["silero_probs_sec"] = collector.seconds
 +                t_ghost = time.perf_counter()
 +                raw_segments, assist_stats = silero_ghost.assist_segments(
@@ -469,7 +464,7 @@ index 2be0f05..3dd976d 100644
 +                        "seams_restored": assist_stats["seams_restored"],
 +                    },
 +                )
- 
+
 -        if collector is not None:
 -            # The probabilities were scored inside the VAD pass, so their cost
 -            # sits in vad_sec; report it rather than let it hide there.
@@ -507,9 +502,9 @@ index c367663..b63c45a 100644
 --- a/src/finesub/speech/verification/qwen_referee.py
 +++ b/src/finesub/speech/verification/qwen_referee.py
 @@ -43,6 +43,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
- 
+
  import numpy as np
- 
+
 +from ...execution import cloud_execution_enabled
  from ...reporting import current_reporter
  from ...text import normalized_compact
@@ -517,7 +512,7 @@ index c367663..b63c45a 100644
 @@ -224,6 +225,13 @@ class QwenReferee:
              self._model = model
          return self._model
- 
+
 +    def warm(self, *, execution_profile: str | None = None) -> None:
 +        """Load processor and weights without running a transcription."""
 +
