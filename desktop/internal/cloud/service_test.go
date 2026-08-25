@@ -402,6 +402,20 @@ func TestArtifactPathCannotEscapeTaskRoot(t *testing.T) {
 	}
 }
 
+func TestWindowsFileURIPathDropsSlashBeforeDriveLetter(t *testing.T) {
+	tests := map[string]string{
+		"/C:/tasks/final.srt": "C:/tasks/final.srt",
+		"/d:/tasks/final.srt": "d:/tasks/final.srt",
+		"/tasks/final.srt":    "/tasks/final.srt",
+		"/1:/tasks/final.srt": "/1:/tasks/final.srt",
+	}
+	for input, expected := range tests {
+		if actual := windowsPathFromFileURI(input); actual != expected {
+			t.Errorf("windowsPathFromFileURI(%q) = %q, want %q", input, actual, expected)
+		}
+	}
+}
+
 func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "video.mp4")
