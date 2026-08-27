@@ -5,11 +5,30 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 import traceback
 from pathlib import Path
 from typing import Any, Mapping
+
+
+def _normalize_engine_device(device_value: Any) -> tuple[str, str | None]:
+    """Map TaskRequest device into (finesub_device, cuda_visible_devices).
+
+    FineSub's CLI and runtime contract accepts only 'cuda' or 'cpu'. Specific
+    GPU indexing is controlled by the CUDA_VISIBLE_DEVICES environment variable.
+    """
+    raw = str(device_value or "cuda").strip()
+    lowered = raw.lower()
+    if lowered.startswith("cuda:"):
+        gpu_index = lowered.split(":", 1)[1].strip()
+        if gpu_index.isdigit():
+            return "cuda", gpu_index
+        return "cuda", None
+    if lowered == "cpu":
+        return "cpu", None
+    return ("cuda" if lowered.startswith("cuda") else raw), None
 
 
 def emit(event_type: str, payload: Mapping[str, Any] | None = None) -> None:
@@ -60,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
         title = str(source.get("title") or Path(source["path"]).stem)
         output = args.task_dir / "workspace" / f"{title}.srt"
         output.parent.mkdir(parents=True, exist_ok=True)
+        engine_device, visible_devices = _normalize_engine_device(request.get("device"))
+        if visible_devices is not None and "CUDA_VISIBLE_DEVICES" not in os.environ:
+            os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
         from finesub.pipeline import run_pipeline
         from finesub.reporting import quieted_libraries, reporting_to
 
@@ -69,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_path=output,
                 stage=request["target"],
                 language=request.get("language", "ja"),
-                device=request.get("device", "cuda"),
+                device=engine_device,
                 gpu_budget_gb=int(request.get("gpu_budget_gb", 8)),
                 llm_media=correction.get("media", "audio"),
                 llm_retrieval=correction.get("retrieval", "local"),

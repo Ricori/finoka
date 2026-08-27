@@ -306,7 +306,13 @@ def validate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     if correction.get("media", "audio") not in {"text", "audio", "video"}:
         raise ProviderError("invalid_request", "correction.media must be text, audio, or video")
     request.setdefault("language", "ja")
-    request.setdefault("device", "cuda")
+    device = request.setdefault("device", "cuda")
+    if not isinstance(device, str):
+        raise ProviderError("invalid_request", "device must be a string")
+    device_norm = device.strip().lower()
+    if device_norm not in {"cuda", "cpu"}:
+        if not (device_norm.startswith("cuda:") and device_norm.split(":", 1)[1].strip().isdigit()):
+            raise ProviderError("invalid_request", f"unsupported device: {device!r}")
     request.setdefault("gpu_budget_gb", 8)
     # FineSub has one separator policy and the local worker no longer passes a
     # profile through to it, so this field survives only as a contract check:
@@ -647,6 +653,11 @@ class LocalProvider:
         # decode MSVC's GBK diagnostics as UTF-8 during AOT compilation.
         environment["PYTHONUTF8"] = "0"
         environment["PYTHONIOENCODING"] = "utf-8"
+        request_device = str(request.get("device") or "").strip().lower()
+        if request_device.startswith("cuda:"):
+            gpu_index = request_device.split(":", 1)[1].strip()
+            if gpu_index.isdigit():
+                environment["CUDA_VISIBLE_DEVICES"] = gpu_index
         if self._provisioner is not None:
             _prepare_msvc_environment(environment)
         with self._lock:

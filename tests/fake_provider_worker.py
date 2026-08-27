@@ -42,6 +42,7 @@ def main() -> int:
             {
                 "python_utf8": os.environ.get("PYTHONUTF8"),
                 "python_io_encoding": os.environ.get("PYTHONIOENCODING"),
+                "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
             },
         )
     if should_pause:

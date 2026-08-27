@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import types
@@ -61,6 +62,7 @@ class WorkerAdapterTests(unittest.TestCase):
             }
             output = io.StringIO()
             old_stdin = sys.stdin
+            old_cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
             try:
                 sys.stdin = io.StringIO(json.dumps(request) + "\n")
                 with contextlib.redirect_stdout(output):
@@ -76,6 +78,10 @@ class WorkerAdapterTests(unittest.TestCase):
                     )
             finally:
                 sys.stdin = old_stdin
+                if old_cuda_visible is not None:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = old_cuda_visible
+                else:
+                    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
                 for name, value in previous.items():
                     if value is None:
                         sys.modules.pop(name, None)
@@ -84,7 +90,7 @@ class WorkerAdapterTests(unittest.TestCase):
             self.assertEqual(result, 0)
             self.assertEqual(captured["input"], str(source))
             self.assertEqual(captured["stage"], "raw-srt")
-            self.assertEqual(captured["device"], "cuda:0")
+            self.assertEqual(captured["device"], "cuda")
             # No profile switch and no separator profile: the local worker
             # calls `run_pipeline` with upstream's own arguments, which is what
             # makes "local is unpatched upstream" checkable rather than a claim.
@@ -97,6 +103,13 @@ class WorkerAdapterTests(unittest.TestCase):
             self.assertEqual(manifest["engine_commit"], "2a320ede3f5c29e431a4525aab01d97945f349c2")
             self.assertEqual(set(manifest["artifacts"]), {"stable_json", "raw_srt"})
             self.assertEqual(len(manifest["artifacts"]["stable_json"]["sha256"]), 64)
+
+    def test_normalize_engine_device(self) -> None:
+        self.assertEqual(worker._normalize_engine_device("cuda:0"), ("cuda", "0"))
+        self.assertEqual(worker._normalize_engine_device("cuda:1"), ("cuda", "1"))
+        self.assertEqual(worker._normalize_engine_device("cuda"), ("cuda", None))
+        self.assertEqual(worker._normalize_engine_device("cpu"), ("cpu", None))
+        self.assertEqual(worker._normalize_engine_device(None), ("cuda", None))
 
 
 if __name__ == "__main__":

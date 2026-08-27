@@ -164,6 +164,32 @@ class LocalProviderTests(unittest.TestCase):
         self.assertEqual(logs[0]["payload"]["python_io_encoding"], "utf-8")
         provider.shutdown()
 
+    def test_worker_environment_sets_cuda_visible_devices(self) -> None:
+        provider = self.provider()
+        req = self.request("encoding-environment")
+        req["device"] = "cuda:0"
+        task = provider.start(req)
+        wait_state(provider, task["task_id"], {"completed"})
+        logs = [event for event in provider.events(task["task_id"])["events"] if event["type"] == "log"]
+        self.assertEqual(logs[0]["payload"]["cuda_visible_devices"], "0")
+        provider.shutdown()
+
+    def test_local_provider_validates_device_format(self) -> None:
+        provider = self.provider()
+        req = self.request()
+        req["device"] = "cuda:1"
+        task = provider.start(req)
+        self.assertIn(task["state"], {"queued", "running"})
+        wait_state(provider, task["task_id"], {"completed"})
+        provider.shutdown()
+
+        provider2 = self.provider()
+        invalid_req = self.request()
+        invalid_req["device"] = "cuda:abc"
+        with self.assertRaisesRegex(ProviderError, "unsupported device"):
+            provider2.start(invalid_req)
+        provider2.shutdown()
+
     def test_old_separator_unicode_probe_is_retried_once(self) -> None:
         accel = self.root / "models" / "audio-separator" / "accel"
         decode_probe = accel / "decode" / "probe.json"
