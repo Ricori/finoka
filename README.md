@@ -130,7 +130,6 @@ finoka/
 - 🏗️ **[系统架构与契约规范](docs/architecture.md)**：深入了解 Provider 执行协议、EditDocument 投影规则、云端同步契约与后端 API。
 - 🔌 **[Finoka Provider 接口规范](docs/provider-spec.md)**：自建执行后端的完整接口契约——数据模型、状态机、事件流、错误码、产物格式与一致性检查清单。
 - ⚙️ **[FineSub 引擎同步与构建规范](docs/engine.md)**：了解上游引擎同步白名单、补丁栈管理与 CTranslate2 构建规范。
-- ☁️ **[Modal 云端后端架构与运维](docs/modal-backend.md)**：五段式调度编排、Vocal 分离分档策略、AOTI 加速与部署运维命令。
 
 ---
 
