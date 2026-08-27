@@ -7,13 +7,11 @@
   <a href="https://wails.io/"><img src="https://img.shields.io/badge/Wails-v3-blue.svg" alt="Wails"></a>
   <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8.svg" alt="Go"></a>
   <a href="https://reactjs.org/"><img src="https://img.shields.io/badge/React-19-61DAFB.svg" alt="React"></a>
-  <a href="https://github.com/caca2331/finesub"><img src="https://img.shields.io/badge/Engine-FineSub-orange.svg" alt="FineSub"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License"></a>
 </div>
 
 <br>
 
-Finoka 是专为外语视频翻译与高质量字幕制作打造的桌面应用。项目深度整合了专业字幕编辑体验与现代转写算法流水线，兼具 Aegisub 的精准可控与剪映的直观便捷，支持**本地离线**与**云端**双模式无缝切换。
+Finoka 是专为外语视频翻译与高质量字幕制作打造的桌面应用。项目深度整合了高精度转写流水线与专业字幕编辑器，兼具 Aegisub 的精准可控与剪映的直观便捷，支持**本地离线**与**云端**双模式无缝切换。
 
 ---
 
@@ -82,13 +80,12 @@ task dev
 | `npm --prefix frontend run typecheck` | 前端 TypeScript 类型检查 |
 | `npm --prefix frontend run test` | 前端单元测试 |
 
-#### 算法引擎与云端命令 (项目根目录下)
+#### 算法引擎与云端命令
 | 命令 | 说明 |
 | :--- | :--- |
 | `python scripts/sync_finesub.py check` | 离线校验 FineSub 固定快照与补丁完整性 |
 | `python -m pytest -q` | 运行 Python 引擎契约、Projector 与文档存储测试 |
 | `python -m scripts.build_finesub_bundle` | 构建本地/云端通用的 Engine Bundle |
-| `modal deploy -m finoka_modal.app` | 部署生产环境 Modal 云端后端 |
 
 ---
 
@@ -102,7 +99,6 @@ finoka/
 │   ├── internal/app/         # Wails 核心服务、本地流媒体网关、缓存与更新
 │   └── frontend/             # React 19 前端工程（媒体库、JASSUB 编辑器、轨道视图）
 ├── src/finoka/               # Python 适配层、Artifact Projector 与 DocumentStore
-├── modal_backend/            # 独立 Modal 云端 GPU 后端与 CTranslate2 补丁
 ├── third_party/finesub/      # 固定 commit 的 FineSub 算法引擎快照（生成目录）
 ├── patches/finesub/          # 维护的 FineSub 专用补丁栈
 ├── scripts/                  # 引擎同步、构建与运维脚本
@@ -132,7 +128,7 @@ finoka/
 ## 📚 进阶架构与规范
 
 - 🏗️ **[系统架构与契约规范](docs/architecture.md)**：深入了解 Provider 执行协议、EditDocument 投影规则、云端同步契约与 Modal API。
-- ⚙️ **[FineSub 引擎同步与云端后端运维](docs/engine-and-cloud.md)**：了解上游引擎同步白名单、补丁栈管理、Vocal 采样率阶梯分档与 AOTI 加速策略。
+- ⚙️ **[FineSub 引擎同步与构建规范](docs/engine.md)**：了解上游引擎同步白名单、补丁栈管理与 CTranslate2 构建规范。
 
 ---
 

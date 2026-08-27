@@ -111,8 +111,8 @@ interface ExecutionProvider {
   "artifact_schema": 1,
   "engine": {
     "name": "finesub",
-    "version": "0.4.1",
-    "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2"
+    "version": "0.4.2",
+    "commit": "8a33092a40ab4d86872941155143fd91b84eaa56"
   },
   "features": {
     "raw_srt": true,
@@ -175,8 +175,8 @@ interface ExecutionProvider {
     "message": "正在转写"
   },
   "engine": {
-    "version": "0.4.1",
-    "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2"
+    "version": "0.4.2",
+    "commit": "8a33092a40ab4d86872941155143fd91b84eaa56"
   },
   "requested_capabilities": {},
   "effective_capabilities": {},
@@ -210,7 +210,7 @@ interface ExecutionProvider {
 {
   "schema": 1,
   "task_id": "task_abc123",
-  "engine_commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
+  "engine_commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
   "artifacts": {
     "stable_json": {
       "uri": "file:///.../video-stable.json",
@@ -299,7 +299,7 @@ interface Seg {
 
 ---
 
-## 6. Modal 云端 API 规范
+## 6. 云端 API 规范
 
 | 方法 | 路径 | 描述 | 配额影响 |
 | :--- | :--- | :--- | :--- |
