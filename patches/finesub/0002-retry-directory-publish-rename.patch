@@ -74,7 +74,7 @@ index 347da4c..03fa89f 100644
      elapsed = max(time.perf_counter() - started, 1e-6)
      progress(
 diff --git a/src/finesub_bootstrap/environment.py b/src/finesub_bootstrap/environment.py
-index 2e01a98..aa0b723 100644
+index 85e6778..7ada3e7 100644
 --- a/src/finesub_bootstrap/environment.py
 +++ b/src/finesub_bootstrap/environment.py
 @@ -14,7 +14,14 @@ import threading
@@ -109,7 +109,7 @@ index 2e01a98..aa0b723 100644
  
  #: How much of a failed install's output travels with the exception. Enough to
  #: show a person what happened, and to tell a dead mirror from a full disk.
-@@ -1109,19 +1119,7 @@ class RuntimeEnvironment:
+@@ -1116,19 +1126,7 @@ class RuntimeEnvironment:
      def _swap(source: Path, destination: Path) -> None:
          """Rename a directory, waiting out whoever is still holding it."""
  

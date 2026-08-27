@@ -22,7 +22,7 @@ Removal: Delete once upstream can run the VAD prefix and the referee as
 separate steps, or once Finoka stops splitting the stage across containers.
 
 diff --git a/src/finesub/speech/recognition/vad_asr_stage.py b/src/finesub/speech/recognition/vad_asr_stage.py
-index 2be0f05..787d973 100644
+index 55fe3e1..4bc6659 100644
 --- a/src/finesub/speech/recognition/vad_asr_stage.py
 +++ b/src/finesub/speech/recognition/vad_asr_stage.py
 @@ -5,7 +5,9 @@ from __future__ import annotations
@@ -228,7 +228,7 @@ index 2be0f05..787d973 100644
  def parse_args() -> argparse.Namespace:
      parser = argparse.ArgumentParser(description="Run VAD-energy + Whisper alignment.")
      parser.add_argument("input", help="Path to vocal audio.")
-@@ -167,6 +355,125 @@ def write_aligned_json(
+@@ -181,6 +369,125 @@ def write_aligned_json(
      )
  
  
@@ -354,15 +354,16 @@ index 2be0f05..787d973 100644
  def annotate_segments_with_vad_energy(
      segments: list[dict[str, object]],
      energy_track: vad_energy.VadEnergyTrack,
-@@ -226,6 +533,7 @@ def run_vad_asr(
+@@ -290,7 +597,8 @@ def run_vad_asr(
      qwen_verify: str = "auto",
+     lang_redecode: str = "auto",
      split_length_scale: float | None = None,
      run_metadata_path: str | Path | None = None,
 +    prepared_path: str | Path | None = None,
  ) -> Path:
      # Before anything else: an out-of-range knob must not surface after the
      # GPU work is already done.
-@@ -289,52 +597,72 @@ def run_vad_asr(
+@@ -356,52 +664,72 @@ def run_vad_asr(
                  },
              )
  
@@ -480,10 +481,10 @@ index 2be0f05..787d973 100644
              timing["total_sec"] = time.perf_counter() - t_start
              align_meta["timing"] = {
 diff --git a/src/finesub/speech/verification/qwen_referee.py b/src/finesub/speech/verification/qwen_referee.py
-index c367663..3597f9c 100644
+index 3ca3907..70c6ce8 100644
 --- a/src/finesub/speech/verification/qwen_referee.py
 +++ b/src/finesub/speech/verification/qwen_referee.py
-@@ -224,6 +224,16 @@ class QwenReferee:
+@@ -282,6 +282,16 @@ class QwenReferee:
              self._model = model
          return self._model
  

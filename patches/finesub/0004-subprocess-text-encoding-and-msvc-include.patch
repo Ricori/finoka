@@ -68,7 +68,7 @@ index 99268ab..7becb5a 100644
      except Exception:
          return {}
 diff --git a/src/finesub/speech/preprocessing/separator/separator_aoti.py b/src/finesub/speech/preprocessing/separator/separator_aoti.py
-index 8540d7e..b46e10e 100644
+index c7d2164..e98e9b5 100644
 --- a/src/finesub/speech/preprocessing/separator/separator_aoti.py
 +++ b/src/finesub/speech/preprocessing/separator/separator_aoti.py
 @@ -112,6 +112,13 @@ def _find_vcvars() -> Path | None:

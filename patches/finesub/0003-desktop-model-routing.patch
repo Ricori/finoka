@@ -14,10 +14,10 @@ Removal: Delete once upstream exposes an equivalent preferred-target overlay
 and reads GEMINI_BASE_URL for direct REST calls.
 
 diff --git a/src/finesub/llm/llm_runtime.py b/src/finesub/llm/llm_runtime.py
-index 44e87a9..04c0732 100644
+index 21abe29..6e2f4dd 100644
 --- a/src/finesub/llm/llm_runtime.py
 +++ b/src/finesub/llm/llm_runtime.py
-@@ -297,6 +297,7 @@ def _gemini_generate_content(
+@@ -344,6 +344,7 @@ def _gemini_generate_content(
      max_tokens: Optional[int],
      tools: Optional[List[Dict[str, Any]]],
      timeout: float,
@@ -25,7 +25,7 @@ index 44e87a9..04c0732 100644
  ) -> Dict[str, Any]:
      """Call the Gemini generateContent REST endpoint directly.
  
-@@ -305,7 +306,7 @@ def _gemini_generate_content(
+@@ -352,7 +353,7 @@ def _gemini_generate_content(
      this shape natively.
      """
      model_id = model.split("/", 1)[-1] if "/" in model else model
@@ -34,7 +34,7 @@ index 44e87a9..04c0732 100644
  
      contents, system_parts = _messages_to_gemini_body(messages)
      body: Dict[str, Any] = {"contents": contents}
-@@ -532,6 +533,7 @@ def chat_complete(
+@@ -637,6 +638,7 @@ def chat_complete(
                          max_tokens=max_tokens,
                          tools=_native_search_tools(native_search_tool) if native_search_tool else None,
                          timeout=LLM_API_TIMEOUT_SECONDS,
@@ -43,10 +43,10 @@ index 44e87a9..04c0732 100644
                  _record_api_attempt(
                      api_attempts,
 diff --git a/src/finesub/llm/routing/model_routes.py b/src/finesub/llm/routing/model_routes.py
-index 61f7cc9..b027ffe 100644
+index 65a584b..3f42853 100644
 --- a/src/finesub/llm/routing/model_routes.py
 +++ b/src/finesub/llm/routing/model_routes.py
-@@ -1017,6 +1017,77 @@ def load_model_routes(
+@@ -1081,6 +1081,77 @@ def load_model_routes(
              f"known: {sorted(presets)}"
          )
  

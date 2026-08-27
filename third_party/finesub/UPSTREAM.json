@@ -1,31 +1,31 @@
 {
-  "archive_sha256": "6b349f4d62bf3841b1b1f976d39e5bb5f213bc7ab1c8fbd01d5f942823e2d6a5",
-  "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
-  "content_sha256": "82865ba30203ee62f713f0732a0fa75abd557dbe979cc296975663c0168ba208",
-  "engine_bundle_id": "finesub-0.4.1+2a320ede3f5c",
-  "engine_version": "0.4.1",
-  "files_manifest_sha256": "48fc350c4923cfeb3c59037d20d466fa01cdf27ac538d0d1d1eeb2bde4fa26b9",
+  "archive_sha256": "c927e0f103d4a7cb9a8733a4e23c333bad6ecbb418d98aaa6dce8a383544cea8",
+  "commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
+  "content_sha256": "a470c9ca0b6784eaa6cf0b645c968decac7ffdc1dfc30681875364a08fa9028b",
+  "engine_bundle_id": "finesub-0.4.2+8a33092a40ab",
+  "engine_version": "0.4.2",
+  "files_manifest_sha256": "cc798be335dc4b20731790ccd7ccf8bbb98caad54f5949891d45f2452beda665",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
-      "sha256": "f98518edeacabe83a4a458f2d7d2336ad0cf1c5dce59ef0e86b1d6b95f890042"
+      "sha256": "e6c4ed438f3521d328454ce4b772f068596e5e3b1cd30e5f622d552ac957ab69"
     },
     {
       "path": "0002-retry-directory-publish-rename.patch",
-      "sha256": "abb14ae828348bbaae45381fd27f34af4fed3f12722b36a3109ebc3938146953"
+      "sha256": "e739706c7b8b5c5c7bfbf343c03de4366e9503d8e3f9c6a5fa497d80cbbf602a"
     },
     {
       "path": "0003-desktop-model-routing.patch",
-      "sha256": "7fa7f5cef3b9c370cbd6b747087629c76a27609fdc3ec6bbdf83245c2015e459"
+      "sha256": "beba1e400154331208ba0842d5bb82d2a383fff5408d7afe635bdf41edb98a79"
     },
     {
       "path": "0004-subprocess-text-encoding-and-msvc-include.patch",
-      "sha256": "5de6ea9b469efe353d8e87d88d2bcf87419bfa67e4e604002d89ea1433a80f7f"
+      "sha256": "95f8bf44d3c745e9ec0b35a1c8d6300348d7426fcf8e39003f401b91d209bff7"
     }
   ],
-  "ref": "v0.4.1",
+  "ref": "v0.4.2",
   "repository": "https://github.com/caca2331/finesub",
-  "runtime_manifest_sha256": "e3dc9def3282ea90fa4cb51398d96a6bb566799012a7ec2f13ca85bd42078a3a",
+  "runtime_manifest_sha256": "4c423f4a27cc45c3dc2eb57786f64b34a8652be662d274feb49f587d22815348",
   "sync_schema": 1,
-  "synced_at": "2026-08-25T05:45:38Z"
+  "synced_at": "2026-08-26T08:02:23Z"
 }

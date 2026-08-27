@@ -578,7 +578,9 @@ def load_packages(model_instance: Any, package_dir: Path) -> int:
 
     Raises on any mismatch. The caller treats that as "this machine cannot use
     the package" and continues eagerly -- refusing to run because an accelerator
-    is stale would be worse than running slowly.
+    is stale would be worse than running slowly. Transactional for that reason:
+    a runner that fails to load partway through undoes the ones already
+    installed, so "eager" is then true of the model and not just of the label.
     """
 
     manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -606,6 +608,9 @@ def load_packages(model_instance: Any, package_dir: Path) -> int:
     scratch = tempfile.TemporaryDirectory(prefix="separator_aoti_")
     model_run = model_instance.model_run
     installed = 0
+    # Every module whose forward has been replaced, in order. The original is
+    # the class method the instance attribute shadows, so the undo is a `del`.
+    replaced: list[torch.nn.Module] = []
 
     package_log = logging.getLogger("torch._inductor.package.package")
     previous_level = package_log.level
@@ -620,6 +625,7 @@ def load_packages(model_instance: Any, package_dir: Path) -> int:
             check_full_update=False,
             user_managed=True,
         )
+        replaced.append(target)
         target.forward = compiled
         installed += 1
 
@@ -634,6 +640,11 @@ def load_packages(model_instance: Any, package_dir: Path) -> int:
                     install(name, transformer, f"b{block_index}")
             else:
                 install(name, model_run.get_submodule(entry["module_path"]), "single")
+    except BaseException:
+        for target in reversed(replaced):
+            del target.forward
+        scratch.cleanup()
+        raise
     finally:
         package_log.setLevel(previous_level)
 
