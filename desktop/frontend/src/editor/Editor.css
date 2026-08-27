@@ -1012,7 +1012,7 @@
       height: 57px;
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: var(--line) transparent;
+      scrollbar-color: color-mix(in srgb, var(--text) 26%, transparent) transparent;
     }
 
     .professional-editor .textfield.lang-ja textarea,
@@ -1050,7 +1050,7 @@
     .professional-editor .seg-list {
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: var(--line) transparent;
+      scrollbar-color: color-mix(in srgb, var(--text) 26%, transparent) transparent;
     }
 
     .professional-editor .list-head {
@@ -1644,7 +1644,7 @@
       overflow-x: auto;
       overflow-y: hidden;
       scrollbar-width: thin;
-      scrollbar-color: var(--line) transparent;
+      scrollbar-color: color-mix(in srgb, var(--text) 26%, transparent) transparent;
       position: relative;
     }
 
@@ -1914,6 +1914,16 @@
   user-select: text;
 }
 
+/* Thin, theme-tinted scrollbars everywhere. scrollbar-color inherits from the
+   page element; scrollbar-width does not, hence the `*`. */
+.editor-page * {
+  scrollbar-width: thin;
+}
+
+.editor-page body {
+  scrollbar-color: color-mix(in srgb, var(--text) 26%, transparent) transparent;
+}
+
 .editor-page body.light {
   background: #f7f5ef;
 }
@@ -1993,7 +2003,7 @@ html.wails-mac .professional-editor .topbar {
 #wails-window-controls button:active { background: color-mix(in srgb, currentColor 14%, transparent); }
 #wails-window-controls .wails-close:hover { background: #c42b1c; color: #fff; }
 #wails-window-controls .wails-close:active { background: #a62014; }
-#wails-window-controls svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.15; }
+#wails-window-controls span { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-size: 10px; font-weight: 400; line-height: 1; }
 #wails-window-controls .wails-min { --wails-non-client-region: minimize; }
 #wails-window-controls .wails-max { --wails-non-client-region: maximize; }
 #wails-window-controls .wails-close { --wails-non-client-region: close; }

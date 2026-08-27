@@ -8,6 +8,7 @@ import time
 
 import httpx
 
+from finesub_bootstrap.fsops import replace_path
 from finesub_bootstrap.locks import holding_lock
 from finesub_bootstrap.models import DownloadAsset, DownloadProgress
 from finesub_bootstrap.http_client import (
@@ -191,7 +192,10 @@ def _download_locked(
             f"Expected SHA-256 {asset.sha256}, received {actual_digest}"
         )
 
-    os.replace(part_path, destination)
+    # The bytes were just written and just hashed, so a scanner is often
+    # still on them; on Windows that denies this rename and would throw the
+    # whole download away one step from the end.
+    replace_path(part_path, destination)
     _expectation_path(part_path).unlink(missing_ok=True)
     elapsed = max(time.perf_counter() - started, 1e-6)
     progress(

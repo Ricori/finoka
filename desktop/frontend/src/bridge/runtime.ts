@@ -19,7 +19,7 @@ export interface RuntimeProvisionState {
   resources: RuntimeItem[];
   models: RuntimeItem[];
   job: {
-    state: "idle" | "running" | "completed" | "failed";
+    state: "idle" | "running" | "completed" | "cancelled" | "failed";
     target: string;
     resource: string;
     stage: string;
@@ -32,4 +32,5 @@ export interface RuntimeProvisionState {
 export const fineSubRuntime = {
   status: () => ProviderService.RuntimeProvisionStatus() as Promise<unknown> as Promise<RuntimeProvisionState>,
   install: (target: "media" | "runtime" | "models" | "all") => ProviderService.InstallRuntime(target) as Promise<unknown> as Promise<RuntimeProvisionState>,
+  cancel: () => ProviderService.CancelRuntimeInstall() as Promise<unknown> as Promise<RuntimeProvisionState>,
 };

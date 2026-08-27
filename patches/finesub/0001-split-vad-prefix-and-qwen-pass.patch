@@ -1,36 +1,28 @@
-Subject: [PATCH 3/5] Gate cloud ASR and Qwen lifecycle optimizations
+Subject: [PATCH 1/1] Make the VAD prefix and the Qwen pass separately runnable
 
-Reason: Modal workers need CPU-int8 fallback, prepared VAD artifacts, and
-split Qwen ownership, while local execution keeps the upstream one-pass flow.
-Removal: Delete after those lifecycle controls are supported upstream.
+Reason: Finoka's cloud deployment rents its accelerator by the second and runs
+one FineSub task across three containers. `run_vad_asr` is one process from
+energy VAD through Whisper to the Qwen referee, and only the Whisper leg needs
+the GPU. This patch splits the other two out as opt-in entry points so they can
+run on cheap CPU containers, without changing what any of them computes.
 
-diff --git a/src/finesub/speech/recognition/fw_refine_backend.py b/src/finesub/speech/recognition/fw_refine_backend.py
-index 450fa84..fb257ac 100644
---- a/src/finesub/speech/recognition/fw_refine_backend.py
-+++ b/src/finesub/speech/recognition/fw_refine_backend.py
-@@ -13,6 +13,7 @@ from typing import Any, Iterable
- import numpy as np
- from faster_whisper.transcribe import WhisperModel, get_compression_ratio
+Everything here is additive. `prepare_vad_asr`, `prepared_vad_matches`,
+`prepared_vad_has_speech`, `finalize_qwen_verification` and `QwenReferee.warm`
+are new, and so are two stdlib imports they need. The only edit to existing
+code is the `prepared_path=None` keyword on `run_vad_asr`: its prefix block
+moves into an `else:` arm one level deeper, statement for statement, and the
+default reaches it. A caller that does not pass the keyword -- every local
+run, the CLI, batch -- executes exactly the upstream code path.
 
-+from ...execution_policy import refine_compute_type
- from .fw_refine import (
-     AlignedSpan,
-     TimestampSpan,
-@@ -684,11 +685,7 @@ class FwRefineModelPool:
-                 return RefinedWhisperModel(
-                     self._model_name,
-                     device=self._device,
--                    compute_type=(
--                        "float16"
--                        if self._device.strip().lower().startswith("cuda")
--                        else "float32"
--                    ),
-+                    compute_type=refine_compute_type(self._device),
-                     refine_sec=self._refine_sec,
-                 )
-         except BaseException:
+`tests/test_split_stage_contract.py` in the Finoka repository enforces that
+reading of this patch: two files touched, every deleted statement re-appearing
+verbatim modulo indentation, and comments only re-wrapped, never reworded.
+
+Removal: Delete once upstream can run the VAD prefix and the referee as
+separate steps, or once Finoka stops splitting the stage across containers.
+
 diff --git a/src/finesub/speech/recognition/vad_asr_stage.py b/src/finesub/speech/recognition/vad_asr_stage.py
-index 2be0f05..b13f55d 100644
+index 2be0f05..787d973 100644
 --- a/src/finesub/speech/recognition/vad_asr_stage.py
 +++ b/src/finesub/speech/recognition/vad_asr_stage.py
 @@ -5,7 +5,9 @@ from __future__ import annotations
@@ -43,14 +35,13 @@ index 2be0f05..b13f55d 100644
  import sys
  import time
  from pathlib import Path
-@@ -32,9 +34,192 @@ from ..preprocessing import vad as vad_detection
- from ..preprocessing.audio import ensure_decodable_input
- from ...run_metadata import record_scratch_file
- from ... import config as app_config
-+from ...execution import cloud_execution_enabled, execution_profiled
+@@ -35,6 +37,192 @@ from ... import config as app_config
  from ...reporting import current_reporter, reporting_to, terminal_reporter
-
-
+ 
+ 
++#: Bumped when the payload written below stops being readable by the loader
++#: beside it. Stored in the artifact, so a stale file is rejected rather than
++#: misread.
 +PREPARED_VAD_SCHEMA = 1
 +
 +
@@ -74,7 +65,9 @@ index 2be0f05..b13f55d 100644
 +    }
 +
 +
-+def _energy_track_from_payload(payload: Mapping[str, object]) -> vad_energy.VadEnergyTrack:
++def _energy_track_from_payload(
++    payload: Mapping[str, object],
++) -> vad_energy.VadEnergyTrack:
 +    energy_db = payload.get("energy_db")
 +    frame_dbfs = payload.get("frame_dbfs")
 +    if not isinstance(energy_db, torch.Tensor):
@@ -90,19 +83,27 @@ index 2be0f05..b13f55d 100644
 +    )
 +
 +
-+@execution_profiled
 +def prepare_vad_asr(
 +    input_path: str | Path,
 +    *,
 +    prepared_path: str | Path,
-+    execution_profile: str | None = None,
 +    vad_silero_assist: bool = False,
 +    run_metadata_path: str | Path | None = None,
 +) -> Path:
-+    """Run the CPU-only VAD/energy prefix and persist its complete state."""
++    """Run the CPU-only VAD/energy prefix and persist its complete state.
 +
-+    if not cloud_execution_enabled():
-+        raise RuntimeError("prepared VAD is only available in the cloud profile")
++    The same work ``run_vad_asr`` does before it loads Whisper, made resumable
++    so that a deployment which rents its accelerator by the second can run this
++    half on a cheaper host. Nothing here touches the GPU: energy VAD is host
++    work, and the optional Silero assist is small enough to stay on the CPU.
++
++    What is written is exactly the local state the transcription half would
++    otherwise have computed for itself, keyed to the audio's digest, so
++    ``run_vad_asr(prepared_path=...)`` resumes at the same point with the same
++    values. Purely additive: a caller that never passes ``prepared_path``
++    never reaches any of this, and the single-process path is unchanged.
++    """
++
 +    started = time.perf_counter()
 +    source = Path(input_path).expanduser().resolve()
 +    if not source.is_file():
@@ -196,11 +197,9 @@ index 2be0f05..b13f55d 100644
 +    return payload
 +
 +
-+def prepared_vad_has_speech(
-+    prepared_path: str | Path, *, execution_profile: str | None = None
-+) -> bool:
-+    if not cloud_execution_enabled(execution_profile):
-+        return False
++def prepared_vad_has_speech(prepared_path: str | Path) -> bool:
++    """Whether a prepared artifact found any speech at all."""
++
 +    payload = torch.load(
 +        Path(prepared_path).expanduser().resolve(),
 +        map_location="cpu",
@@ -213,16 +212,9 @@ index 2be0f05..b13f55d 100644
 +    )
 +
 +
-+def prepared_vad_matches(
-+    input_path: str | Path,
-+    prepared_path: str | Path,
-+    *,
-+    execution_profile: str | None = None,
-+) -> bool:
-+    """Return whether a trusted prepared artifact belongs to this audio."""
++def prepared_vad_matches(input_path: str | Path, prepared_path: str | Path) -> bool:
++    """Return whether a readable prepared artifact belongs to this audio."""
 +
-+    if not cloud_execution_enabled(execution_profile):
-+        return False
 +    try:
 +        _load_prepared_vad(
 +            Path(input_path).expanduser().resolve(),
@@ -236,11 +228,10 @@ index 2be0f05..b13f55d 100644
  def parse_args() -> argparse.Namespace:
      parser = argparse.ArgumentParser(description="Run VAD-energy + Whisper alignment.")
      parser.add_argument("input", help="Path to vocal audio.")
-@@ -167,6 +352,122 @@ def write_aligned_json(
+@@ -167,6 +355,125 @@ def write_aligned_json(
      )
-
-
-+@execution_profiled
+ 
+ 
 +def finalize_qwen_verification(
 +    input_path: str | Path,
 +    aligned_path: str | Path,
@@ -248,19 +239,23 @@ index 2be0f05..b13f55d 100644
 +    device: str = "cpu",
 +    qwen_verify: str = "auto",
 +    referee=None,
-+    execution_profile: str | None = None,
 +) -> Path:
-+    """Attach Qwen evidence after GPU Whisper has released its container.
++    """Attach Qwen evidence to an aligned artifact that was written without it.
 +
-+    The regular stage keeps this work in-process for local execution. Cloud
-+    execution calls this seam from its CPU tail so the short-lived L4 only
-+    carries CTranslate2 Whisper inference. The operation is idempotent: a
-+    resumed task reuses an aligned artifact that already contains referee
-+    metadata.
++    The counterpart to ``run_vad_asr(qwen_verify="off")``: the one-pass stage
++    keeps this work in-process, and a caller that wants the second model off
++    the Whisper accelerator can defer it to here instead. Reads and rewrites
++    the aligned JSON in place, so the result is the artifact the one-pass stage
++    would have produced.
++
++    Idempotent by construction: an artifact that already carries
++    ``asr_align.qwen_verify`` metadata is returned untouched, which is what
++    lets a resumed run call this without checking. ``referee`` accepts an
++    already-loaded :class:`~finesub.speech.verification.qwen_referee.QwenReferee`
++    so a caller that warmed one in the background can hand it over; ownership
++    stays with whoever created it.
 +    """
 +
-+    if not cloud_execution_enabled():
-+        raise RuntimeError("split Qwen verification is only available in the cloud profile")
 +    if qwen_verify not in {"auto", "on", "off"}:
 +        raise ValueError(f"unsupported qwen verification mode: {qwen_verify}")
 +    source = Path(input_path).expanduser().resolve()
@@ -359,20 +354,7 @@ index 2be0f05..b13f55d 100644
  def annotate_segments_with_vad_energy(
      segments: list[dict[str, object]],
      energy_track: vad_energy.VadEnergyTrack,
-@@ -213,6 +514,7 @@ def resolve_split_params(
-         raise ValueError(f"{exc} (from {source})") from exc
-
-
-+@execution_profiled
- def run_vad_asr(
-     input_path: str | Path,
-     *,
-@@ -222,13 +524,17 @@ def run_vad_asr(
-     language: Optional[str] = None,
-     gap_sec: float = asr_align.DEFAULT_GAP_SEC,
-     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
-+    execution_profile: str | None = None,
-     vad_silero_assist: bool = False,
+@@ -226,6 +533,7 @@ def run_vad_asr(
      qwen_verify: str = "auto",
      split_length_scale: float | None = None,
      run_metadata_path: str | Path | None = None,
@@ -380,19 +362,34 @@ index 2be0f05..b13f55d 100644
  ) -> Path:
      # Before anything else: an out-of-range knob must not surface after the
      # GPU work is already done.
-+    if prepared_path is not None and not cloud_execution_enabled():
-+        raise RuntimeError("prepared VAD is only available in the cloud profile")
-     split_params = resolve_split_params(split_length_scale)
-     input_path = Path(input_path).expanduser().resolve()
-     if not input_path.exists():
-@@ -289,52 +595,69 @@ def run_vad_asr(
+@@ -289,52 +597,72 @@ def run_vad_asr(
                  },
              )
-
+ 
 -        collector = None
 -        if vad_silero_assist:
 -            from ..preprocessing import silero_ghost
+-
+-            # Rides along on the VAD's normalized blocks: the probabilities are
+-            # ready by the time detect_segments returns.
+-            collector = silero_ghost.SileroProbCollector(device)
+-
+-        try:
+-            (
+-                raw_segments,
+-                vad_meta,
+-                audio_duration,
+-                timing,
+-                energy_track,
+-            ) = vad_detection.detect_segments(audio_source, observer=collector)
+-        except Exception as exc:
+-            raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
 +        if prepared_path is not None:
++            # `prepare_vad_asr` already ran this prefix elsewhere and wrote the
++            # exact state the block below would have produced. Restoring it is
++            # not a shortcut: the artifact is keyed to this audio's digest, so
++            # a mismatch raises rather than transcribing against someone else's
++            # segmentation.
 +            prepared = _load_prepared_vad(input_path, prepared_path)
 +            raw_segments = list(prepared.get("raw_segments") or [])
 +            segments = list(prepared.get("segments") or [])
@@ -410,22 +407,36 @@ index 2be0f05..b13f55d 100644
 +            collector = None
 +            if vad_silero_assist:
 +                from ..preprocessing import silero_ghost
-
--            # Rides along on the VAD's normalized blocks: the probabilities are
--            # ready by the time detect_segments returns.
--            collector = silero_ghost.SileroProbCollector(device)
++
++                # Rides along on the VAD's normalized blocks: the probabilities
++                # are ready by the time detect_segments returns.
 +                collector = silero_ghost.SileroProbCollector(device)
-
--        try:
--            (
--                raw_segments,
--                vad_meta,
--                audio_duration,
--                timing,
--                energy_track,
--            ) = vad_detection.detect_segments(audio_source, observer=collector)
--        except Exception as exc:
--            raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
+ 
+-        if collector is not None:
+-            # The probabilities were scored inside the VAD pass, so their cost
+-            # sits in vad_sec; report it rather than let it hide there.
+-            timing["silero_probs_sec"] = collector.seconds
+-            t_ghost = time.perf_counter()
+-            raw_segments, assist_stats = silero_ghost.assist_segments(
+-                audio_source, raw_segments, energy_track, audio_duration,
+-                device=device, probs=collector.probs(),
+-            )
+-            timing["silero_assist_sec"] = time.perf_counter() - t_ghost
+-            vad_meta = dict(vad_meta)
+-            inner_vad = dict(vad_meta.get("vad") or {})
+-            inner_vad["silero_assist"] = assist_stats
+-            vad_meta["vad"] = inner_vad
+-            current_reporter().debug(
+-                "silero assist",
+-                {
+-                    "intervals": f"{assist_stats['base_intervals']} -> "
+-                    f"{assist_stats['intervals']}",
+-                    "speech": f"{assist_stats['base_speech_sec']:.0f}s -> "
+-                    f"{assist_stats['speech_sec']:.0f}s",
+-                    "ghost_dropped": assist_stats["ghost_dropped"],
+-                    "seams_restored": assist_stats["seams_restored"],
+-                },
+-            )
 +            try:
 +                (
 +                    raw_segments,
@@ -438,15 +449,13 @@ index 2be0f05..b13f55d 100644
 +                raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
 +
 +            if collector is not None:
++                # The probabilities were scored inside the VAD pass, so their
++                # cost sits in vad_sec; report it rather than let it hide there.
 +                timing["silero_probs_sec"] = collector.seconds
 +                t_ghost = time.perf_counter()
 +                raw_segments, assist_stats = silero_ghost.assist_segments(
-+                    audio_source,
-+                    raw_segments,
-+                    energy_track,
-+                    audio_duration,
-+                    device=device,
-+                    probs=collector.probs(),
++                    audio_source, raw_segments, energy_track, audio_duration,
++                    device=device, probs=collector.probs(),
 +                )
 +                timing["silero_assist_sec"] = time.perf_counter() - t_ghost
 +                vad_meta = dict(vad_meta)
@@ -464,60 +473,28 @@ index 2be0f05..b13f55d 100644
 +                        "seams_restored": assist_stats["seams_restored"],
 +                    },
 +                )
-
--        if collector is not None:
--            # The probabilities were scored inside the VAD pass, so their cost
--            # sits in vad_sec; report it rather than let it hide there.
--            timing["silero_probs_sec"] = collector.seconds
--            t_ghost = time.perf_counter()
--            raw_segments, assist_stats = silero_ghost.assist_segments(
--                audio_source, raw_segments, energy_track, audio_duration,
--                device=device, probs=collector.probs(),
-+            segments = asr_align.normalize_vad_segments(
-+                raw_segments, audio_duration
-             )
--            timing["silero_assist_sec"] = time.perf_counter() - t_ghost
--            vad_meta = dict(vad_meta)
--            inner_vad = dict(vad_meta.get("vad") or {})
--            inner_vad["silero_assist"] = assist_stats
--            vad_meta["vad"] = inner_vad
--            current_reporter().debug(
--                "silero assist",
--                {
--                    "intervals": f"{assist_stats['base_intervals']} -> "
--                    f"{assist_stats['intervals']}",
--                    "speech": f"{assist_stats['base_speech_sec']:.0f}s -> "
--                    f"{assist_stats['speech_sec']:.0f}s",
--                    "ghost_dropped": assist_stats["ghost_dropped"],
--                    "seams_restored": assist_stats["seams_restored"],
--                },
--            )
--
+ 
 -        segments = asr_align.normalize_vad_segments(raw_segments, audio_duration)
++            segments = asr_align.normalize_vad_segments(raw_segments, audio_duration)
          if not raw_segments or not segments:
              timing["total_sec"] = time.perf_counter() - t_start
              align_meta["timing"] = {
 diff --git a/src/finesub/speech/verification/qwen_referee.py b/src/finesub/speech/verification/qwen_referee.py
-index c367663..b63c45a 100644
+index c367663..3597f9c 100644
 --- a/src/finesub/speech/verification/qwen_referee.py
 +++ b/src/finesub/speech/verification/qwen_referee.py
-@@ -43,6 +43,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
-
- import numpy as np
-
-+from ...execution import cloud_execution_enabled
- from ...reporting import current_reporter
- from ...text import normalized_compact
- from ..preprocessing.audio import (
-@@ -224,6 +225,13 @@ class QwenReferee:
+@@ -224,6 +224,16 @@ class QwenReferee:
              self._model = model
          return self._model
-
-+    def warm(self, *, execution_profile: str | None = None) -> None:
-+        """Load processor and weights without running a transcription."""
+ 
++    def warm(self) -> None:
++        """Load processor and weights without running a transcription.
 +
-+        if not cloud_execution_enabled(execution_profile):
-+            raise RuntimeError("Qwen preloading is only available in the cloud profile")
++        Model loading and the first clip are separable, and a caller that knows
++        it will need the referee can pay for the load while something else is
++        still running. Idempotent -- ``_ensure_model`` caches.
++        """
++
 +        self._ensure_model()
 +
      def transcribe_batch(

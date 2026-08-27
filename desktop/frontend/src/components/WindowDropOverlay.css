@@ -3,4 +3,4 @@
 .drop-overlay-card { display: grid; justify-items: center; gap: 8px; min-width: 310px; border: 1px solid var(--accent-border); border-radius: 19px; padding: 33px 42px; background: color-mix(in srgb, var(--panel) 94%, var(--accent-dim)); box-shadow: 0 28px 80px color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); }
 .drop-overlay-card > span { display: grid; place-items: center; width: 45px; height: 45px; margin-bottom: 4px; border-radius: 14px; background: var(--grad); color: var(--on-grad); font-size: 23px; font-weight: 400; }
 .drop-overlay-card strong { font-size: 15px; }
-.drop-overlay-card small { color: var(--mut); font-size: 9px; letter-spacing: .04em; }
+.drop-overlay-card small { color: var(--mut); font-size: 11px; letter-spacing: .04em; }

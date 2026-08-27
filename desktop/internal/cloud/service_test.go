@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -509,5 +510,79 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 	}
 	if projector.projected == nil || projector.projected["video_id"] != "loc_0123456789ab" {
 		t.Fatalf("projection = %#v", projector.projected)
+	}
+}
+
+// The upload must not be the thing that degrades the audio. Everything below
+// the desktop assumes the object it receives carries the source signal intact:
+// the separator picks its own input rate from the declared duration, and the
+// delivery to VAD/Whisper is resampled once, in the cloud. A lossy or resampled
+// upload puts a second, invisible conversion in front of all of that.
+func TestCloudAudioIsUploadedLosslessAndUnresampled(t *testing.T) {
+	cases := map[string][]string{
+		"copy":     cloudAudioCopyArgs("in.mkv", "out.m4a"),
+		"lossless": cloudAudioLosslessArgs("in.mkv", "out.m4a"),
+	}
+	for name, args := range cases {
+		joined := strings.Join(args, " ")
+		for _, forbidden := range []string{"-b:a", "-ar", "-ac", "-sample_fmt", "-q:a"} {
+			for _, arg := range args {
+				if arg == forbidden {
+					t.Fatalf("%s: %s resamples, downmixes or requantizes: %q", name, forbidden, joined)
+				}
+			}
+		}
+		// `-f mp4` over the `.m4a` extension's `ipod` muxer, which admits only
+		// AAC and ALAC and so would reject a copy of Opus, MP3, FLAC or AC-3 --
+		// exactly the tracks most worth copying.
+		if !strings.Contains(joined, "-f mp4") {
+			t.Fatalf("%s: expected the generic MP4 muxer, got %q", name, joined)
+		}
+		if !strings.Contains(joined, "-movflags +faststart") {
+			t.Fatalf("%s: expected +faststart, got %q", name, joined)
+		}
+		if args[len(args)-1] != "out.m4a" {
+			t.Fatalf("%s: output must be last, got %q", name, joined)
+		}
+	}
+	if !strings.Contains(strings.Join(cases["copy"], " "), "-c:a copy") {
+		t.Fatalf("copy branch must stream-copy: %q", cases["copy"])
+	}
+	// ALAC, not FLAC: the object key, the extension and the declared content
+	// type are `.m4a` / `audio/mp4` on both sides and in every object already
+	// in the bucket, and ALAC is the lossless codec that keeps all three true.
+	if !strings.Contains(strings.Join(cases["lossless"], " "), "-c:a alac") {
+		t.Fatalf("fallback branch must be lossless: %q", cases["lossless"])
+	}
+}
+
+// Copying is preferred because it is better on every axis at once -- no second
+// generation, a fifth of the bytes, no CPU on the user's machine. It is skipped
+// only where it would upload raw PCM, which is the one case where re-encoding
+// losslessly is both smaller and still lossless.
+func TestUncompressedSourcesAreDetectedForLosslessReencode(t *testing.T) {
+	for codec, uncompressed := range map[string]bool{
+		"pcm_s16le":   true,
+		"pcm_f32le":   true,
+		"adpcm_ms":    true,
+		"wavpack":     true,
+		"PCM_S24LE":   true,
+		"pcm_s16le\n": true,
+		// Lossy, and losslessly compressed, are both cheaper to copy: copying
+		// adds no generation, and re-encoding either of them to ALAC would only
+		// grow the upload for the same signal.
+		"aac":  false,
+		"opus": false,
+		"mp3":  false,
+		"ac3":  false,
+		"flac": false,
+		"alac": false,
+		// An unreadable probe must not route a compressed source through a
+		// pointless decode/encode round trip.
+		"": false,
+	} {
+		if got := isUncompressedCodec(codec); got != uncompressed {
+			t.Fatalf("codec %q: uncompressed=%v, want %v", codec, got, uncompressed)
+		}
 	}
 }

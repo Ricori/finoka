@@ -30,14 +30,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from ....execution import cloud_execution_enabled
 from ....reporting import current_reporter
 
 # Bumped when the build configuration changes in a way that invalidates
 # artefacts the key alone would not distinguish -- a different target set, a
 # different inductor flag. Part of the key, so old directories go unread.
-LOCAL_BUILD_FORMAT = "1"
-CLOUD_BUILD_FORMAT = "4"
+BUILD_FORMAT = "1"
 
 # JIT pays ~35s of graph reconstruction per process against ~2s for AOTI, so it
 # only earns its keep on long inputs. Measured break-even is ~800s; 600s is used
@@ -99,12 +97,12 @@ def aoti_buildable() -> bool:
         return False
 
 
-def cache_key(model_name: str, batch_size: int = 1) -> Optional[str]:
-    """Identify the stack and batch this artefact is bound to, or None off CUDA.
+def cache_key(model_name: str) -> Optional[str]:
+    """Identify the stack this artefact would be bound to, or None off CUDA.
 
     The torch comparison an AOTI package makes at load time is an exact string
-    match, so the patch version belongs in the key; so do the GPU and batch,
-    because Triton emits fixed-shape SASS for that exact execution layout.
+    match, so the patch version belongs in the key; so does the GPU, because
+    Triton emits SASS for the current architecture and no PTX to fall back on.
     """
 
     import torch
@@ -120,14 +118,8 @@ def cache_key(model_name: str, batch_size: int = 1) -> Optional[str]:
     # (a CPU wheel carries none), so the runtime version is kept separately --
     # spelled differently so the pair does not read as a duplicate.
     cuda = torch.version.cuda or "none"
-    if cloud_execution_enabled():
-        return (
-            f"v{CLOUD_BUILD_FORMAT}-{torch.__version__}-cuda{cuda}-sm{major}{minor}"
-            f"-bs{max(1, int(batch_size))}-{digest}"
-        )
     return (
-        f"v{LOCAL_BUILD_FORMAT}-{torch.__version__}-cuda{cuda}-sm{major}{minor}"
-        f"-{digest}"
+        f"v{BUILD_FORMAT}-{torch.__version__}-cuda{cuda}-sm{major}{minor}-{digest}"
     )
 
 
@@ -152,14 +144,12 @@ def _cache_root() -> Optional[Path]:
     return Path.home() / ".cache" / "audio-separator" / "accel"
 
 
-def resolve_accel_paths(
-    model_name: str, batch_size: int = 1
-) -> Optional[AccelPaths]:
+def resolve_accel_paths(model_name: str) -> Optional[AccelPaths]:
     """Locate this machine's artefact directory, or None when there can be none."""
 
     if acceleration_disabled():
         return None
-    key = cache_key(model_name, batch_size)
+    key = cache_key(model_name)
     if key is None:
         return None
     root = _cache_root()

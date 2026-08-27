@@ -46,7 +46,6 @@ from .routing.config import (
     LLMRole,
     ModelLimits,
     SESSION_OUTPUT_MAX_TOKENS,
-    session_output_limit_for,
     effective_window_subtitle_cap,
     TASK_FEEDBACK_MAX_TOKENS,
     WINDOW_PLANNING_CONTEXT_RESERVE_TOKENS,
@@ -990,11 +989,6 @@ def _call_and_parse(
     task_group: str = "research",
     difficulty: str = "",
 ):
-    session_max_tokens = session_output_limit_for(
-        task_group,
-        difficulty,
-        routes=getattr(getattr(client, "router", None), "routes", None),
-    )
     checkpoint_hash = ""
     if checkpoint_store is not None and checkpoint_session:
         checkpoint_hash = session_input_hash(
@@ -1002,7 +996,7 @@ def _call_and_parse(
             prompt_version=PROMPT_VERSION,
             call_config={
                 "role": role.value,
-                "max_tokens": session_max_tokens,
+                "max_tokens": SESSION_OUTPUT_MAX_TOKENS,
                 "file_backed": file_ref is not None,
                 # A native-search reply is not interchangeable with a plain one
                 # for the same prompt: it carries grounded facts this checkpoint
@@ -1053,7 +1047,7 @@ def _call_and_parse(
             result = client.complete(
                 role,
                 messages,
-                max_tokens=session_max_tokens,
+                max_tokens=SESSION_OUTPUT_MAX_TOKENS,
                 file_ref=file_ref,
                 native_search=native_search,
                 task_group=task_group,
@@ -1083,7 +1077,7 @@ def _call_and_parse(
                 )
             raise
         output_limited = is_likely_output_limited(
-            result.raw_response, max_tokens=session_max_tokens
+            result.raw_response, max_tokens=SESSION_OUTPUT_MAX_TOKENS
         )
         finish_reason = extract_finish_reason(result.raw_response)
         prompt_blocked = is_prompt_blocked(result.content, result.raw_response)

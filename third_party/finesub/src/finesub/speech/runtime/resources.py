@@ -8,7 +8,7 @@ from typing import Optional
 BYTES_PER_GIB = 1024**3
 DEFAULT_GPU_BUDGET_GB = 4
 GPU_SYSTEM_RESERVE_GB = 1.0
-RAM_BUDGET_GB = 12
+RAM_BUDGET_GB = 8
 
 
 @dataclass(frozen=True)

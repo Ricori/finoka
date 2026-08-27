@@ -188,33 +188,87 @@ def copy_source(source: Path, staging: Path) -> None:
     )
 
 
+def git_apply_command() -> list[str]:
+    """`git apply` that leaves bytes alone.
+
+    The snapshot's hashes are taken over the bytes on disk, so no line ending
+    may be translated. Both settings are needed on Windows: `core.autocrlf`
+    alone leaves `.gitattributes`' `text=auto` in force, and a `text` file is
+    written with the platform's native EOL. The staging directory sits *beside*
+    the vendor, so `third_party/finesub/** -text` does not cover it.
+    """
+
+    return ["git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "apply"]
+
+
+def git_apply_env(staging: Path) -> dict[str, str]:
+    """Environment that keeps `git apply` from noticing the surrounding repo.
+
+    Run inside a work tree, `git apply` prefixes every path in the patch with
+    the current directory's path relative to the repository root, then finds
+    nothing there and prints `Skipped patch` -- with exit status 0, so the
+    caller sees a clean apply that changed nothing. The staging directory lives
+    under `third_party/`, i.e. inside this repository, so that is exactly what
+    happened. Capping the upward search at the staging's parent leaves git with
+    no work tree at all, which is the situation the patches were written for.
+    """
+
+    environment = dict(os.environ)
+    environment["GIT_CEILING_DIRECTORIES"] = str(staging.resolve().parent)
+    return environment
+
+
 def apply_patches(staging: Path, patches_dir: Path) -> list[dict[str, str]]:
     patches = sorted(patches_dir.glob("*.patch")) if patches_dir.exists() else []
     applied: list[dict[str, str]] = []
+    git = git_apply_command()
+    environment = git_apply_env(staging)
     for patch in patches:
         check = subprocess.run(
-            ["git", "apply", "--check", str(patch)], cwd=staging, capture_output=True, text=True
+            [*git, "--check", str(patch)],
+            cwd=staging,
+            env=environment,
+            capture_output=True,
+            text=True,
         )
         if check.returncode:
             raise SyncError(f"patch check failed for {patch.name}: {check.stderr.strip()}")
         result = subprocess.run(
-            ["git", "apply", str(patch)], cwd=staging, capture_output=True, text=True
+            # `--verbose` for the sake of the check below: a skip is reported
+            # only in verbose mode, and it does not set a failing status.
+            [*git, "--verbose", str(patch)],
+            cwd=staging,
+            env=environment,
+            capture_output=True,
+            text=True,
         )
         if result.returncode:
             raise SyncError(f"patch apply failed for {patch.name}: {result.stderr.strip()}")
+        if "Skipped patch" in result.stderr:
+            raise SyncError(
+                f"patch apply silently skipped hunks for {patch.name}: "
+                f"{result.stderr.strip()}"
+            )
         applied.append({"path": patch.name, "sha256": sha256_file(patch)})
     return applied
 
 
 def iter_snapshot_files(root: Path) -> Iterable[Path]:
-    for path in sorted(root.rglob("*")):
-        if (
-            path.is_file()
-            and path.name not in {"FILES.json", "UPSTREAM.json"}
-            and "__pycache__" not in path.parts
-            and path.suffix not in {".pyc", ".pyo"}
-        ):
-            yield path
+    # Ordered by the POSIX relative path, not by `Path`: the manifest's
+    # `content_sha256` folds the order in, and `Path` sorts by the platform's
+    # own spelling -- backslash-separated and case-folded on Windows. Sorting
+    # the objects made the same tree hash differently on Windows and Linux, so
+    # a snapshot verified on one refused to verify on the other.
+    selected = [
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.name not in {"FILES.json", "UPSTREAM.json"}
+        and "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    ]
+    selected.sort(key=lambda path: path.relative_to(root).as_posix())
+    return selected
 
 
 def create_files_manifest(staging: Path) -> dict[str, object]:

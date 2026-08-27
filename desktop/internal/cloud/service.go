@@ -841,6 +841,93 @@ func extractAudio(ctx context.Context, source, output string) error {
 	return extractAudioWithRoot(ctx, "", source, output)
 }
 
+// The upload must not add loss of its own, and the cheapest way to add no loss
+// is to not re-encode at all.
+//
+// The command this replaced re-encoded everything to AAC 160k. On a stereo
+// stream that is 80 kbps per channel, and the audio track of a downloaded video
+// has already been through a lossy encoder once, so it was a second generation:
+// measured 1.2 dB of SI-SDR in the 16 kHz band the ASR chain actually reads.
+// Re-encoding losslessly instead removes that 1.2 dB -- and so does copying the
+// track, for a fifth of the bytes and none of the CPU. Copying is therefore not
+// a compromise on "lossless upload"; it is the strongest form of it.
+//
+// Two branches, in the order they are tried:
+//
+//	copy   Everything already compressed. `-f mp4` is load-bearing: the `.m4a`
+//	       extension otherwise selects the `ipod` muxer, which admits only AAC
+//	       and ALAC, while the generic MP4 muxer takes Opus, MP3, FLAC, AC-3 and
+//	       E-AC-3 as well -- all verified to survive the cloud's decode.
+//	alac   Uncompressed sources, where copying would upload raw PCM at twice the
+//	       size for the same signal, and anything the muxer refuses (WMA, and
+//	       whatever else turns up). Lossless either way.
+//
+// Deciding by attempt rather than by a codec allowlist: the muxer already knows
+// which codecs it takes, and a list here would be one more thing to keep in
+// sync with whatever ffmpeg the user happens to have installed. The failed
+// attempt costs nothing -- the muxer rejects the codec while opening the
+// output, before any audio is read.
+//
+// Neither branch passes -ar, -ac or -sample_fmt: nothing here may resample,
+// downmix or requantize. The cloud's prepare phase decodes to the separator's
+// tier rate itself, and that resample is then the only one in the chain.
+//
+// Separate functions so the flags are testable. What regressed here before was
+// a bitrate flag sitting in the middle of a long exec line that nothing read.
+func cloudAudioCopyArgs(source, output string) []string {
+	return cloudAudioArgs(source, output, "copy")
+}
+
+func cloudAudioLosslessArgs(source, output string) []string {
+	return cloudAudioArgs(source, output, "alac")
+}
+
+func cloudAudioArgs(source, output, codec string) []string {
+	return []string{
+		"-v", "error", "-y",
+		"-i", source,
+		"-vn", "-sn", "-dn",
+		"-c:a", codec,
+		"-f", "mp4",
+		"-movflags", "+faststart",
+		output,
+	}
+}
+
+// isUncompressedCodec reports whether a stream in this codec is stored as raw
+// or near-raw samples, so that copying it would upload roughly twice the bytes
+// ALAC needs for the same signal. Everything else -- lossy or losslessly
+// compressed -- is cheaper and no worse to copy verbatim.
+func isUncompressedCodec(codec string) bool {
+	codec = strings.TrimSpace(strings.ToLower(codec))
+	return strings.HasPrefix(codec, "pcm_") ||
+		strings.HasPrefix(codec, "adpcm_") ||
+		codec == "wavpack"
+}
+
+// sourceAudioIsUncompressed reports whether copying the source track would
+// upload raw PCM. Best effort: an unreadable probe answers false, which only
+// means the copy attempt happens and, for PCM, succeeds at twice the size.
+func sourceAudioIsUncompressed(ctx context.Context, dataDirectory, source string) bool {
+	ffprobe, err := managedtools.Find(dataDirectory, "ffprobe")
+	if err != nil {
+		return false
+	}
+	command := exec.CommandContext(ctx, ffprobe,
+		"-v", "error",
+		"-select_streams", "a:0",
+		"-show_entries", "stream=codec_name",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		source,
+	)
+	configureCloudCommand(command)
+	output, err := command.Output()
+	if err != nil {
+		return false
+	}
+	return isUncompressedCodec(string(output))
+}
+
 func extractAudioWithRoot(ctx context.Context, dataDirectory, source, output string) error {
 	ffmpeg, err := managedtools.Find(dataDirectory, "ffmpeg")
 	if err != nil {
@@ -848,9 +935,22 @@ func extractAudioWithRoot(ctx context.Context, dataDirectory, source, output str
 	}
 	bounded, cancel := context.WithTimeout(ctx, 3*time.Hour)
 	defer cancel()
-	command := exec.CommandContext(bounded, ffmpeg, "-v", "error", "-y", "-i", source, "-vn", "-sn", "-dn", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", output)
-	configureCloudCommand(command)
-	result, err := command.CombinedOutput()
+
+	run := func(args []string) ([]byte, error) {
+		command := exec.CommandContext(bounded, ffmpeg, args...)
+		configureCloudCommand(command)
+		return command.CombinedOutput()
+	}
+
+	if !sourceAudioIsUncompressed(bounded, dataDirectory, source) {
+		if _, err := run(cloudAudioCopyArgs(source, output)); err == nil {
+			return nil
+		}
+		// The muxer refused the codec. Fall through and re-encode losslessly;
+		// the copy attempt wrote nothing worth keeping.
+		_ = os.Remove(output)
+	}
+	result, err := run(cloudAudioLosslessArgs(source, output))
 	if err != nil {
 		return fmt.Errorf("extract cloud audio: %s", strings.TrimSpace(string(result)))
 	}

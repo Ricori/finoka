@@ -42,6 +42,7 @@ func TestServiceMapsFixedProviderEndpoints(t *testing.T) {
 	_, _ = service.Capabilities()
 	_, _ = service.RuntimeProvisionStatus()
 	_, _ = service.InstallRuntime("media")
+	_, _ = service.CancelRuntimeInstall()
 	_, _ = service.Settings()
 	_, _ = service.SaveKeys(map[string]any{"GEMINI_FREE": "secret"})
 	_, _ = service.ListTasks()
@@ -57,6 +58,7 @@ func TestServiceMapsFixedProviderEndpoints(t *testing.T) {
 		{method: "GET", endpoint: "/v1/capabilities"},
 		{method: "GET", endpoint: "/v1/runtime/provision"},
 		{method: "POST", endpoint: "/v1/runtime/provision", body: map[string]any{"target": "media"}},
+		{method: "POST", endpoint: "/v1/runtime/provision/cancel", body: map[string]any{}},
 		{method: "GET", endpoint: "/v1/settings"},
 		{method: "PUT", endpoint: "/v1/settings/keys", body: map[string]any{"keys": map[string]any{"GEMINI_FREE": "secret"}}},
 		{method: "GET", endpoint: "/v1/tasks?limit=100"},

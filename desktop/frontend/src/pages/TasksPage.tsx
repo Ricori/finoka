@@ -5,6 +5,7 @@ import type { TaskHistoryEntry } from "../app/types.ts";
 import { activeStates, recoverableStates } from "../app/types.ts";
 import { Mark } from "../components/Mark.tsx";
 import "./TasksPage.css";
+import { Notice } from "../components/Notice.tsx";
 
 interface TasksPageProps {
   tasks: TaskHistoryEntry[];
@@ -16,6 +17,7 @@ interface TasksPageProps {
   onOpenEditor: (entry: MediaEntry) => void;
   onClearTasks: () => void;
   onTaskAction: (item: TaskHistoryEntry, action: "cancel" | "resume") => Promise<void>;
+  onDismissMessage: () => void;
 }
 
 function AnimatedTaskProgress({ snapshot }: { snapshot: TaskHistoryEntry["snapshot"] }) {
@@ -76,7 +78,7 @@ function TaskActivityText({ snapshot }: { snapshot: TaskHistoryEntry["snapshot"]
 }
 
 export function TasksPage(props: TasksPageProps) {
-  const { tasks, media, activeCount, message, pipelineError, onNavigateLibrary, onOpenEditor, onClearTasks, onTaskAction } = props;
+  const { tasks, media, activeCount, message, pipelineError, onNavigateLibrary, onOpenEditor, onClearTasks, onTaskAction, onDismissMessage } = props;
   const clearableCount = tasks.filter((item) => !activeStates.has(item.snapshot.state)).length;
   return (
     <section className="task-history">
@@ -96,8 +98,8 @@ export function TasksPage(props: TasksPageProps) {
           )}
         </div>
       </header>
-      {message && <p className="task-history-message">{message}</p>}
-      {pipelineError && <p className="task-history-message">{pipelineError}</p>}
+      <Notice className="task-history-message" message={message} onDismiss={onDismissMessage} />
+      <Notice className="task-history-message" message={pipelineError ?? ""} />
       {tasks.length === 0 ? (
         <div className="panel task-empty">
           <div className="task-empty-art" aria-hidden="true"><span /><span /><i>▶</i></div>

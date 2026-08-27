@@ -56,6 +56,15 @@ func (s *Service) InstallRuntime(target string) (map[string]any, error) {
 	return result, err
 }
 
+// CancelRuntimeInstall stops the running provisioning job. The sidecar cancels
+// cooperatively and keeps whatever it already downloaded, so this is a stop
+// rather than a rollback.
+func (s *Service) CancelRuntimeInstall() (map[string]any, error) {
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/runtime/provision/cancel", map[string]any{}, &result)
+	return result, err
+}
+
 func (s *Service) Settings() (map[string]any, error) {
 	var result map[string]any
 	err := s.provider.DoJSON(context.Background(), http.MethodGet, "/v1/settings", nil, &result)

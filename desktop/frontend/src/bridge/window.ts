@@ -19,14 +19,13 @@ export async function installWindowsTitlebar(): Promise<void> {
   const controls = document.createElement("div");
   controls.id = "wails-window-controls";
   controls.setAttribute("aria-label", "窗口控制");
+  // Segoe Fluent Icons (Windows 11) / Segoe MDL2 Assets (Windows 10) carry the real
+  // caption glyphs the shell draws. Hand-rolled SVG strokes land on half pixels at
+  // every scaling factor except 100%; the system font is hinted for all of them.
   controls.innerHTML = `
-    <button class="wails-min" type="button" title="最小化" aria-label="最小化">
-      <svg viewBox="0 0 11 11" aria-hidden="true"><path d="M1 5.5h9"/></svg>
-    </button>
+    <button class="wails-min" type="button" title="最小化" aria-label="最小化"><span aria-hidden="true">\uE921</span></button>
     <button class="wails-max" type="button" title="最大化" aria-label="最大化"></button>
-    <button class="wails-close" type="button" title="关闭" aria-label="关闭">
-      <svg viewBox="0 0 11 11" aria-hidden="true"><path d="M1 1l9 9M10 1 1 10"/></svg>
-    </button>`;
+    <button class="wails-close" type="button" title="关闭" aria-label="关闭"><span aria-hidden="true">\uE8BB</span></button>`;
   document.body.appendChild(controls);
 
   const maximise = controls.querySelector<HTMLButtonElement>(".wails-max");
@@ -38,9 +37,10 @@ export async function installWindowsTitlebar(): Promise<void> {
     const maximised = await Window.IsMaximised();
     maximise.title = maximised ? "还原" : "最大化";
     maximise.setAttribute("aria-label", maximise.title);
+    // ChromeRestore / ChromeMaximize.
     maximise.innerHTML = maximised
-      ? '<svg viewBox="0 0 11 11" aria-hidden="true"><path d="M3 1.5h6.5V8H8M1.5 3H8v6.5H1.5z"/></svg>'
-      : '<svg viewBox="0 0 11 11" aria-hidden="true"><rect x="1.5" y="1.5" width="8" height="8"/></svg>';
+      ? '<span aria-hidden="true">\uE923</span>'
+      : '<span aria-hidden="true">\uE922</span>';
   };
 
   minimise.onclick = () => void Window.Minimise();

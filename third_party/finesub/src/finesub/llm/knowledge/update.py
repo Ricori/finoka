@@ -25,7 +25,6 @@ import sys
 from typing import Any, Dict, List, Mapping
 
 from finesub.paths import is_linked_worktree
-from finesub.execution import cloud_execution_enabled
 
 from ..client import (
     GeminiPromptBlockedError,
@@ -436,19 +435,7 @@ def run_knowledge_update(
     # member holds 32k passes here and is then skipped at dispatch as
     # ``input_limit`` -- the model the user bound never answers, and a
     # single-member group fails outright.
-    if cloud_execution_enabled():
-        knowledge_limits = planning_limits_for(
-            "knowledge",
-            difficulty,
-            routes=getattr(getattr(llm_client, "router", None), "routes", None),
-        )
-        knowledge_max_tokens = min(
-            SESSION_OUTPUT_MAX_TOKENS,
-            knowledge_limits.output_limit,
-        )
-    else:
-        knowledge_limits = planning_limits_for("knowledge", difficulty)
-        knowledge_max_tokens = SESSION_OUTPUT_MAX_TOKENS
+    knowledge_limits = planning_limits_for("knowledge", difficulty)
 
     materials = build_knowledge_materials(
         stable_json=stable_json,
@@ -667,7 +654,7 @@ def run_knowledge_update(
                 "prompt_tokens_estimate": prompt_tokens,
                 "window_packs_tokens": counter.count_text(chunk.packs_text()),
                 "kb_entries_tokens": kb_entries_block.tokens,
-                "max_output_tokens": knowledge_max_tokens,
+                "max_output_tokens": SESSION_OUTPUT_MAX_TOKENS,
             }
             last_parse_error: Exception | None = None
             result = None
@@ -683,7 +670,7 @@ def run_knowledge_update(
                     call_result = llm_client.complete(
                         LLMRole.GENERAL_CAPABLE,
                         messages,
-                        max_tokens=knowledge_max_tokens,
+                        max_tokens=SESSION_OUTPUT_MAX_TOKENS,
                         task_group="knowledge",
                         difficulty=difficulty,
                         **_sampling,

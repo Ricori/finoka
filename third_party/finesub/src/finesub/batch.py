@@ -273,7 +273,6 @@ ALLOWED_ITEM_KEYS = {
     "device",
     "language",
     "gpu_budget_gb",
-    "vocal_profile",
     "asr_stabilize_profile",
     "llm_media",
     "llm_correction_media",
@@ -385,7 +384,6 @@ def _build_item(pipeline_mod: Any, opts: Mapping[str, Any]) -> BatchItem:
             gpu_budget_gb=int(
                 opts.get("gpu_budget_gb") or DEFAULT_GPU_BUDGET_GB
             ),
-            vocal_profile=str(opts.get("vocal_profile") or "quality"),
             # Batch now runs one file at a time, so each file takes the whole
             # profile: passing None lets the stage use its own worker planning
             # instead of pinning every task to a single shard.
@@ -521,12 +519,6 @@ def parse_args() -> argparse.Namespace:
         help="GPU budget (GiB).",
     )
     parser.add_argument(
-        "--vocal-profile",
-        choices=("cost", "quality"),
-        default="quality",
-        help="Vocal separation profile (default: quality).",
-    )
-    parser.add_argument(
         "--asr-stabilize-profile",
         type=int,
         choices=(-1, 0, 1, 2),
@@ -590,7 +582,6 @@ def _defaults_from_args(args: argparse.Namespace) -> dict:
         "device": args.device,
         "language": args.language,
         "gpu_budget_gb": args.gpu_budget_gb,
-        "vocal_profile": args.vocal_profile,
         "asr_stabilize_profile": args.asr_stabilize_profile,
         "llm_media": args.llm_media,
         "llm_correction_media": args.llm_correction_media,

@@ -1,30 +1,18 @@
 {
   "archive_sha256": "6b349f4d62bf3841b1b1f976d39e5bb5f213bc7ab1c8fbd01d5f942823e2d6a5",
   "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
-  "content_sha256": "d2b2a1f73363edf82db1c832657b6fbf79a2f603ed08bcf8d227ace1319c2a9f",
+  "content_sha256": "fbbd79d7c63d25d30c0b70221cd37d5ca520dc14a52dc06397daee111de81c03",
   "engine_bundle_id": "finesub-0.4.1+2a320ede3f5c",
   "engine_version": "0.4.1",
-  "files_manifest_sha256": "284209a6e668de63041648361d1fce6058b11adf0b9c3247544853405f910831",
+  "files_manifest_sha256": "7a0a6e567327f032a01a9893d2e4ec3295565a7f8c0b51e9426b4c4c18b05959",
   "patches": [
     {
-      "path": "0001-execution-profile-core.patch",
-      "sha256": "49e791edf4c2a9b50582a409bfd4a9ce3bcecc5741bf5ea505e4e2aa12a8d434"
+      "path": "0001-split-vad-prefix-and-qwen-pass.patch",
+      "sha256": "f98518edeacabe83a4a458f2d7d2336ad0cf1c5dce59ef0e86b1d6b95f890042"
     },
     {
-      "path": "0002-cloud-llm-routing.patch",
-      "sha256": "1f5ab208326a3060c269160899cf10a45fd2d2eb03978bfecd5c242a683374ba"
-    },
-    {
-      "path": "0003-cloud-vad-qwen.patch",
-      "sha256": "a235c8aa857c7158bc6e3bb7eb25c2d695b81f127b47a3b42bafcb9a0d8ffc8b"
-    },
-    {
-      "path": "0004-cloud-separator.patch",
-      "sha256": "56f900094c5d4bdd8c69ae148df59a5cc5922a86f214a62f59aac4537876d677"
-    },
-    {
-      "path": "0005-shared-resources.patch",
-      "sha256": "b52548f8af6fdb5ab870bfa1e00ac3606dcee12effe1733677e820dcefb28b29"
+      "path": "0002-retry-directory-publish-rename.patch",
+      "sha256": "abb14ae828348bbaae45381fd27f34af4fed3f12722b36a3109ebc3938146953"
     }
   ],
   "ref": "v0.4.1",

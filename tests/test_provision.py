@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from finoka.provision import RuntimeProvisionError, RuntimeProvisioner
+from finoka.provision import CANCELLED_MESSAGE, DONE_MESSAGES, RuntimeProvisionError, RuntimeProvisioner
 
 
 VENDOR = Path(__file__).resolve().parents[1] / "third_party" / "finesub"
@@ -82,3 +82,27 @@ def test_runtime_progress_can_aggregate_multiple_resource_downloads(tmp_path: Pa
         "unit": "bytes",
         "bytes_per_second": 1024.0,
     }
+
+
+def test_cancel_requires_a_running_job(tmp_path: Path) -> None:
+    provisioner = RuntimeProvisioner(tmp_path, VENDOR)
+    with pytest.raises(RuntimeProvisionError, match="没有正在进行"):
+        provisioner.cancel()
+
+
+def test_cancelled_job_stops_before_downloading_and_is_not_a_failure(tmp_path: Path) -> None:
+    provisioner = RuntimeProvisioner(tmp_path, VENDOR)
+    provisioner._job.update(state="running", target="all", stage="preparing")
+    provisioner.cancel()
+    assert provisioner.status()["job"]["message"].startswith("正在取消")
+
+    provisioner._run("all")
+    job = provisioner.status()["job"]
+    assert job["state"] == "cancelled"
+    assert job["message"] == CANCELLED_MESSAGE
+    assert job["error"] is None
+
+
+def test_completion_copy_tells_runtime_only_apart_from_full_prepare() -> None:
+    assert DONE_MESSAGES["runtime"] != DONE_MESSAGES["all"]
+    assert "模型仍需单独下载" in DONE_MESSAGES["runtime"]

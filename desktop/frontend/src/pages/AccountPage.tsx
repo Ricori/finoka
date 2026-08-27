@@ -1,5 +1,6 @@
 import type { CloudEntry, CloudSession } from "../bridge/cloud.ts";
 import "./AccountPage.css";
+import { Notice } from "../components/Notice.tsx";
 
 interface AccountPageProps {
   session: CloudSession | null;
@@ -10,9 +11,10 @@ interface AccountPageProps {
   onLoginKeyChange: (value: string) => void;
   onLogin: () => Promise<void>;
   onLogout: () => Promise<void>;
+  onDismissMessage: () => void;
 }
 
-export function AccountPage({ session, media, loginKey, busy, message, onLoginKeyChange, onLogin, onLogout }: AccountPageProps) {
+export function AccountPage({ session, media, loginKey, busy, message, onLoginKeyChange, onLogin, onLogout, onDismissMessage }: AccountPageProps) {
   return (
     <section className="account-layout">
       <article className="panel account-card">
@@ -36,7 +38,7 @@ export function AccountPage({ session, media, loginKey, busy, message, onLoginKe
             <button className="primary-button" disabled={busy || !loginKey.trim()} onClick={() => void onLogin()}>{busy ? "正在验证…" : "登录并同步视频库"}</button>
           </div>
         )}
-        {message && <p className="account-message">{message}</p>}
+        <Notice className="account-message" message={message} onDismiss={onDismissMessage} />
       </article>
       <article className="panel sync-policy">
         <span className="eyebrow">Sync policy</span>

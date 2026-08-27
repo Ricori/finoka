@@ -39,14 +39,26 @@ Local Provider 完成任务并返回 `ArtifactManifest` 后，Go 云端服务：
 
 ## 4. 云端 FineSub 限制
 
-- 输入必须是客户端提取并上传的纯音频对象。
-- 单个音频最长 2 小时。
+- 输入必须是客户端提取并上传的纯音频对象，容器固定 `.m4a` / `audio/mp4`。**上传环节
+  不引入任何损失**，桌面端按两条分支达成：
+  - 源音轨已经是压缩格式 → `-c:a copy -f mp4` 原样搬运。`-f mp4` 是必须的：`.m4a`
+    扩展名会选中 `ipod` 复用器，它只收 AAC/ALAC；通用 MP4 复用器还收 Opus、MP3、
+    FLAC、AC-3、E-AC-3，实测这些拷进去之后云端都能正常解码。
+  - 源音轨是未压缩 PCM，或复用器拒收（如 WMA）→ `-c:a alac` 无损重编。前者是因为
+    直接拷会上传原始 PCM，体积是 ALAC 的两倍而信号完全相同。
+  两条分支都不传 `-ar`、`-ac`、`-sample_fmt`：不重采样、不下混、不改位深。链路上第一次、
+  也是唯一一次重采样发生在云端 prepare 解码到分离器档位采样率时。
+- 单个音频最长 2 小时；单个上传对象最大 4 GiB。上限由「2 小时源音频最大能有多大」决定，
+  而不是由这一端选的码率决定：96 kHz 24-bit 无损音轨在该时长下约 2.5 GB。R2 单次 PUT
+  上限是 5 GiB。Presigned PUT 有效期 4 小时，覆盖桌面端自身 3 小时的上传超时。
 - GPU 上的识别仍使用上传音频；纠错与翻译只接收识别文本，服务端固定
   `correction.media=text`。
 - 服务端固定 `correction.retrieval=none`，不运行本地网页检索或模型原生网页搜索。
 - 视频多模态请求返回 400；旧客户端的 `media=audio` 会兼容归一化为 `text`。
 - GPU worker 直接调用仓库固定版本的 `finesub.pipeline.run_pipeline`，不保留旧版算法。
-- 云端通过 FineSub 原生 `openai_compat` transport 调用 `gpt-5.6-luna`，不再绑定 Gemini。
+- 云端通过 FineSub 原生 `openai_compat` transport 调用 `gpt-5.6-terra`，不再绑定 Gemini。
+  目录行声明模型自己的上下文与输出上限（194k / 65536），与打包目录里同代模型一致，
+  所以窗口规划、每次调用的上限和失败转移都与本地同一套逻辑，不需要给引擎打补丁。
 - 复用旧 VOD 的两套中转与 Secret：`gz-llm/GZ_LLM_API_KEY` 对应
   `https://gpt-agent.cc/v1`（主），`anthropic/ANTHROPIC_API_KEY` 对应
   `https://codeyu.shop/v1`（备用）。不创建 `finoka-finesub-keys` 或其他 LLM Secret。

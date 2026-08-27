@@ -206,6 +206,10 @@ def validate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     request.setdefault("language", "ja")
     request.setdefault("device", "cuda")
     request.setdefault("gpu_budget_gb", 8)
+    # FineSub has one separator policy and the local worker no longer passes a
+    # profile through to it, so this field survives only as a contract check:
+    # a request asking for the cloud's cost tier is asking for something local
+    # execution does not have, and saying so beats silently running quality.
     vocal_profile = request.setdefault("vocal_profile", "quality")
     if vocal_profile != "quality":
         raise ProviderError(
@@ -294,6 +298,14 @@ class LocalProvider:
             return self._provisioner.start(target)
         except RuntimeProvisionError as exc:
             raise ProviderError("runtime_install_unavailable", str(exc), http_status=409) from exc
+
+    def cancel_runtime_install(self) -> dict[str, Any]:
+        if self._provisioner is None:
+            raise ProviderError("runtime_unavailable", "FineSub runtime installer is unavailable", http_status=503)
+        try:
+            return self._provisioner.cancel()
+        except RuntimeProvisionError as exc:
+            raise ProviderError("runtime_install_not_running", str(exc), http_status=409) from exc
 
     def get_settings(self) -> dict[str, Any]:
         if self._settings is None:

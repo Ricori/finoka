@@ -198,7 +198,7 @@ def main() -> int:
         # Image verification is a test concern, so run it in an anonymous,
         # temporary Modal app instead of keeping a test function deployed in
         # the production app.
-        from finoka_modal.verify_container import (
+        from finoka_modal.testing.verify_container import (
             app as verify_app,
             verify_patched_ctranslate2,
         )

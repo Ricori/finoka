@@ -9,8 +9,6 @@ sidecar、隔离 worker 和 FineSub 原生管理运行时执行；产物自动�
 EditDocument。Wails/React 已包含侧边栏、本地/云端 Provider 切换、媒体库操作、Key 设置、
 Key 登录与媒体库合并、自动字幕同步，以及 JASSUB 预览和 SRT/ASS/内嵌视频导出。
 
-独立 `modal_backend` 只运行同版本 FineSub：桌面仅提取并上传最长 2 小时的 AAC 音频，
-后端复用旧 VOD 的 OpenAI 兼容，以 `gpt-5.6-luna` 进行纯文本纠错/翻译，
 并固定关闭网页检索；同时保留 Key
 次数/并发限制、字幕库、任务事件、取消/继续和产物下载。当前剩余发布门槛是
 需要外部基础设施的验收：Windows NVIDIA 真机完整媒体、L4 部署及抢占/取消演练。

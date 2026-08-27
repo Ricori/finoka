@@ -2,8 +2,6 @@
   color: #eef4fc;
   background: #08101a;
   font-family: Inter, "SF Pro Display", "Noto Sans SC", system-ui, sans-serif;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
 }
 
 * {
@@ -41,7 +39,6 @@ button:focus-visible {
   padding: 28px 18px 20px;
   background: #0b131eec;
   border-right: 1px solid #1c2b3b;
-  backdrop-filter: blur(22px);
 }
 
 .brand {
@@ -50,7 +47,7 @@ button:focus-visible {
   gap: 11px;
   padding: 0 10px 31px;
   font-size: 19px;
-  font-weight: 720;
+  font-weight: 700;
   letter-spacing: -.02em;
 }
 
@@ -63,7 +60,7 @@ button:focus-visible {
   background: linear-gradient(145deg, #80c8ff, #3477ff);
   color: #06111f;
   box-shadow: 0 8px 24px #2879ff44;
-  font-weight: 850;
+  font-weight: 800;
 }
 
 nav {
@@ -122,8 +119,8 @@ nav svg {
 }
 
 .sidebar-runtime strong {
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -131,7 +128,7 @@ nav svg {
 
 .sidebar-runtime small {
   color: #65778d;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .status-dot {
@@ -174,8 +171,8 @@ nav svg {
 
 .eyebrow {
   color: #6f849e;
-  font-size: 10px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: .16em;
   text-transform: uppercase;
 }
@@ -220,7 +217,7 @@ nav svg {
   border-radius: 12px;
   background: #f1a26c1a;
   color: #ffb57f;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .ready .runtime-symbol {
@@ -236,7 +233,7 @@ nav svg {
 .runtime-copy p {
   margin: 0;
   color: #8fa0b4;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .content-grid {
@@ -276,7 +273,7 @@ nav svg {
   border-radius: 999px;
   color: #78aee2;
   background: #152639;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -286,22 +283,24 @@ nav svg {
   padding: 10px 14px;
   color: #07111c;
   background: linear-gradient(135deg, #87ccff, #5c92ff);
-  font-weight: 720;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .primary-button:disabled {
   filter: saturate(.3);
   opacity: .48;
+  cursor: not-allowed;
 }
 
 .library-message {
   margin: 16px 0 0;
   padding: 10px 12px;
-  border: 1px solid #4f392d;
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
   border-radius: 9px;
-  background: #241b17;
-  color: #d9a47e;
-  font-size: 11px;
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+  color: var(--warn);
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -413,7 +412,7 @@ nav svg {
   border-radius: 5px;
   background: #02070dbd;
   color: #e7f0fb;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .media-card-copy {
@@ -424,19 +423,19 @@ nav svg {
 
 .media-card-copy strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .media-card-copy span {
   color: #677b91;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .media-card-copy .cloud-badge {
   color: #66c9ae;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .media-card>button {
@@ -447,7 +446,7 @@ nav svg {
   border-radius: 8px;
   background: #122338;
   color: #8fc6f3;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -488,12 +487,12 @@ nav svg {
 }
 
 .provider-switch strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .provider-switch small {
   color: #6e8298;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -503,7 +502,7 @@ nav svg {
 
 .missing-badge {
   color: #e89b79;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .media-card-actions {
@@ -520,7 +519,7 @@ nav svg {
   border-radius: 8px;
   background: #122338;
   color: #8fc6f3;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -555,7 +554,7 @@ nav svg {
   gap: 10px;
   padding: 9px 0;
   border-bottom: 1px solid #1a2a3a;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .feature-list span {
@@ -581,14 +580,14 @@ nav svg {
 }
 
 .privacy-note strong {
-  font-size: 12px;
+  font-size: 13px;
   color: #a8d4f6;
 }
 
 .privacy-note p {
   margin: 6px 0 0;
   color: #61778e;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -617,7 +616,7 @@ nav svg {
 
 .task-heading code {
   color: #61778d;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .progress-track {
@@ -639,7 +638,7 @@ nav svg {
 
 .task-panel>p {
   color: #8294a9;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .task-panel .task-error {
@@ -682,7 +681,7 @@ dl div {
   gap: 20px;
   padding: 13px 0;
   border-bottom: 1px solid #1b2c3e;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 dt {
@@ -716,14 +715,14 @@ dd {
 
 .issues strong {
   color: var(--warn);
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
 }
 
 .issues span,
 .success-copy {
   color: var(--mut);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -733,7 +732,7 @@ dd {
   margin-top: 22px;
   padding-top: 17px;
   border-top: 1px solid #1c2d3f;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .key-state span {
@@ -778,13 +777,13 @@ dd {
 }
 
 .stage-list strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .stage-list small {
   overflow: hidden;
   color: #75879b;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
   text-overflow: ellipsis;
 }
@@ -817,14 +816,25 @@ dd {
   gap: 8px;
 }
 
+/* Themed rather than hardcoded navy: these three sat unreadable on the light
+   theme, and the hierarchy is what tells the two install paths apart -- the two
+   step buttons are secondary, the one that does both is the primary. */
 .provision-actions button {
   padding: 9px 12px;
-  border: 1px solid #2d455c;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #112131;
-  color: #9db2c7;
-  font-size: 10px;
+  background: var(--raised);
+  color: var(--mut);
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.provision-actions button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--accent) 12%, var(--raised));
+  color: var(--text);
 }
 
 .provision-actions button:disabled {
@@ -834,17 +844,35 @@ dd {
 
 .provision-actions .primary-button {
   border: 0;
-  color: #07111c;
+  color: var(--on-grad);
+  background: var(--grad);
+}
+
+.provision-actions .primary-button:hover:not(:disabled) {
+  color: var(--on-grad);
+  background: var(--grad);
+  filter: brightness(1.06);
+}
+
+.provision-hint {
+  margin: -6px 0 0;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .provision-message {
   margin: 0;
   color: #7baed3;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .provision-message.failed {
-  color: #e39778;
+  color: var(--warn);
+}
+
+.provision-message.cancelled {
+  color: var(--accent2);
 }
 
 .provision-panel .progress-track {
@@ -882,28 +910,64 @@ dd {
 }
 
 .asset-grid strong {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .asset-grid small {
   color: #6d8196;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .asset-ready {
-  color: #60daa7;
-  background: #143329;
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
 }
 
 .asset-missing {
-  color: #e7a174;
-  background: #37251d;
+  color: var(--accent2);
+  background: color-mix(in srgb, var(--accent2) 16%, transparent);
+}
+
+.asset-group {
+  display: grid;
+  gap: 9px;
+}
+
+.asset-group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset-group-heading strong {
+  font-size: 12px;
+}
+
+.asset-group-heading strong::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--accent2);
+  content: "";
+}
+
+.asset-group.ready .asset-group-heading strong::before {
+  background: var(--ok);
+}
+
+.asset-group-heading small {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .runtime-root {
   overflow: hidden;
   color: #5d7388;
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -921,14 +985,14 @@ dd {
   max-width: 760px;
   margin: 12px 0 0;
   color: #8193a8;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.65;
 }
 
 .keys-intro code,
 .key-card code {
   color: #79a9d4;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .key-grid {
@@ -961,14 +1025,14 @@ dd {
   min-height: 32px;
   margin: 0;
   color: #708399;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
 .masked-key {
   overflow: hidden;
   color: #8ba1b7;
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -994,14 +1058,14 @@ dd {
   padding: 0;
   background: transparent;
   color: #dc8b72;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
 }
 
 .keys-message {
   margin: 0;
   color: #c79572;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .save-keys {
@@ -1021,7 +1085,7 @@ dd {
 .unavailable-card p {
   margin: 8px 0 0;
   color: #74879d;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -1060,7 +1124,7 @@ dd {
   display: grid;
   gap: 8px;
   color: #8496aa;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .login-form input {
@@ -1080,7 +1144,7 @@ dd {
 .account-message {
   margin: 18px 0 0;
   color: #8cb6d4;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -1100,7 +1164,7 @@ dd {
   margin: 23px 0 0;
   padding-left: 18px;
   color: #8194a8;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -1117,7 +1181,7 @@ dd {
 .editor-loading p,
 .editor-message {
   color: #8498ad;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .editor-toolbar {
@@ -1150,7 +1214,7 @@ dd {
   border-radius: 8px;
   background: #101f2e;
   color: #9fb3c8;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -1204,7 +1268,7 @@ dd {
   border-radius: 8px;
   background: #0b1a27;
   color: #657c92;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .waveform i {
@@ -1246,8 +1310,8 @@ dd {
   padding-block: 10px;
   background: #101d2a;
   color: #64798f;
-  font-size: 9px;
-  font-weight: 750;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
@@ -1261,7 +1325,7 @@ dd {
   background: #09141f;
   color: #dbe8f5;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   outline: none;
 }
 
@@ -1285,7 +1349,7 @@ dd {
   border-radius: 8px;
   background: #12263a;
   color: #75b8eb;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -1301,7 +1365,7 @@ dd {
   padding: 5px 7px;
   background: #101e2b;
   color: #869aae;
-  font-size: 9px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -1315,7 +1379,7 @@ dd {
     grid-template-columns: 196px 1fr;
   }
 
-  .workspace {
+  .workspace-scroll {
     padding-inline: 30px;
   }
 
@@ -1369,7 +1433,8 @@ dd {
     var(--bg);
   color: var(--text);
   background: var(--bg);
-  font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+  font-optical-sizing: auto;
 }
 
 :root.light {
@@ -1426,6 +1491,31 @@ body.light .runtime-diagnostics .stage-list>div {
 body {
   color: var(--text);
   background: var(--page-bg);
+  /* Desktop chrome, not a document: dragging across labels should never leave a
+     blue selection behind. Anything genuinely worth copying opts back in below. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable],
+code,
+pre,
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Thin, theme-tinted scrollbars in place of the wide grey Windows default.
+   scrollbar-color inherits from body; scrollbar-width does not, hence the `*`. */
+* {
+  scrollbar-width: thin;
+}
+
+body {
+  scrollbar-color: color-mix(in srgb, var(--text) 26%, transparent) transparent;
 }
 
 button,
@@ -1434,8 +1524,30 @@ select {
   color: inherit;
 }
 
-html.wails-frameless .topbar {
-  padding-right: 140px;
+/* Frameless on Windows means the app draws its own caption strip. It lives in the
+   workspace column so the sidebar still runs the full height of the window, and it
+   sits outside the scroller so the drag surface never scrolls out of reach — that,
+   rather than the buttons, is what made the window hard to move. */
+:root {
+  --titlebar-h: 48px;
+}
+
+.workspace-titlebar {
+  display: none;
+}
+
+html.wails-frameless .workspace-titlebar {
+  display: block;
+  /* Reported to WM_NCHITTEST as HTCAPTION, so Windows performs the drag itself:
+     snapping, double-click-to-maximise and the right-click system menu all come
+     for free instead of being approximated by mousemove in JS. */
+  --wails-non-client-region: caption;
+  --wails-draggable: drag;
+  user-select: none;
+}
+
+html.wails-fullscreen .workspace-titlebar {
+  display: none;
 }
 
 #wails-window-controls {
@@ -1483,12 +1595,13 @@ html.wails-frameless .topbar {
   background: #a62014;
 }
 
-#wails-window-controls svg {
-  width: 11px;
-  height: 11px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.15;
+/* The glyphs come from the shell's own caption font, so they match the size,
+   weight and hinting of every other Windows titlebar at any scaling factor. */
+#wails-window-controls span {
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1;
 }
 
 #wails-window-controls .wails-min {
@@ -1507,9 +1620,6 @@ html.wails-fullscreen #wails-window-controls {
   display: none;
 }
 
-html.wails-fullscreen .topbar {
-  padding-right: 0;
-}
 
 .app-shell {
   min-height: 100vh;
@@ -1580,8 +1690,8 @@ html.wails-fullscreen .topbar {
   margin: 23px 10px 8px;
   overflow: hidden;
   color: var(--faint);
-  font-size: 9px;
-  font-weight: 750;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: .13em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1627,7 +1737,7 @@ html.wails-fullscreen .topbar {
   padding: 2px 6px;
   background: var(--raised);
   color: var(--mut);
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -1669,12 +1779,12 @@ html.wails-fullscreen .topbar {
 }
 
 .sidebar-provider-status strong {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .sidebar-provider-status small {
   color: var(--faint);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .sidebar-provider-switch {
@@ -1691,7 +1801,7 @@ html.wails-fullscreen .topbar {
   padding: 6px 4px;
   background: transparent;
   color: var(--faint);
-  font-size: 9px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -1740,8 +1850,8 @@ html.wails-fullscreen .topbar {
   border-radius: 10px;
   background: var(--raised);
   color: var(--accent);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .account-avatar.loading {
@@ -1777,13 +1887,13 @@ html.wails-fullscreen .topbar {
 }
 
 .account-copy strong {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .account-copy small {
   margin-top: 3px;
   color: var(--faint);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .sidebar-collapsed .brand {
@@ -1832,9 +1942,30 @@ html.wails-fullscreen .topbar {
 }
 
 .workspace {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+html.wails-frameless .workspace {
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
+}
+
+html.wails-fullscreen .workspace {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-scroll {
+  min-width: 0;
+  min-height: 0;
   padding: 25px clamp(24px, 3.6vw, 52px) 42px;
   overflow: auto;
+}
+
+html.wails-frameless .workspace-scroll {
+  padding-top: 10px;
 }
 
 .topbar {
@@ -1859,7 +1990,9 @@ html.wails-fullscreen .topbar {
 .topbar h1 {
   margin: 0;
   color: var(--text);
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Microsoft YaHei UI", "PingFang SC", sans-serif;
   font-size: clamp(24px, 2.6vw, 34px);
+  letter-spacing: -.01em;
 }
 
 .eyebrow {
@@ -1895,7 +2028,7 @@ html.wails-fullscreen .topbar {
   padding: 0 13px 0 35px;
   background: color-mix(in srgb, var(--panel) 92%, transparent);
   outline: none;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .library-search input:focus {
@@ -1960,14 +2093,14 @@ html.wails-fullscreen .topbar {
 
 .runtime-copy h2 {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .runtime-copy p {
   overflow: hidden;
   color: var(--mut);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1977,7 +2110,7 @@ html.wails-fullscreen .topbar {
   padding: 5px 7px;
   background: transparent;
   color: var(--accent);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 
@@ -2050,7 +2183,7 @@ dd {
     grid-template-columns: 76px minmax(0, 1fr);
   }
 
-  .workspace {
+  .workspace-scroll {
     padding-inline: 28px;
   }
 }

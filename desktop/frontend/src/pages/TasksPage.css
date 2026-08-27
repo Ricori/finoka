@@ -1,48 +1,48 @@
 .task-history { display: grid; gap: 15px; }
 .task-history-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 3px 2px 1px; }
 .task-history-header h2 { margin: 8px 0 0; font-size: 19px; }
-.task-history-header p { margin: 6px 0 0; color: var(--mut); font-size: 10px; }
+.task-history-header p { margin: 6px 0 0; color: var(--mut); font-size: 12px; }
 .task-history-header-actions { display: flex; align-items: center; gap: 8px; }
-.running-summary { display: flex; align-items: center; gap: 7px; border: 1px solid var(--accent-line); border-radius: 999px; padding: 6px 10px; background: var(--accent-dim); color: var(--accent); font-size: 9px; font-weight: 700; white-space: nowrap; }
+.running-summary { display: flex; align-items: center; gap: 7px; border: 1px solid var(--accent-line); border-radius: 999px; padding: 6px 10px; background: var(--accent-dim); color: var(--accent); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .running-summary i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim); animation: task-pulse 1.4s ease-in-out infinite; }
-.task-clear-button { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: transparent; color: var(--mut); font-size: 9px; cursor: pointer; white-space: nowrap; }
+.task-clear-button { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: transparent; color: var(--mut); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .task-clear-button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); color: var(--warn); }
 .task-clear-button:disabled { cursor: not-allowed; opacity: .45; }
-.task-history-message { margin: 0; border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 10px; padding: 9px 11px; background: color-mix(in srgb, var(--warn) 8%, var(--panel)); color: var(--warn); font-size: 10px; }
+.task-history-message { margin: 0; border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 10px; padding: 9px 11px; background: color-mix(in srgb, var(--warn) 8%, var(--panel)); color: var(--warn); font-size: 12px; }
 .task-list { display: grid; gap: 8px; }
 .task-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 13px; border: 1px solid var(--line-soft); border-radius: 13px; padding: 14px 15px; background: color-mix(in srgb, var(--panel) 94%, transparent); transition: border-color .14s, background .14s; }
 .task-row:hover { border-color: var(--accent-border); background: color-mix(in srgb, var(--panel) 86%, var(--accent-dim)); }
-.task-state-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--raised); color: var(--faint); font-size: 13px; font-weight: 800; }
+.task-state-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--raised); color: var(--faint); font-size: 13px; font-weight: 700; }
 .task-running .task-state-icon, .task-queued .task-state-icon { background: var(--accent-dim); color: var(--accent); }
 .task-completed .task-state-icon { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
 .task-failed .task-state-icon, .task-interrupted .task-state-icon { background: color-mix(in srgb, var(--warn) 11%, transparent); color: var(--warn); }
 .task-row-copy { display: grid; gap: 7px; min-width: 0; }
 .task-row-title, .task-row-meta { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.task-row-title strong { overflow: hidden; color: var(--text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.task-row-title small, .task-state { flex: 0 0 auto; border: 1px solid var(--line-soft); border-radius: 999px; padding: 2px 6px; color: var(--mut); font-size: 8px; }
+.task-row-title strong { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.task-row-title small, .task-state { flex: 0 0 auto; border: 1px solid var(--line-soft); border-radius: 999px; padding: 2px 6px; color: var(--mut); font-size: 11px; }
 .task-state-running, .task-state-queued { border-color: var(--accent-line); background: var(--accent-dim); color: var(--accent); }
 .task-state-completed { border-color: color-mix(in srgb, var(--ok) 35%, transparent); background: color-mix(in srgb, var(--ok) 8%, transparent); color: var(--ok); }
 .task-state-failed, .task-state-interrupted { border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); color: var(--warn); }
-.task-row-meta { color: var(--faint); font-size: 8px; }
+.task-row-meta { color: var(--faint); font-size: 11px; }
 .task-row-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-row-meta code { color: var(--faint); }
 .task-row-meta time { margin-left: auto; white-space: nowrap; }
 .task-row-progress-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; gap: 8px; }
-.task-row-progress-wrap > small { color: var(--faint); font-size: 8px; font-variant-numeric: tabular-nums; text-align: right; }
+.task-row-progress-wrap > small { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
 .task-row-progress { height: 4px; overflow: hidden; border-radius: 99px; background: var(--raised); }
 .task-row-progress span { position: relative; display: block; height: 100%; min-width: 3px; overflow: hidden; border-radius: inherit; background: var(--grad); transition: width .55s ease; }
 .task-row-progress.estimated span::after { position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, white 62%, transparent) 50%, transparent 100%); content: ""; transform: translateX(-100%); animation: task-progress-flow 1.45s ease-in-out infinite; }
 .task-completed .task-row-progress span { background: var(--ok); }
 .task-failed .task-row-progress span, .task-interrupted .task-row-progress span { background: var(--warn); }
-.task-row-copy > p { overflow: hidden; margin: 0; color: var(--mut); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.task-row-copy > p { overflow: hidden; margin: 0; color: var(--mut); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .task-failed .task-row-copy > p { color: var(--warn); }
 .task-row-actions { display: flex; gap: 6px; }
-.task-row-actions button { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--raised); color: var(--mut); font-size: 9px; cursor: pointer; white-space: nowrap; }
+.task-row-actions button { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--raised); color: var(--mut); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .task-row-actions button:hover { border-color: var(--accent-border); color: var(--text); }
 .task-row-actions button.resume { border-color: var(--accent-line); background: var(--accent-dim); color: var(--accent); }
 .task-history .task-empty { display: grid; justify-items: center; align-content: center; min-height: 360px; padding: 42px; text-align: center; }
 .task-history .task-empty h2 { margin: 20px 0 8px; font-size: 18px; }
-.task-history .task-empty p { max-width: 440px; margin: 0; color: var(--mut); font-size: 11px; line-height: 1.7; }
+.task-history .task-empty p { max-width: 440px; margin: 0; color: var(--mut); font-size: 12px; line-height: 1.7; }
 .task-empty-art { position: relative; width: 92px; height: 66px; }
 .task-empty-art span { position: absolute; inset: 7px 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--raised); transform: rotate(-7deg) translateX(-8px); }
 .task-empty-art span:nth-child(2) { transform: rotate(7deg) translateX(8px); background: color-mix(in srgb, var(--panel) 76%, var(--accent-dim)); }

@@ -106,7 +106,11 @@ func Run(assets fs.FS) error {
 		EnableFileDrop:  true,
 		Frameless:       runtime.GOOS == "windows",
 		Windows: application.WindowsWindow{
-			NonClientRegionSupport: true,
+			// Composition hosting is what turns --wails-non-client-region into real
+			// WM_NCHITTEST results, so the custom titlebar drags, snap-layouts and
+			// caption buttons behave like a native frame instead of a JS mousemove.
+			NonClientRegionSupport:     true,
+			WebView2CompositionHosting: true,
 		},
 	}))
 	homeOptions, deferredState := deferWindowStart(homeOptions)

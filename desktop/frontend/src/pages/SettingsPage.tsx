@@ -5,6 +5,7 @@ import { CacheSettingsCard } from "../components/CacheSettingsCard.tsx";
 import { GeminiConfigurationCard } from "../components/GeminiConfigurationCard.tsx";
 import { KeyConfigurationCard } from "../components/KeyConfigurationCard.tsx";
 import "./SettingsPage.css";
+import { Notice } from "../components/Notice.tsx";
 
 interface SettingsPageProps {
   settings: FineSubSettingsState | null;
@@ -18,10 +19,12 @@ interface SettingsPageProps {
   onSaveKey: (updates: Record<string, string | null>, name: string) => Promise<void>;
   onSaveCacheLimit: (limit: number) => Promise<void>;
   onClearCache: () => Promise<void>;
+  onDismissMessage: () => void;
+  onDismissCacheMessage: () => void;
 }
 
 export function SettingsPage(props: SettingsPageProps) {
-  const { settings, drafts, busy, message, cache, cacheBusy, cacheMessage, setDrafts, onSaveKey, onSaveCacheLimit, onClearCache } = props;
+  const { settings, drafts, busy, message, cache, cacheBusy, cacheMessage, setDrafts, onSaveKey, onSaveCacheLimit, onClearCache, onDismissMessage, onDismissCacheMessage } = props;
   const keys = settings?.keys ?? [];
   const freeGemini = keys.find((key) => key.name === "GEMINI_FREE");
   const paidGemini = keys.find((key) => key.name === "GEMINI_PAID");
@@ -43,10 +46,10 @@ export function SettingsPage(props: SettingsPageProps) {
 
       {advancedKeys.length > 0 && <details className="advanced-keys panel"><summary><span><strong>高级配置</strong><small>其他模型、联网检索与模型下载凭据</small></span><i>展开 {advancedKeys.length} 项</i></summary><div className="key-grid">{advancedKeys.map((key) => <KeyConfigurationCard key={key.name} item={key} value={drafts[key.name] ?? ""} busy={busy} setDrafts={setDrafts} onSave={onSaveKey} />)}</div></details>}
 
-      <CacheSettingsCard status={cache} busy={cacheBusy} message={cacheMessage} onSaveLimit={onSaveCacheLimit} onClear={onClearCache} />
+      <CacheSettingsCard status={cache} busy={cacheBusy} message={cacheMessage} onSaveLimit={onSaveCacheLimit} onClear={onClearCache} onDismissMessage={onDismissCacheMessage} />
 
       {!settings && <article className="panel unavailable-card"><strong>密钥服务尚未连接</strong><p>启动 Wails 桌面应用后可读取和保存 LLM 等密钥；浏览器预览不会接触本机密钥。</p></article>}
-      {message && <p className="keys-message">{message}</p>}
+      <Notice className="keys-message" message={message} onDismiss={onDismissMessage} />
     </section>
   );
 }

@@ -1,0 +1,57 @@
+/* The per-site classes (.library-message, .keys-message, …) still own the colour
+   and placement of a notice; this file only adds the close affordance and the
+   room it needs, so the two can be combined on one element. */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: notice-in .16s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+  }
+}
+
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -1px -3px 0 0;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  opacity: .58;
+  cursor: pointer;
+}
+
+.notice-close:hover {
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  opacity: 1;
+}
+
+.notice-close svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}

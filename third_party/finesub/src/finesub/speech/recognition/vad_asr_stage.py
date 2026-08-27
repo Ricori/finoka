@@ -34,10 +34,12 @@ from ..preprocessing import vad as vad_detection
 from ..preprocessing.audio import ensure_decodable_input
 from ...run_metadata import record_scratch_file
 from ... import config as app_config
-from ...execution import cloud_execution_enabled, execution_profiled
 from ...reporting import current_reporter, reporting_to, terminal_reporter
 
 
+#: Bumped when the payload written below stops being readable by the loader
+#: beside it. Stored in the artifact, so a stale file is rejected rather than
+#: misread.
 PREPARED_VAD_SCHEMA = 1
 
 
@@ -61,7 +63,9 @@ def _energy_track_payload(track: vad_energy.VadEnergyTrack) -> dict[str, object]
     }
 
 
-def _energy_track_from_payload(payload: Mapping[str, object]) -> vad_energy.VadEnergyTrack:
+def _energy_track_from_payload(
+    payload: Mapping[str, object],
+) -> vad_energy.VadEnergyTrack:
     energy_db = payload.get("energy_db")
     frame_dbfs = payload.get("frame_dbfs")
     if not isinstance(energy_db, torch.Tensor):
@@ -77,19 +81,27 @@ def _energy_track_from_payload(payload: Mapping[str, object]) -> vad_energy.VadE
     )
 
 
-@execution_profiled
 def prepare_vad_asr(
     input_path: str | Path,
     *,
     prepared_path: str | Path,
-    execution_profile: str | None = None,
     vad_silero_assist: bool = False,
     run_metadata_path: str | Path | None = None,
 ) -> Path:
-    """Run the CPU-only VAD/energy prefix and persist its complete state."""
+    """Run the CPU-only VAD/energy prefix and persist its complete state.
 
-    if not cloud_execution_enabled():
-        raise RuntimeError("prepared VAD is only available in the cloud profile")
+    The same work ``run_vad_asr`` does before it loads Whisper, made resumable
+    so that a deployment which rents its accelerator by the second can run this
+    half on a cheaper host. Nothing here touches the GPU: energy VAD is host
+    work, and the optional Silero assist is small enough to stay on the CPU.
+
+    What is written is exactly the local state the transcription half would
+    otherwise have computed for itself, keyed to the audio's digest, so
+    ``run_vad_asr(prepared_path=...)`` resumes at the same point with the same
+    values. Purely additive: a caller that never passes ``prepared_path``
+    never reaches any of this, and the single-process path is unchanged.
+    """
+
     started = time.perf_counter()
     source = Path(input_path).expanduser().resolve()
     if not source.is_file():
@@ -183,11 +195,9 @@ def _load_prepared_vad(
     return payload
 
 
-def prepared_vad_has_speech(
-    prepared_path: str | Path, *, execution_profile: str | None = None
-) -> bool:
-    if not cloud_execution_enabled(execution_profile):
-        return False
+def prepared_vad_has_speech(prepared_path: str | Path) -> bool:
+    """Whether a prepared artifact found any speech at all."""
+
     payload = torch.load(
         Path(prepared_path).expanduser().resolve(),
         map_location="cpu",
@@ -200,16 +210,9 @@ def prepared_vad_has_speech(
     )
 
 
-def prepared_vad_matches(
-    input_path: str | Path,
-    prepared_path: str | Path,
-    *,
-    execution_profile: str | None = None,
-) -> bool:
-    """Return whether a trusted prepared artifact belongs to this audio."""
+def prepared_vad_matches(input_path: str | Path, prepared_path: str | Path) -> bool:
+    """Return whether a readable prepared artifact belongs to this audio."""
 
-    if not cloud_execution_enabled(execution_profile):
-        return False
     try:
         _load_prepared_vad(
             Path(input_path).expanduser().resolve(),
@@ -352,7 +355,6 @@ def write_aligned_json(
     )
 
 
-@execution_profiled
 def finalize_qwen_verification(
     input_path: str | Path,
     aligned_path: str | Path,
@@ -360,19 +362,23 @@ def finalize_qwen_verification(
     device: str = "cpu",
     qwen_verify: str = "auto",
     referee=None,
-    execution_profile: str | None = None,
 ) -> Path:
-    """Attach Qwen evidence after GPU Whisper has released its container.
+    """Attach Qwen evidence to an aligned artifact that was written without it.
 
-    The regular stage keeps this work in-process for local execution. Cloud
-    execution calls this seam from its CPU tail so the short-lived L4 only
-    carries CTranslate2 Whisper inference. The operation is idempotent: a
-    resumed task reuses an aligned artifact that already contains referee
-    metadata.
+    The counterpart to ``run_vad_asr(qwen_verify="off")``: the one-pass stage
+    keeps this work in-process, and a caller that wants the second model off
+    the Whisper accelerator can defer it to here instead. Reads and rewrites
+    the aligned JSON in place, so the result is the artifact the one-pass stage
+    would have produced.
+
+    Idempotent by construction: an artifact that already carries
+    ``asr_align.qwen_verify`` metadata is returned untouched, which is what
+    lets a resumed run call this without checking. ``referee`` accepts an
+    already-loaded :class:`~finesub.speech.verification.qwen_referee.QwenReferee`
+    so a caller that warmed one in the background can hand it over; ownership
+    stays with whoever created it.
     """
 
-    if not cloud_execution_enabled():
-        raise RuntimeError("split Qwen verification is only available in the cloud profile")
     if qwen_verify not in {"auto", "on", "off"}:
         raise ValueError(f"unsupported qwen verification mode: {qwen_verify}")
     source = Path(input_path).expanduser().resolve()
@@ -514,7 +520,6 @@ def resolve_split_params(
         raise ValueError(f"{exc} (from {source})") from exc
 
 
-@execution_profiled
 def run_vad_asr(
     input_path: str | Path,
     *,
@@ -524,7 +529,6 @@ def run_vad_asr(
     language: Optional[str] = None,
     gap_sec: float = asr_align.DEFAULT_GAP_SEC,
     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
-    execution_profile: str | None = None,
     vad_silero_assist: bool = False,
     qwen_verify: str = "auto",
     split_length_scale: float | None = None,
@@ -533,8 +537,6 @@ def run_vad_asr(
 ) -> Path:
     # Before anything else: an out-of-range knob must not surface after the
     # GPU work is already done.
-    if prepared_path is not None and not cloud_execution_enabled():
-        raise RuntimeError("prepared VAD is only available in the cloud profile")
     split_params = resolve_split_params(split_length_scale)
     input_path = Path(input_path).expanduser().resolve()
     if not input_path.exists():
@@ -596,6 +598,11 @@ def run_vad_asr(
             )
 
         if prepared_path is not None:
+            # `prepare_vad_asr` already ran this prefix elsewhere and wrote the
+            # exact state the block below would have produced. Restoring it is
+            # not a shortcut: the artifact is keyed to this audio's digest, so
+            # a mismatch raises rather than transcribing against someone else's
+            # segmentation.
             prepared = _load_prepared_vad(input_path, prepared_path)
             raw_segments = list(prepared.get("raw_segments") or [])
             segments = list(prepared.get("segments") or [])
@@ -614,6 +621,8 @@ def run_vad_asr(
             if vad_silero_assist:
                 from ..preprocessing import silero_ghost
 
+                # Rides along on the VAD's normalized blocks: the probabilities
+                # are ready by the time detect_segments returns.
                 collector = silero_ghost.SileroProbCollector(device)
 
             try:
@@ -628,15 +637,13 @@ def run_vad_asr(
                 raise RuntimeError(f"Failed to load/prepare audio: {exc}") from exc
 
             if collector is not None:
+                # The probabilities were scored inside the VAD pass, so their
+                # cost sits in vad_sec; report it rather than let it hide there.
                 timing["silero_probs_sec"] = collector.seconds
                 t_ghost = time.perf_counter()
                 raw_segments, assist_stats = silero_ghost.assist_segments(
-                    audio_source,
-                    raw_segments,
-                    energy_track,
-                    audio_duration,
-                    device=device,
-                    probs=collector.probs(),
+                    audio_source, raw_segments, energy_track, audio_duration,
+                    device=device, probs=collector.probs(),
                 )
                 timing["silero_assist_sec"] = time.perf_counter() - t_ghost
                 vad_meta = dict(vad_meta)
@@ -655,9 +662,7 @@ def run_vad_asr(
                     },
                 )
 
-            segments = asr_align.normalize_vad_segments(
-                raw_segments, audio_duration
-            )
+            segments = asr_align.normalize_vad_segments(raw_segments, audio_duration)
         if not raw_segments or not segments:
             timing["total_sec"] = time.perf_counter() - t_start
             align_meta["timing"] = {

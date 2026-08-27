@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CacheStatus } from "../bridge/library.ts";
 import "./CacheSettingsCard.css";
+import { Notice } from "./Notice.tsx";
 
 interface CacheSettingsCardProps {
   status: CacheStatus | null;
@@ -8,6 +9,7 @@ interface CacheSettingsCardProps {
   message: string;
   onSaveLimit: (limit: number) => Promise<void>;
   onClear: () => Promise<void>;
+  onDismissMessage: () => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -16,7 +18,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-export function CacheSettingsCard({ status, busy, message, onSaveLimit, onClear }: CacheSettingsCardProps) {
+export function CacheSettingsCard({ status, busy, message, onSaveLimit, onClear, onDismissMessage }: CacheSettingsCardProps) {
   const [limit, setLimit] = useState("20");
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function CacheSettingsCard({ status, busy, message, onSaveLimit, onClear 
         <button disabled={busy || !valid || value === status?.limitGB} onClick={() => void onSaveLimit(value)}>保存上限</button>
         <button className="danger-link" disabled={busy || !status?.files} onClick={() => void onClear()}>清理视频缓存</button>
       </div>
-      {message && <p className="cache-settings-message">{message}</p>}
+      <Notice className="cache-settings-message" message={message} onDismiss={onDismissMessage} />
     </article>
   );
 }

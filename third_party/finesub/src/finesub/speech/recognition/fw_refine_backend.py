@@ -13,7 +13,6 @@ from typing import Any, Iterable
 import numpy as np
 from faster_whisper.transcribe import WhisperModel, get_compression_ratio
 
-from ...execution_policy import refine_compute_type
 from .fw_refine import (
     AlignedSpan,
     TimestampSpan,
@@ -685,7 +684,11 @@ class FwRefineModelPool:
                 return RefinedWhisperModel(
                     self._model_name,
                     device=self._device,
-                    compute_type=refine_compute_type(self._device),
+                    compute_type=(
+                        "float16"
+                        if self._device.strip().lower().startswith("cuda")
+                        else "float32"
+                    ),
                     refine_sec=self._refine_sec,
                 )
         except BaseException:

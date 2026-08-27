@@ -25,7 +25,7 @@
   max-width: 620px;
   margin: 8px 0 0;
   color: var(--mut);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -68,13 +68,13 @@
 }
 
 .gemini-key-copy strong {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .gemini-key-copy small {
   overflow: hidden;
   color: var(--faint);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -86,7 +86,7 @@
   padding: 3px 6px;
   background: var(--accent-dim);
   color: var(--accent);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -104,14 +104,14 @@
 
 .gemini-key-status span {
   color: var(--text);
-  font-size: 9px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .gemini-key-status small {
   overflow: hidden;
   color: var(--faint);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -153,14 +153,14 @@
 
 .gemini-config-footer span {
   color: var(--mut);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .gemini-config-footer button {
   border: 0;
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 9px;
+  font-size: 11px;
   cursor: pointer;
 }
 

@@ -8,15 +8,39 @@ import platform
 import subprocess
 import sys
 import threading
+import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
 TARGETS = {"media", "runtime", "models", "all"}
 PIPELINE_MODELS = ("separator", "whisper", "qwen-referee")
 
+# The two runtime buttons differ only in how far they go, so each target says so
+# in its own words: a shared "已准备就绪" told the user models were ready after a
+# runtime-only install, which is exactly the confusion these messages exist to
+# prevent.
+START_MESSAGES = {
+    "media": "正在准备下载 FFmpeg",
+    "runtime": "正在准备安装运行时（不含模型）",
+    "models": "正在准备下载缺失的模型",
+    "all": "正在准备安装运行时并下载缺失的模型",
+}
+DONE_MESSAGES = {
+    "media": "FFmpeg 与 FFprobe 已准备就绪",
+    "runtime": "运行时已就绪；模型仍需单独下载",
+    "models": "缺失的模型已全部下载并校验完成",
+    "all": "运行时与所需模型已全部准备就绪",
+}
+CANCELLED_MESSAGE = "已取消；已下载的部分会保留，下次继续时不必重头再来"
+
 
 class RuntimeProvisionError(RuntimeError):
     pass
+
+
+class RuntimeProvisionCancelled(RuntimeError):
+    """Raised at our own checkpoints once the user has asked the job to stop."""
 
 
 class RuntimeProvisioner:
@@ -75,6 +99,7 @@ class RuntimeProvisioner:
                 uv_executable=managed_uv,
             )
         self._lock = threading.RLock()
+        self._cancel = threading.Event()
         self._job: dict[str, Any] = {
             "state": "idle",
             "target": "",
@@ -171,18 +196,42 @@ class RuntimeProvisioner:
         with self._lock:
             if self._job["state"] == "running":
                 raise RuntimeProvisionError("FineSub runtime installation is already running")
+            self._cancel.clear()
             self._job = {
                 "state": "running",
                 "target": target,
                 "resource": "",
                 "stage": "preparing",
-                "message": "正在准备 FFmpeg 下载" if target == "media" else "正在准备 FineSub 安装",
+                "message": START_MESSAGES[target],
                 "progress": None,
                 "error": None,
             }
         thread = threading.Thread(target=self._run, args=(target,), name="finoka-runtime-provision", daemon=True)
         thread.start()
         return self.status()
+
+    def cancel(self) -> dict[str, Any]:
+        """Ask the running job to stop at its next checkpoint.
+
+        Cancelling is cooperative rather than abrupt: FineSub's downloader keeps
+        the partial file and resumes from it, and an archive is only activated
+        once it is complete, so a cancelled install leaves no half-installed
+        resource behind and the next attempt continues where this one stopped.
+        """
+
+        with self._lock:
+            if self._job["state"] != "running":
+                raise RuntimeProvisionError("当前没有正在进行的安装任务")
+            self._cancel.set()
+            self._job.update(message="正在取消，等待当前步骤停止…")
+        return self.status()
+
+    def _cancelled(self) -> bool:
+        return self._cancel.is_set()
+
+    def _stop_if_cancelled(self) -> None:
+        if self._cancel.is_set():
+            raise RuntimeProvisionCancelled(CANCELLED_MESSAGE)
 
     def _update(self, **values: Any) -> None:
         with self._lock:
@@ -209,26 +258,37 @@ class RuntimeProvisioner:
             from finesub_bootstrap.paths import ensure_store
 
             ensure_store(self.paths)
+            self._stop_if_cancelled()
             if target == "media":
                 self._install_media_tools()
             if target in {"runtime", "all"}:
                 assert self.runtime is not None
                 for resource_id in ("uv", "ffmpeg"):
+                    self._stop_if_cancelled()
                     if self.resources.status(resource_id).state != "ready":
                         self._stage("resource", f"正在安装 FineSub 资源：{resource_id}")
-                        self.resources.install(resource_id, self._progress, stage=self._stage)
+                        self.resources.install(resource_id, self._progress, stage=self._stage, should_pause=self._cancelled)
+                self._stop_if_cancelled()
                 if self.runtime.status().state != "ready":
                     self._stage("runtime", "正在安装 FineSub Python/CUDA 运行时")
-                    self.runtime.install(stage=self._stage, log=lambda line: self._update(message=line))
+                    self.runtime.install(stage=self._stage, log=lambda line: self._update(message=line), should_pause=self._cancelled)
             if target in {"models", "all"}:
                 assert self.runtime is not None
+                self._stop_if_cancelled()
                 if self.runtime.status().state != "ready":
                     raise RuntimeProvisionError("请先安装 FineSub Python 运行时")
                 for model_id in missing_pipeline_models(self.paths.models):
+                    self._stop_if_cancelled()
                     self._install_model(model_id)
-            message = "FFmpeg 与 FFprobe 已准备就绪" if target == "media" else "FineSub 运行时与所选资源已准备就绪"
-            self._update(state="completed", stage="completed", message=message, progress=None)
+            self._update(state="completed", stage="completed", message=DONE_MESSAGES[target], progress=None)
         except Exception as exc:
+            # Whatever surfaces once the user has asked to stop is that request
+            # arriving -- our own checkpoints, FineSub's `DownloadPaused`, or a
+            # step failing because we killed the subprocess it was waiting on --
+            # so it is reported as a cancellation rather than as a failure.
+            if self._cancel.is_set():
+                self._update(state="cancelled", stage="cancelled", message=CANCELLED_MESSAGE, resource="", progress=None, error=None)
+                return
             self._update(state="failed", stage="failed", message=str(exc), error={"code": "runtime_install_failed", "message": str(exc)}, progress=None)
 
     def _install_media_tools(self) -> None:
@@ -242,6 +302,7 @@ class RuntimeProvisioner:
         total = sum(sizes.values())
         completed_before = 0
         for resource_id in pending:
+            self._stop_if_cancelled()
             self._update(resource=resource_id, stage="resource", message=f"正在准备 {resource_id}", progress=None)
 
             def resource_stage(stage: str, message: str, *, current: str = resource_id) -> None:
@@ -254,7 +315,7 @@ class RuntimeProvisioner:
             def resource_progress(value: Any, *, before: int = completed_before) -> None:
                 self._progress(value, completed_before=before, total_override=total)
 
-            self.resources.install(resource_id, resource_progress, stage=resource_stage)
+            self.resources.install(resource_id, resource_progress, stage=resource_stage, should_pause=self._cancelled)
             completed_before += sizes[resource_id]
         for tool in ("ffmpeg", "ffprobe"):
             executable = self.tool_path(tool)
@@ -272,7 +333,12 @@ class RuntimeProvisioner:
         if environment.get("PYTHONPATH"):
             python_paths.append(environment["PYTHONPATH"])
         environment["PYTHONPATH"] = os.pathsep.join(python_paths)
-        result = subprocess.run(
+        # Polled rather than waited on, so a cancel reaches a model download that
+        # would otherwise run for minutes. The reader thread is what keeps the
+        # pipe from filling up and deadlocking the installer in the meantime.
+        from finesub_bootstrap.processes import terminate_process_tree
+
+        process = subprocess.Popen(
             [
                 str(self.runtime.python_executable), "-m", "finoka.model_install",
                 "--model", model_id,
@@ -281,15 +347,42 @@ class RuntimeProvisioner:
             ],
             cwd=self.vendor,
             env=environment,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             encoding="utf-8",
             errors="replace",
-            check=False,
+            creationflags=(
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                if os.name == "nt"
+                else 0
+            ),
+            start_new_session=os.name != "nt",
         )
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout).strip()
-            raise RuntimeProvisionError(detail[-4000:] or f"model installer exited with {result.returncode}")
+        tail: deque[str] = deque(maxlen=200)
+
+        def read_output() -> None:
+            assert process.stdout is not None
+            for line in process.stdout:
+                tail.append(line.rstrip())
+
+        reader = threading.Thread(target=read_output, name="finoka-model-installer-output", daemon=True)
+        reader.start()
+        while process.poll() is None:
+            if self._cancel.is_set():
+                terminate_process_tree(process)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                reader.join(timeout=1)
+                raise RuntimeProvisionCancelled(CANCELLED_MESSAGE)
+            time.sleep(0.2)
+        reader.join(timeout=1)
+        if process.returncode != 0:
+            detail = "\n".join(tail).strip()
+            raise RuntimeProvisionError(detail[-4000:] or f"model installer exited with {process.returncode}")
 
     def worker_python(self) -> Path | None:
         if self.runtime is None:

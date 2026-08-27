@@ -15,6 +15,51 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import time
+
+
+# Publishing anything here ends in `os.replace`, and Windows denies that while
+# anything still holds a handle on what is being replaced or on what replaces
+# it -- an antivirus scanning the bytes that were just written, a sync client,
+# a shell sitting in the folder. These are the two shapes it takes: a whole
+# tree being renamed into place after a download that took minutes, and the
+# temp-file swap of `write_atomic`, which happens after every status update. In
+# both, the write already succeeded and the handle is usually gone within a
+# second, so failing on the first denial throws away work for nothing.
+REPLACE_ATTEMPTS = 8
+REPLACE_BACKOFF_SECONDS = 0.4
+REPLACE_BACKOFF_CAP_SECONDS = 2.0
+
+#: `write_atomic` waits less. A tree is published once and its loss is a
+#: re-download; a small record is written over and over, so a name that stays
+#: locked would slow every later write by the full budget instead of failing.
+SMALL_FILE_REPLACE_ATTEMPTS = 4
+
+
+def replace_path(
+    source: Path,
+    destination: Path,
+    *,
+    attempts: int = REPLACE_ATTEMPTS,
+) -> None:
+    """`os.replace`, waiting out whoever is still holding either name.
+
+    Only for the replace that *publishes* something, never for one whose
+    failure carries information: `move_directory` reads a failed `os.replace`
+    as "these are different volumes" and needs that answer immediately, so it
+    keeps the bare call.
+    """
+
+    for attempt in range(1, attempts + 1):
+        try:
+            os.replace(source, destination)
+            return
+        except OSError:
+            if attempt == attempts:
+                raise
+            time.sleep(
+                min(REPLACE_BACKOFF_SECONDS * attempt, REPLACE_BACKOFF_CAP_SECONDS)
+            )
 
 
 def is_directory_link(path: Path) -> bool:
@@ -262,7 +307,7 @@ def move_directory(source: Path, destination: Path) -> tuple[bool, Path | None]:
             raise OSError(
                 f"Copy of {source} did not match the source; nothing was moved"
             )
-        os.replace(staging, destination)
+        replace_path(staging, destination)
     except BaseException:
         remove_tree(staging)
         raise
@@ -289,13 +334,18 @@ def write_atomic(
 
     For records that must survive a crash *and* concurrent writers, take the
     lock first (see `locks.holding_lock`); this only guarantees atomicity.
+
+    The swap goes through `replace_path` because on Windows it is denied while
+    anything holds either name -- a scanner reading the file that was just
+    written is enough, and a task should not fail over a record it wrote
+    correctly.
     """
 
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f"{path.name}.tmp")
     try:
         temporary.write_text(text, encoding=encoding, newline=newline)
-        os.replace(temporary, path)
+        replace_path(temporary, path, attempts=SMALL_FILE_REPLACE_ATTEMPTS)
     except BaseException:
         try:
             temporary.unlink(missing_ok=True)
@@ -354,7 +404,7 @@ def move_tree(source: Path, destination: Path) -> None:
             raise OSError(
                 f"Copy of {source} did not match the source; nothing was moved"
             )
-        os.replace(staging, destination)
+        replace_path(staging, destination)
     except BaseException:
         remove_tree(staging)
         raise

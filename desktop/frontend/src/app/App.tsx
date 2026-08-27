@@ -108,14 +108,6 @@ export default function App() {
   }, [taskHistory]);
 
   useEffect(() => {
-    if (taskHistoryMessage !== "任务列表已清空。" && !taskHistoryMessage.startsWith("已清除 ")) return;
-    const timer = window.setTimeout(() => {
-      setTaskHistoryMessage((current) => current === taskHistoryMessage ? "" : current);
-    }, 3000);
-    return () => window.clearTimeout(timer);
-  }, [taskHistoryMessage]);
-
-  useEffect(() => {
     void desktopPreferences.get().then((value) => {
       setTheme(value.homeTheme === "dark" ? "dark" : "light");
       setSidebarCollapsed(value.sidebarCollapsed);
@@ -292,7 +284,7 @@ export default function App() {
     const timer = window.setInterval(() => {
       void fineSubRuntime.status().then((status) => {
         setRuntimeProvision(status);
-        if (status.job.state === "completed") void refresh();
+        if (status.job.state !== "running") void refresh();
       }).catch(() => undefined);
     }, 1000);
     return () => window.clearInterval(timer);
@@ -648,6 +640,14 @@ export default function App() {
     }
   }, []);
 
+  const cancelRuntimeInstall = useCallback(async () => {
+    try {
+      setRuntimeProvision(await fineSubRuntime.cancel());
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  }, []);
+
   const runtimeReady = capabilities?.runtime?.ready === true;
   const issues = capabilities?.runtime?.issues ?? [];
   const title = section === "library"
@@ -765,112 +765,122 @@ export default function App() {
       </aside>
 
       <main className="workspace">
-        <header className="topbar">
-          <div>
-            <h1>{title}</h1>
-          </div>
-          {section === "library" && <label className="library-search"><span>⌕</span><input type="search" placeholder="搜索标题或文件名" value={query} onChange={(event) => setQuery(event.target.value)} /></label>}
-          <div className="topbar-actions">
-            <button className="theme-button" aria-label="切换主题" title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"} onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}>{theme === "dark" ? "☼" : "◐"}</button>
-            {section === "library" ? (
-              <button className="primary-button" disabled={libraryBusy} onClick={() => void importMedia()}>{libraryBusy ? "正在导入…" : "＋ 添加媒体"}</button>
-            ) : section === "tasks" ? (
-              <button className="quiet-button" onClick={() => void refreshTaskHistory()} disabled={taskHistoryBusy}>{taskHistoryBusy ? "正在刷新…" : "刷新任务"}</button>
-            ) : section === "runtime" ? (
-              <button className="quiet-button" onClick={() => void refresh()} disabled={loadState === "loading"}>{loadState === "loading" ? "正在检查…" : "重新检查"}</button>
-            ) : null}
-          </div>
-        </header>
+        {/* Windows caption strip: empty on purpose so the whole band stays a
+            non-client drag region — anything interactive placed here would be
+            swallowed by the native hit test. */}
+        <div className="workspace-titlebar" aria-hidden="true" />
+        <div className="workspace-scroll">
+          <header className="topbar">
+            <div>
+              <h1>{title}</h1>
+            </div>
+            {section === "library" && <label className="library-search"><span>⌕</span><input type="search" placeholder="搜索标题或文件名" value={query} onChange={(event) => setQuery(event.target.value)} /></label>}
+            <div className="topbar-actions">
+              <button className="theme-button" aria-label="切换主题" title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"} onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}>{theme === "dark" ? "☼" : "◐"}</button>
+              {section === "library" ? (
+                <button className="primary-button" disabled={libraryBusy} onClick={() => void importMedia()}>{libraryBusy ? "正在导入…" : "＋ 添加媒体"}</button>
+              ) : section === "tasks" ? (
+                <button className="quiet-button" onClick={() => void refreshTaskHistory()} disabled={taskHistoryBusy}>{taskHistoryBusy ? "正在刷新…" : "刷新任务"}</button>
+              ) : section === "runtime" ? (
+                <button className="quiet-button" onClick={() => void refresh()} disabled={loadState === "loading"}>{loadState === "loading" ? "正在检查…" : "重新检查"}</button>
+              ) : null}
+            </div>
+          </header>
 
-        {(section === "library" || section === "tasks") && <section className={`runtime-banner ${runtimeReady ? "ready" : "warning"}`}>
-          <div className="runtime-symbol">{runtimeReady ? "✓" : "!"}</div>
-          <div className="runtime-copy">
-            <span className="eyebrow">本地执行环境</span>
-            <h2>
-              {runtimeReady
-                ? "引擎已准备就绪"
-                : loadState === "loading"
-                  ? "正在连接本地服务"
-                  : "需要完成运行时配置"}
-            </h2>
-            <p>
-              {runtimeReady
-                ? `FineSub ${capabilities.engine.version} · ${capabilities.engine.commit.slice(0, 12)}`
-                : message || issues[0]?.message || "正在读取 capabilities…"}
-            </p>
-          </div>
-          <button onClick={() => setSection("runtime")}>查看详情 →</button>
-        </section>}
+          {(section === "library" || section === "tasks") && <section className={`runtime-banner ${runtimeReady ? "ready" : "warning"}`}>
+            <div className="runtime-symbol">{runtimeReady ? "✓" : "!"}</div>
+            <div className="runtime-copy">
+              <span className="eyebrow">本地执行环境</span>
+              <h2>
+                {runtimeReady
+                  ? "引擎已准备就绪"
+                  : loadState === "loading"
+                    ? "正在连接本地服务"
+                    : "需要完成运行时配置"}
+              </h2>
+              <p>
+                {runtimeReady
+                  ? `FineSub ${capabilities.engine.version} · ${capabilities.engine.commit.slice(0, 12)}`
+                  : message || issues[0]?.message || "正在读取 capabilities…"}
+              </p>
+            </div>
+            <button onClick={() => setSection("runtime")}>查看详情 →</button>
+          </section>}
 
-        {section === "library" && (
-          <LibraryPage
-            items={libraryItems}
-            visibleItems={visibleItems}
-            thumbnails={thumbnails}
-            remoteByFingerprint={remoteByFingerprint}
-            filter={libraryFilter}
-            filterCounts={filterCounts}
-            sort={sortMode}
-            view={viewMode}
-            busy={libraryBusy}
-            message={libraryMessage}
-            localRunningID={localRunningID}
-            runningProgress={pipeline.snapshot?.progress?.total ? Math.min(100, pipeline.snapshot.progress.completed / pipeline.snapshot.progress.total * 100) : 8}
-            taskActive={taskActive}
-            syncing={cloudLoading}
-            setFilter={setLibraryFilter}
-            setSort={setSortMode}
-            setView={setViewMode}
-            onClearQuery={() => setQuery("")}
-            onImport={importMedia}
-            onOpen={(entry) => void openEditor(entry)}
-            onStart={startMedia}
-            onRename={renameMedia}
-            onRemove={removeMedia}
-            onDeleteCloud={deleteCloudMedia}
-            onRelink={relinkMedia}
-          />
-        )}
+          {section === "library" && (
+            <LibraryPage
+              items={libraryItems}
+              visibleItems={visibleItems}
+              thumbnails={thumbnails}
+              remoteByFingerprint={remoteByFingerprint}
+              filter={libraryFilter}
+              filterCounts={filterCounts}
+              sort={sortMode}
+              view={viewMode}
+              busy={libraryBusy}
+              message={libraryMessage}
+              localRunningID={localRunningID}
+              runningProgress={pipeline.snapshot?.progress?.total ? Math.min(100, pipeline.snapshot.progress.completed / pipeline.snapshot.progress.total * 100) : 8}
+              taskActive={taskActive}
+              syncing={cloudLoading}
+              setFilter={setLibraryFilter}
+              setSort={setSortMode}
+              setView={setViewMode}
+              onClearQuery={() => setQuery("")}
+              onImport={importMedia}
+              onOpen={(entry) => void openEditor(entry)}
+              onStart={startMedia}
+              onRename={renameMedia}
+              onRemove={removeMedia}
+              onDeleteCloud={deleteCloudMedia}
+              onRelink={relinkMedia}
+              onDismissMessage={() => setLibraryMessage("")}
+            />
+          )}
 
-        {section === "tasks" && (
-          <TasksPage
-            tasks={taskHistory}
-            media={media}
-            activeCount={activeTaskCount}
-            message={taskHistoryMessage}
-            pipelineError={pipeline.error?.message}
-            onNavigateLibrary={() => setSection("library")}
-            onOpenEditor={(entry) => void openEditor(entry)}
-            onClearTasks={clearTaskHistory}
-            onTaskAction={actOnHistoryTask}
-          />
-        )}
+          {section === "tasks" && (
+            <TasksPage
+              tasks={taskHistory}
+              media={media}
+              activeCount={activeTaskCount}
+              message={taskHistoryMessage}
+              pipelineError={pipeline.error?.message}
+              onNavigateLibrary={() => setSection("library")}
+              onOpenEditor={(entry) => void openEditor(entry)}
+              onClearTasks={clearTaskHistory}
+              onTaskAction={actOnHistoryTask}
+              onDismissMessage={() => setTaskHistoryMessage("")}
+            />
+          )}
 
-        {section === "runtime" && (
-          <RuntimePage capabilities={capabilities} message={message} provision={runtimeProvision} ready={runtimeReady} sidecar={sidecar} onInstall={installRuntime} />
-        )}
+          {section === "runtime" && (
+            <RuntimePage capabilities={capabilities} message={message} provision={runtimeProvision} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} />
+          )}
 
-        {section === "keys" && (
-          <SettingsPage
-            settings={settings}
-            drafts={keyDraft}
-            busy={keysBusy}
-            message={keysMessage}
-            cache={cacheStatus}
-            cacheBusy={cacheBusy}
-            cacheMessage={cacheMessage}
-            setDrafts={setKeyDraft}
-            onSaveKey={saveKeys}
-            onSaveCacheLimit={saveCacheLimit}
-            onClearCache={clearCache}
-          />
-        )}
+          {section === "keys" && (
+            <SettingsPage
+              settings={settings}
+              drafts={keyDraft}
+              busy={keysBusy}
+              message={keysMessage}
+              cache={cacheStatus}
+              cacheBusy={cacheBusy}
+              cacheMessage={cacheMessage}
+              setDrafts={setKeyDraft}
+              onSaveKey={saveKeys}
+              onSaveCacheLimit={saveCacheLimit}
+              onClearCache={clearCache}
+              onDismissMessage={() => setKeysMessage("")}
+              onDismissCacheMessage={() => setCacheMessage("")}
+            />
+          )}
 
-        {section === "adminKeys" && cloudSession?.admin && <AdminKeysPage />}
+          {section === "adminKeys" && cloudSession?.admin && <AdminKeysPage />}
 
-        {section === "account" && (
-          <AccountPage session={cloudSession} media={cloudMedia} loginKey={loginKey} busy={accountBusy} message={accountMessage} onLoginKeyChange={setLoginKey} onLogin={login} onLogout={logout} />
-        )}
+          {section === "account" && (
+            <AccountPage session={cloudSession} media={cloudMedia} loginKey={loginKey} busy={accountBusy} message={accountMessage} onLoginKeyChange={setLoginKey} onLogin={login} onLogout={logout} onDismissMessage={() => setAccountMessage("")} />
+          )}
+        </div>
       </main>
 
       {dialog && <MediaDialog dialog={dialog} busy={dialogBusy} setDialog={setDialog} onSubmit={submitDialog} />}

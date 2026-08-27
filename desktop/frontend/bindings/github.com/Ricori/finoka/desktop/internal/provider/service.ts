@@ -9,6 +9,15 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as sidecar$0 from "../sidecar/models.js";
 
+/**
+ * CancelRuntimeInstall stops the running provisioning job. The sidecar cancels
+ * cooperatively and keeps whatever it already downloaded, so this is a stop
+ * rather than a rollback.
+ */
+export function CancelRuntimeInstall(): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(2224560352);
+}
+
 export function CancelTask(taskID: string): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(3714944418, taskID);
 }

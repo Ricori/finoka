@@ -24,8 +24,6 @@ from typing import Any
 
 import torch
 
-from ....execution import cloud_execution_enabled
-
 
 AXES = {
     "time": (0, (62, 801, 512)),
@@ -121,31 +119,15 @@ def cxx_toolchain_available() -> bool:
     with no compiler would otherwise be told a 90-second build is starting and
     then land on eager, on exactly the run where the JIT tier was available.
 
-    Deliberately mirrors what ``_activate_cxx_toolchain`` checks, so the two
-    cannot disagree. Linux uses the compiler already shipped in the Modal
-    worker image; Windows activates MSVC as before.
+    Deliberately mirrors what ``_activate_msvc`` checks, so the two cannot
+    disagree -- including that it is Windows-shaped, which is the only platform
+    the AOTI path has been run on.
     """
 
-    if cloud_execution_enabled() and os.name != "nt":
-        return any(shutil.which(name) is not None for name in ("g++", "clang++"))
     return shutil.which("cl.exe") is not None or _find_vcvars() is not None
 
 
-def _activate_cxx_toolchain() -> str:
-    if cloud_execution_enabled() and os.name != "nt":
-        # Modal's image exposes clang first, but TorchInductor then links its
-        # OpenMP objects with -lomp. Ubuntu's build-essential image only ships
-        # libgomp, so that otherwise fails after an expensive compile. Prefer
-        # GCC and override Modal's inherited CXX selection: g++ uses the
-        # already-installed libgomp runtime and needs no image rebuild.
-        compiler = shutil.which("g++") or shutil.which("clang++")
-        if compiler is None:
-            raise RuntimeError("AOTInductor requires clang++ or g++ on Linux")
-        # TorchInductor otherwise probes the host again and can select a
-        # different compiler between the capability check and the build.
-        os.environ["CXX"] = compiler
-        return compiler
-
+def _activate_msvc() -> str:
     existing = shutil.which("cl.exe")
     if existing is not None:
         return existing
@@ -249,7 +231,7 @@ def _pinned_attention_backend(module: torch.nn.Module, backend: str | None) -> A
 
 
 def _inductor_configs(emulate_precision_casts: bool) -> dict[str, Any]:
-    configs: dict[str, Any] = {
+    return {
         # Weightless packages. 2.11 replaced the on-disk bool with
         # package_constants_on_disk_format, whose default (None) already means
         # "not on disk", so only the in-so switch is set here. Either way the
@@ -259,12 +241,10 @@ def _inductor_configs(emulate_precision_casts: bool) -> dict[str, Any]:
         # Keep injected constants reachable; see the note next to
         # _CROSS_BLOCK_ERROR_TOLERANCE.
         "aot_inductor.use_runtime_constant_folding": True,
-    }
-    if not cloud_execution_enabled() or os.name == "nt":
         # Windows AOTI link list omits cudart although the generated wrapper
-        # uses that API. Linux resolves it through Torch's CUDA link settings.
-        configs["aot_inductor.custom_op_libs"] = ["cudart"]
-    return configs
+        # uses that API.
+        "aot_inductor.custom_op_libs": ["cudart"],
+    }
 
 
 def _capture_module_inputs(
@@ -289,20 +269,12 @@ def _capture_module_inputs(
         model.get_submodule(path).register_forward_pre_hook(capture(name))
         for name, path in SINGLE_MODULES.items()
     ]
-    if cloud_execution_enabled():
-        handles.extend(
-            model.layers[0][module_index].register_forward_pre_hook(capture(axis))
-            for axis, (module_index, _shape) in AXES.items()
-        )
     try:
         _separation()._warm_up_shared_roformer(model_instance, use_amp=True)
     finally:
         for handle in handles:
             handle.remove()
-    expected = set(SINGLE_MODULES)
-    if cloud_execution_enabled():
-        expected.update(AXES)
-    missing = sorted(expected - set(captured))
+    missing = sorted(set(SINGLE_MODULES) - set(captured))
     if missing:
         raise RuntimeError(f"Never reached during a forward: {missing}")
     return captured
@@ -362,7 +334,7 @@ def build_packages(
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Output directory is not empty: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    compiler = _activate_cxx_toolchain()
+    compiler = _activate_msvc()
 
     attention_backends = {
         axis: (
@@ -373,18 +345,12 @@ def build_packages(
 
     packages: dict[str, Any] = {}
     with _build_target(model_instance) as target_instance:
-        compiled_batch_size = max(1, int(getattr(target_instance, "batch_size", 1)))
         model = target_instance.model_run
         examples = (
             _capture_module_inputs(target_instance, model) if targets == "all" else {}
         )
 
-        for axis, (module_index, default_shape) in AXES.items():
-            shape = (
-                tuple(examples[axis].shape)
-                if cloud_execution_enabled() and axis in examples
-                else default_shape
-            )
+        for axis, (module_index, shape) in AXES.items():
             module = model.layers[0][module_index].eval()
             example = torch.randn(shape, device="cuda", dtype=torch.float16)
             _populate_rotary_cache(module, shape[1])
@@ -544,8 +510,6 @@ def build_packages(
         "emulate_precision_casts": emulate_precision_casts,
         "packages": packages,
     }
-    if cloud_execution_enabled():
-        manifest["batch_size"] = compiled_batch_size
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
@@ -565,16 +529,11 @@ def load_packages(model_instance: Any, package_dir: Path) -> int:
     manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("weights_serialized") is not False:
         raise RuntimeError("AOTI manifest does not describe weightless packages")
-    expected_runtime = [
+    for field, actual in (
         ("torch", torch.__version__),
         ("cuda", torch.version.cuda),
         ("sm", _device_arch()),
-    ]
-    if cloud_execution_enabled():
-        expected_runtime.append(
-            ("batch_size", max(1, int(getattr(model_instance, "batch_size", 1))))
-        )
-    for field, actual in expected_runtime:
+    ):
         recorded = manifest.get(field)
         if recorded != actual:
             # An ABI or architecture mismatch is not a slow path, it is an

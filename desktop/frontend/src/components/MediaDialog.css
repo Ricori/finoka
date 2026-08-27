@@ -1,11 +1,11 @@
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(10, 13, 22, .62); backdrop-filter: blur(8px); }
 .dialog { width: min(440px, 100%); border: 1px solid var(--line); border-radius: 17px; padding: 25px; background: var(--panel); box-shadow: 0 22px 70px rgba(0, 0, 0, .5); }
 .dialog h2 { margin: 6px 0 0; font-size: 19px; }
-.dialog p { margin: 18px 0; color: var(--mut); font-size: 12px; line-height: 1.6; }
-.dialog-field { display: grid; gap: 8px; margin-top: 20px; color: var(--mut); font-size: 10px; }
+.dialog p { margin: 18px 0; color: var(--mut); font-size: 13px; line-height: 1.6; }
+.dialog-field { display: grid; gap: 8px; margin-top: 20px; color: var(--mut); font-size: 12px; }
 .dialog-field input { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; background: color-mix(in srgb, var(--bg) 72%, var(--panel)); color: var(--text); outline: none; }
 .dialog-field input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
-.dialog-check { display: flex; align-items: center; gap: 9px; border: 1px solid var(--line-soft); border-radius: 10px; padding: 11px; color: var(--mut); font-size: 10px; }
+.dialog-check { display: flex; align-items: center; gap: 9px; border: 1px solid var(--line-soft); border-radius: 10px; padding: 11px; color: var(--mut); font-size: 12px; }
 .dialog-check input { accent-color: var(--accent); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 23px; }
 .dialog-actions button { border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; background: var(--raised); color: var(--mut); cursor: pointer; }

@@ -43,7 +43,6 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ...execution import cloud_execution_enabled
 from ...reporting import current_reporter
 from ...text import normalized_compact
 from ..preprocessing.audio import (
@@ -225,11 +224,14 @@ class QwenReferee:
             self._model = model
         return self._model
 
-    def warm(self, *, execution_profile: str | None = None) -> None:
-        """Load processor and weights without running a transcription."""
+    def warm(self) -> None:
+        """Load processor and weights without running a transcription.
 
-        if not cloud_execution_enabled(execution_profile):
-            raise RuntimeError("Qwen preloading is only available in the cloud profile")
+        Model loading and the first clip are separable, and a caller that knows
+        it will need the referee can pay for the load while something else is
+        still running. Idempotent -- ``_ensure_model`` caches.
+        """
+
         self._ensure_model()
 
     def transcribe_batch(

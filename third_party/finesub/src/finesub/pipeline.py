@@ -12,7 +12,6 @@ import traceback
 from pathlib import Path
 from typing import Any, Mapping, NamedTuple, Optional
 
-from .execution import execution_profiled
 from .paths import resolve_logs_dir, resolve_name_output_path
 from .reporting import (
     LEVELS,
@@ -215,15 +214,6 @@ def parse_args() -> argparse.Namespace:
         choices=gpu_budget_choices(),
         default=DEFAULT_GPU_BUDGET_GB,
         help="GPU memory budget profile in GiB (default: 4).",
-    )
-    parser.add_argument(
-        "--vocal-profile",
-        choices=vocal_separation.VOCAL_PROFILES,
-        default=vocal_separation.VOCAL_PROFILE_QUALITY,
-        help=(
-            "Vocal separation profile: quality uses standard 44.1 kHz; cost "
-            "uses 16 kHz for fewer BS-Roformer windows (default: quality)."
-        ),
     )
     parser.add_argument("--language", default=None, help="Language override (e.g. ja, en). Use 'auto' or omit for auto-detection.")
     parser.add_argument(
@@ -522,7 +512,6 @@ def _stage_record_for_current_run(
     return chosen
 
 
-@execution_profiled
 def run_pipeline(
     input_path: str | Path,
     *,
@@ -532,10 +521,7 @@ def run_pipeline(
     language: Optional[str] = None,
     gap_sec: float = asr_align.DEFAULT_GAP_SEC,
     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
-    execution_profile: str | None = None,
-    vocal_profile: str = vocal_separation.VOCAL_PROFILE_QUALITY,
     vad_silero_assist: bool = False,
-    prepared_vad_path: str | Path | None = None,
     qwen_verify: str = "auto",
     split_length_scale: float | None = None,
     word: bool = False,
@@ -717,8 +703,6 @@ def run_pipeline(
                         source_path,
                         output_path=temporary,
                         gpu_budget_gb=gpu_budget_gb,
-                        execution_profile=execution_profile,
-                        vocal_profile=vocal_profile,
                         metadata_sink=separator_metadata,
                         run_metadata_path=paths.metadata_json,
                     ),
@@ -781,9 +765,7 @@ def run_pipeline(
                 language=language,
                 gap_sec=gap_sec,
                 gpu_budget_gb=gpu_budget_gb,
-                execution_profile=execution_profile,
                 vad_silero_assist=vad_silero_assist,
-                prepared_path=prepared_vad_path,
                 qwen_verify=qwen_verify,
                 split_length_scale=split_length_scale,
                 run_metadata_path=paths.metadata_json,
@@ -1235,7 +1217,6 @@ def main() -> int:
                     language=args.language,
                     gap_sec=args.gap,
                     gpu_budget_gb=args.gpu_budget_gb,
-                    vocal_profile=args.vocal_profile,
                     vad_silero_assist=args.vad_silero_assist,
                     qwen_verify=args.qwen_verify,
                     split_length_scale=args.split_length_scale,

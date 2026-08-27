@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -31,6 +32,28 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+#: Windows denies `os.replace` while anything holds either name open, and
+#: Python's `open` does not share deletion -- so a reader of `snapshot.json`
+#: denies the writer. The desktop UI polls task status while the worker
+#: writes it, which turned a record that had been written correctly into
+#: `[WinError 5] 拒绝访问` and failed the whole task. A reader is gone in
+#: milliseconds, so the swap waits for it rather than giving up; the wait
+#: stays short because these records are rewritten on every status update.
+_REPLACE_ATTEMPTS = 4
+_REPLACE_BACKOFF_SECONDS = 0.05
+
+
+def _replace_when_free(temporary: Path, path: Path) -> None:
+    for attempt in range(1, _REPLACE_ATTEMPTS + 1):
+        try:
+            os.replace(temporary, path)
+            return
+        except OSError:
+            if attempt == _REPLACE_ATTEMPTS:
+                raise
+            time.sleep(_REPLACE_BACKOFF_SECONDS * attempt)
+
+
 def _atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -41,7 +64,7 @@ def _atomic_json(path: Path, value: object) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        _replace_when_free(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 

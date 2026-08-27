@@ -162,7 +162,8 @@ EditDocument      -> t0/t1/ja/zh/words/low_conf/tracks
 
 云端首版只提供纯音频流水线：
 
-- 桌面端在本机从媒体中提取音频，再通过 Presigned URL 上传。
+- 桌面端在本机从媒体中提取音频后通过 Presigned URL 上传。压缩源音轨直接 `-c:a copy`
+  原样搬运，未压缩源转 ALAC；不重采样、不下混、不改位深，所以上传环节自身不引入损失。
 - 不上传原视频、截图、关键帧或其他视觉内容。
 - Cloud Provider 的 `capabilities()` 固定返回 `video_multimodal=false`。
 - 云端识别使用上传音频，纠错与翻译固定使用 `correction.media="text"`。

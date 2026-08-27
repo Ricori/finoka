@@ -7,7 +7,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.sync_finesub import DEFAULT_VENDOR, create_files_manifest
+from scripts.sync_finesub import (
+    DEFAULT_VENDOR,
+    create_files_manifest,
+    git_apply_command,
+    git_apply_env,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,15 +21,29 @@ BASELINE_MANIFEST = PATCH_ROOT / "BASELINE_FILES.json"
 
 
 def _git_apply(root: Path, patch_path: Path, *, reverse: bool = False) -> None:
-    command = ["git", "apply"]
+    # Same invocation the synchronizer uses, borrowed rather than restated:
+    # line-ending translation and the surrounding repository both have to be
+    # kept out of it, and a replay that differs from the real apply proves
+    # nothing about the real apply.
+    command = [*git_apply_command(), "--verbose"]
     if reverse:
         command.append("--reverse")
     command.append(str(patch_path))
-    completed = subprocess.run(command, cwd=root, capture_output=True, text=True)
+    completed = subprocess.run(
+        command,
+        cwd=root,
+        env=git_apply_env(root),
+        capture_output=True,
+        text=True,
+    )
     if completed.returncode:
         raise AssertionError(
             f"cannot {'reverse ' if reverse else ''}apply {patch_path.name}: "
             f"{completed.stderr.strip()}"
+        )
+    if "Skipped patch" in completed.stderr:
+        raise AssertionError(
+            f"{patch_path.name} was silently skipped: {completed.stderr.strip()}"
         )
 
 

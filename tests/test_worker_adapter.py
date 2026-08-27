@@ -85,7 +85,11 @@ class WorkerAdapterTests(unittest.TestCase):
             self.assertEqual(captured["input"], str(source))
             self.assertEqual(captured["stage"], "raw-srt")
             self.assertEqual(captured["device"], "cuda:0")
-            self.assertEqual(captured["execution_profile"], "local")
+            # No profile switch and no separator profile: the local worker
+            # calls `run_pipeline` with upstream's own arguments, which is what
+            # makes "local is unpatched upstream" checkable rather than a claim.
+            self.assertNotIn("execution_profile", captured)
+            self.assertNotIn("vocal_profile", captured)
             self.assertTrue(captured["resume"])
             events = [json.loads(line) for line in output.getvalue().splitlines()]
             completed = next(event for event in events if event["type"] == "completed")

@@ -18,7 +18,7 @@
   color: var(--text);
   outline: none;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.35;
   text-align: left;
   transition: border-color .14s ease, background .14s ease, box-shadow .14s ease;
@@ -76,7 +76,7 @@
   padding: 0 8px 0 10px;
   background: var(--panel);
   color: var(--mut);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .custom-select-menu {
@@ -92,7 +92,7 @@
   box-shadow: 0 18px 44px rgba(0, 0, 0, .38), 0 0 0 1px color-mix(in srgb, var(--text) 3%, transparent);
   animation: custom-select-in .12s ease-out;
   scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
+  scrollbar-color: color-mix(in srgb, var(--text) 26%, transparent) transparent;
 }
 
 .custom-select-menu[data-side="top"] {
@@ -121,7 +121,7 @@
   background: transparent;
   color: var(--mut);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.35;
   text-align: left;
 }
@@ -133,7 +133,7 @@
 
 .custom-select-option.selected {
   color: var(--accent);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .custom-select-option svg {

@@ -5,6 +5,7 @@ import { CloudMediaCard, LocalMediaCard } from "../components/MediaCard.tsx";
 import { CustomSelect } from "../components/CustomSelect.tsx";
 import type { LibraryFilter, LibraryItem, SortMode, ViewMode } from "../app/types.ts";
 import "./LibraryPage.css";
+import { Notice } from "../components/Notice.tsx";
 
 interface LibraryPageProps {
   items: LibraryItem[];
@@ -32,10 +33,11 @@ interface LibraryPageProps {
   onRemove: (entry: MediaEntry) => void;
   onDeleteCloud: (entry: CloudEntry) => void;
   onRelink: (entry: MediaEntry) => Promise<void>;
+  onDismissMessage: () => void;
 }
 
 export function LibraryPage(props: LibraryPageProps) {
-  const { items, visibleItems, thumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, localRunningID, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onRename, onRemove, onDeleteCloud, onRelink } = props;
+  const { items, visibleItems, thumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, localRunningID, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onRename, onRemove, onDeleteCloud, onRelink, onDismissMessage } = props;
   return (
     <section className="library-view">
       <div className="library-toolbar">
@@ -52,7 +54,7 @@ export function LibraryPage(props: LibraryPageProps) {
         />
         <div className="view-switch" aria-label="视图切换"><button className={view === "grid" ? "active" : ""} aria-label="网格视图" onClick={() => setView("grid")}>▦</button><button className={view === "list" ? "active" : ""} aria-label="列表视图" onClick={() => setView("list")}>☷</button></div>
       </div>
-      {message && <p className="library-message">{message}</p>}
+      <Notice className="library-message" message={message} onDismiss={onDismissMessage} />
       {syncing ? (
         <div className="library-sync-state" role="status" aria-live="polite" aria-busy="true">
           <span className="library-sync-spinner" aria-hidden="true" />

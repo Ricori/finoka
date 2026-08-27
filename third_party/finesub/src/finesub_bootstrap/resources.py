@@ -15,11 +15,28 @@ from finesub_bootstrap.models import (
 from finesub_bootstrap.paths import AppPaths
 from finesub_bootstrap.archive import safe_extract_zip
 from finesub_bootstrap.downloader import DownloadPaused, download_asset
-from finesub_bootstrap.fsops import remove_tree, write_atomic
+from finesub_bootstrap.fsops import remove_tree, replace_path, write_atomic
 
 
 StageCallback = Callable[[str, str], None]
 PauseCheck = Callable[[], bool]
+
+
+def _activation_failure_message(resource_id: str, error: OSError) -> str:
+    """Say who is likely holding the directory, and what to do about it.
+
+    This is the last step of a multi-minute install and it surfaces verbatim in
+    the desktop UI, so the raw ``[WinError 5] 拒绝访问`` it replaces told the
+    user nothing they could act on.
+    """
+
+    return (
+        f"无法启用资源 {resource_id}：目标目录被占用。"
+        "常见原因是杀毒软件或网盘同步正在扫描刚解压的文件，"
+        "或有资源管理器/终端停在该目录里。"
+        "请关闭它们后重试；若安装目录位于网盘同步目录或网络盘，"
+        f"请改装到本地普通目录。（{error}）"
+    )
 
 
 class ResourceManager:
@@ -152,7 +169,12 @@ class ResourceManager:
                     f"Resource {spec.id} is missing required files: {missing}"
                 )
             root.mkdir(parents=True, exist_ok=True)
-            if final.exists():
+            # lexists, not Path.exists: the latter follows links, so a stale
+            # junction -- a redirect whose target is gone -- reads as absent
+            # while still owning the name, and a rename onto a name that is
+            # taken is the access-denied failure handled below rather than the
+            # clear message this raises.
+            if os.path.lexists(final):
                 raise FileExistsError(
                     f"Resource version directory already exists: {final}"
                 )
@@ -160,10 +182,23 @@ class ResourceManager:
                 raise DownloadPaused("Resource installation paused")
             if stage is not None:
                 stage("activating", "正在启用资源")
-            os.replace(staging, final)
+            try:
+                replace_path(staging, final)
+            except OSError as error:
+                raise RuntimeError(
+                    _activation_failure_message(spec.id, error)
+                ) from error
             self._write_pointer(root / "current.json", spec.version)
         except Exception:
-            remove_tree(staging)
+            # Best effort: what brought us here is often a handle someone else
+            # holds inside `staging`, and on Windows that denies the delete
+            # too. Raising from the cleanup would replace the real diagnosis
+            # with a second, less useful one, and the next install begins by
+            # clearing this directory anyway.
+            try:
+                remove_tree(staging)
+            except OSError:
+                pass
             raise
 
         return ResourceStatus(

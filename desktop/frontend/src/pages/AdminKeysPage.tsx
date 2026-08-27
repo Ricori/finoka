@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { cloudAccount } from "../bridge/cloud.ts";
 import type { CloudAdminKey } from "../bridge/cloud.ts";
 import "./AdminKeysPage.css";
+import { Notice } from "../components/Notice.tsx";
 
 interface KeyDraft {
   name: string;
@@ -128,7 +129,7 @@ export function AdminKeysPage() {
         </div>
       </article>
 
-      {message && <p className="admin-key-message">{message}</p>}
+      <Notice className="admin-key-message" message={message} onDismiss={() => setMessage("")} />
 
       <article className="panel admin-key-list-panel">
         <div className="admin-key-heading"><div><span className="eyebrow">Issued keys</span><h2>已发放 Key</h2></div><small>共 {keys.length} 个</small></div>

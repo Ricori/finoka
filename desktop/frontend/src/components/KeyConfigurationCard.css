@@ -2,16 +2,16 @@
 .key-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; min-width: 0; }
 .key-card-heading > div { min-width: 0; }
 .key-card-heading h3 { overflow: hidden; margin: 0 0 5px; color: var(--text); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.key-card-heading code { display: block; overflow: hidden; color: var(--accent); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.key-card-heading code { display: block; overflow: hidden; color: var(--accent); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .key-card-heading .mark { flex: 0 0 auto; align-items: center; min-height: 20px; margin-top: 0; white-space: nowrap; }
-.key-card > p { min-height: 34px; margin: 0; color: var(--mut); font-size: 10px; line-height: 1.65; }
+.key-card > p { min-height: 34px; margin: 0; color: var(--mut); font-size: 12px; line-height: 1.65; }
 .key-current-value { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 31px; border: 1px solid var(--line-soft); border-radius: 8px; padding: 7px 9px; background: color-mix(in srgb, var(--bg) 45%, var(--panel)); }
-.key-current-value span { color: var(--faint); font-size: 8px; }
-.key-current-value small { overflow: hidden; color: var(--mut); font-size: 9px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-.key-input-label { display: grid; gap: 6px; color: var(--mut); font-size: 8px; }
+.key-current-value span { color: var(--faint); font-size: 11px; }
+.key-current-value small { overflow: hidden; color: var(--mut); font-size: 11px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.key-input-label { display: grid; gap: 6px; color: var(--mut); font-size: 11px; }
 .key-input-label input { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 10px 11px; background: color-mix(in srgb, var(--bg) 72%, var(--panel)); color: var(--text); outline: none; }
 .key-input-label input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
 .key-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .key-card-actions .danger-link { margin-right: auto; }
-.key-card-actions .primary-button { border: 0; border-radius: 8px; padding: 8px 11px; font-size: 9px; cursor: pointer; }
+.key-card-actions .primary-button { border: 0; border-radius: 8px; padding: 8px 11px; font-size: 11px; cursor: pointer; }
 .key-card-actions button:disabled { opacity: .45; cursor: not-allowed; }

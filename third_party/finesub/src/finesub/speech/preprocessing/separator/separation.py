@@ -24,8 +24,6 @@ import torch
 
 from finesub_bootstrap.model_caches import SEPARATOR_CHECKPOINT
 
-from ....execution import cloud_execution_enabled, execution_profiled
-from ....execution_policy import separator_sample_rate
 from ....paths import resolve_separator_model_dir
 from ....run_metadata import record_scratch_file
 from ....reporting import (
@@ -67,14 +65,6 @@ from ...runtime.resource_usage import (
 # can import without pulling in torch.
 MODEL_NAME = SEPARATOR_CHECKPOINT
 BATCH_SIZE = get_resource_profile(DEFAULT_GPU_BUDGET_GB).vocal_separation_batch_size
-
-VOCAL_PROFILE_COST = "cost"
-VOCAL_PROFILE_QUALITY = "quality"
-VOCAL_PROFILES = (VOCAL_PROFILE_COST, VOCAL_PROFILE_QUALITY)
-VOCAL_PROFILE_SAMPLE_RATES = {
-    VOCAL_PROFILE_COST: ASR_TARGET_SR,
-    VOCAL_PROFILE_QUALITY: 44100,
-}
 
 
 class _BlockProgress:
@@ -156,15 +146,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override separator batch size (default: selected GPU budget profile).",
     )
-    parser.add_argument(
-        "--vocal-profile",
-        choices=VOCAL_PROFILES,
-        default=VOCAL_PROFILE_QUALITY,
-        help=(
-            "Vocal profile: quality runs BS-Roformer at its standard 44.1 kHz; "
-            "cost runs at 16 kHz for fewer model windows (default: quality)."
-        ),
-    )
     return parser.parse_args()
 
 
@@ -215,9 +196,9 @@ def output_mode_for(path: Path) -> str:
 MERGE_FORMAT = "flac"
 
 
-def _accel_paths(batch_size: int = 1) -> Any:
+def _accel_paths() -> Any:
     try:
-        return accel.resolve_accel_paths(MODEL_NAME, batch_size)
+        return accel.resolve_accel_paths(MODEL_NAME)
     except Exception:
         return None
 
@@ -236,11 +217,11 @@ def _record_applied_accel(metadata_sink: Any, lease: "_SharedSeparatorLease") ->
     metadata_sink["accel"] = lease.accel_backend
 
 
-def _select_accel_backend(duration_sec: float, batch_size: int = 1) -> str:
+def _select_accel_backend(duration_sec: float) -> str:
     """Choose the compiled tier, or eager when anything is unavailable."""
 
     try:
-        return accel.select_backend(_accel_paths(batch_size), duration_sec)
+        return accel.select_backend(_accel_paths(), duration_sec)
     except Exception:
         return "eager"
 
@@ -281,13 +262,7 @@ def place_separator_files() -> None:
         )
 
 
-def _build_separator(
-    output_dir: str,
-    output_format: str,
-    batch_size: int,
-    *,
-    sample_rate: int | None = None,
-) -> Separator:
+def _build_separator(output_dir: str, output_format: str, batch_size: int) -> Separator:
     place_separator_files()
     try:
         from audio_separator.separator import Separator
@@ -298,7 +273,7 @@ def _build_separator(
 
     import logging
 
-    separator_kwargs = dict(
+    separator = Separator(
         output_dir=output_dir,
         output_format=output_format,
         output_single_stem="Vocals",
@@ -311,12 +286,6 @@ def _build_separator(
         # inventory are not.
         log_level=logging.WARNING if libraries_quieted() else logging.INFO,
     )
-    # The local profile deliberately omits this keyword, matching the upstream
-    # call byte-for-byte instead of pinning a value that happened to be the
-    # dependency's default. Cloud opts into its explicit cost/quality rate.
-    if sample_rate is not None:
-        separator_kwargs["sample_rate"] = sample_rate
-    separator = Separator(**separator_kwargs)
     if not cuda_usable():
         # audio-separator picks its device inside __init__ off a bare
         # torch.cuda.is_available(), which is True for a card whose kernels this
@@ -367,18 +336,13 @@ def _warm_up_shared_roformer(model_instance: Any, *, use_amp: bool) -> None:
     chunk_size = int(stft_hop_length) * (int(config.inference.dim_t) - 1)
     audio_channels = int(getattr(model, "audio_channels", 2))
 
-    warm_batch_size = (
-        max(1, int(getattr(model_instance, "batch_size", 1)))
-        if cloud_execution_enabled()
-        else 1
-    )
     with torch.inference_mode(), torch.autocast(
         device_type="cuda",
         enabled=use_amp,
     ):
         output = model(
             torch.zeros(
-                warm_batch_size,
+                1,
                 audio_channels,
                 chunk_size,
                 dtype=torch.float32,
@@ -439,9 +403,8 @@ class _SharedSeparatorPool:
     """Share immutable Roformer weights while isolating per-call wrapper state."""
 
     def __init__(self) -> None:
-        self._condition = threading.Condition()
+        self._lock = threading.Lock()
         self._master: Any | None = None
-        self._master_config: tuple[int, str, int | None] | None = None
         self._active_leases = 0
         self._accel_backend = "eager"
 
@@ -453,29 +416,15 @@ class _SharedSeparatorPool:
         *,
         use_amp: bool,
         accel_backend: str = "eager",
-        sample_rate: int | None = None,
     ) -> _SharedSeparatorLease:
-        requested_config = (
-            (batch_size, accel_backend, sample_rate)
-            if cloud_execution_enabled()
-            else None
-        )
-        with self._condition:
-            while (
-                requested_config is not None
-                and self._master is not None
-                and self._master_config != requested_config
-            ):
-                self._condition.wait()
+        with self._lock:
             built_master = False
             if self._master is None:
                 self._master = _build_separator(
                     output_dir,
                     output_format,
                     batch_size,
-                    sample_rate=sample_rate,
                 )
-                self._master_config = requested_config
                 built_master = True
                 try:
                     _warm_up_shared_roformer(
@@ -489,12 +438,10 @@ class _SharedSeparatorPool:
                     self._accel_backend = accel.apply_acceleration(
                         self._master.model_instance,
                         accel_backend,
-                        _accel_paths(batch_size),
+                        _accel_paths(),
                     )
                 except BaseException:
                     self._master = None
-                    self._master_config = None
-                    self._condition.notify_all()
                     gc.collect()
                     if cuda_usable():
                         torch.cuda.empty_cache()
@@ -509,8 +456,6 @@ class _SharedSeparatorPool:
             except BaseException:
                 if built_master:
                     self._master = None
-                    self._master_config = None
-                    self._condition.notify_all()
                     gc.collect()
                     if cuda_usable():
                         torch.cuda.empty_cache()
@@ -523,18 +468,16 @@ class _SharedSeparatorPool:
             )
 
     def release(self) -> None:
-        with self._condition:
+        with self._lock:
             if self._active_leases <= 0:
                 raise RuntimeError("Shared separator lease released more than once.")
             self._active_leases -= 1
             if self._active_leases > 0:
                 return
             self._master = None
-            self._master_config = None
             # The tier belonged to that master's model_run; the next one is
             # selected again from scratch.
             self._accel_backend = "eager"
-            self._condition.notify_all()
             gc.collect()
             if cuda_usable():
                 torch.cuda.empty_cache()
@@ -592,7 +535,6 @@ def _acquire_separator(
     *,
     use_amp: bool,
     accel_backend: str = "eager",
-    sample_rate: int | None = None,
 ) -> _SharedSeparatorLease:
     # CUDA workers share a model only after the Roformer rotary-position cache
     # has been warmed. Preserve independent instances on other backends instead
@@ -600,12 +542,7 @@ def _acquire_separator(
     if not cuda_usable():
         lease = _SharedSeparatorLease(
             None,
-            _build_separator(
-                output_dir,
-                output_format,
-                batch_size,
-                sample_rate=sample_rate,
-            ),
+            _build_separator(output_dir, output_format, batch_size),
         )
     else:
         lease = _SHARED_SEPARATOR_POOL.acquire(
@@ -614,7 +551,6 @@ def _acquire_separator(
             batch_size,
             use_amp=use_amp,
             accel_backend=accel_backend,
-            sample_rate=sample_rate,
         )
     # `separate()` reads this flag per call, and a pooled worker is a shallow copy
     # carrying the master's value. Pin it on the way out so every caller runs at
@@ -762,7 +698,6 @@ def _process_parallel_block(
     batch_size: int,
     use_amp: bool,
     accel_backend: str,
-    sample_rate: int | None,
     instances: int,
     block: _SeparationBlock,
 ) -> tuple[_SeparationBlock, Path]:
@@ -794,7 +729,6 @@ def _process_parallel_block(
             batch_size,
             use_amp=use_amp,
             accel_backend=accel_backend,
-            sample_rate=sample_rate,
         )
         separator = lease.separator
         output_files = separator.separate(str(block_input), output_names)
@@ -807,7 +741,6 @@ def _process_parallel_block(
                 batch_size,
                 use_amp=use_amp,
                 accel_backend=accel_backend,
-                sample_rate=sample_rate,
             )
             separator = lease.separator
             output_files = separator.separate(str(block_input), output_names)
@@ -969,7 +902,6 @@ def _finish_delivery(merged_path: Path, output_path: Path, output_mode: str) -> 
     merged_path.unlink(missing_ok=True)
 
 
-@execution_profiled
 def run_vocal_separation(
     input_path: str | Path,
     *,
@@ -979,21 +911,9 @@ def run_vocal_separation(
     gpu_budget_gb: int = DEFAULT_GPU_BUDGET_GB,
     batch_size: Optional[int] = None,
     use_amp: bool = True,
-    execution_profile: str | None = None,
-    vocal_profile: str = VOCAL_PROFILE_QUALITY,
     metadata_sink: dict[str, Any] | None = None,
     run_metadata_path: str | Path | None = None,
 ) -> Path:
-    cloud_profile = cloud_execution_enabled()
-    if cloud_profile and vocal_profile not in VOCAL_PROFILES:
-        expected = ", ".join(VOCAL_PROFILES)
-        raise ValueError(
-            f"unsupported vocal profile {vocal_profile!r}; expected {expected}"
-        )
-    selected_sample_rate = separator_sample_rate(
-        vocal_profile,
-        VOCAL_PROFILE_SAMPLE_RATES,
-    )
     resource_profile = get_resource_profile(gpu_budget_gb)
     selected_batch_size = (
         resource_profile.vocal_separation_batch_size
@@ -1012,37 +932,9 @@ def run_vocal_separation(
     gpu_stage_lease: GpuStageLease | None = None
     temporary_input: Optional[Path] = None
     separation_completed = False
-    stage_started = time.perf_counter()
-    model_setup_sec = 0.0
-    block_pipeline_sec = 0.0
-    delivery_sec = 0.0
     watchdog = stall_watchdog.arm("vocal-separation")
     reset_peak_gpu_memory_stats_for_run(device_for_usage)
     memory_sampler = start_stage_memory_sampling()
-
-    def acquire_separator(
-        output_dir: str,
-        output_format: str,
-        batch_size: int,
-        *,
-        use_amp: bool,
-        accel_backend: str = "eager",
-    ) -> _SharedSeparatorLease:
-        nonlocal model_setup_sec
-        started = time.perf_counter()
-        try:
-            return _acquire_separator(
-                output_dir,
-                output_format,
-                batch_size,
-                use_amp=use_amp,
-                accel_backend=accel_backend,
-                sample_rate=selected_sample_rate,
-            )
-        finally:
-            if cloud_profile:
-                model_setup_sec += time.perf_counter() - started
-
     # Third-party bars and logging are quieted for the whole run by the front
     # end (`reporting.quieted_libraries`), not per stage: the separator was
     # never the only library that narrates itself -- transformers draws a
@@ -1100,11 +992,7 @@ def run_vocal_separation(
         if src_sr <= 0 or total_frames <= 0:
             raise SystemExit(f"Unable to read audio info for {input_path}")
         duration_sec = total_frames / float(src_sr)
-        accel_backend = (
-            "eager"
-            if cloud_profile and vocal_profile == VOCAL_PROFILE_COST
-            else _select_accel_backend(duration_sec, selected_batch_size)
-        )
+        accel_backend = _select_accel_backend(duration_sec)
         gpu_stage_lease = GPU_STAGE_GATE.acquire(
             "separator",
             enabled=device_for_usage is not None,
@@ -1124,14 +1012,6 @@ def run_vocal_separation(
                     "accel": "pending",
                 }
             )
-            if cloud_profile:
-                metadata_sink.update(
-                    {
-                        "batch_size": selected_batch_size,
-                        "profile": vocal_profile,
-                        "sample_rate": selected_sample_rate,
-                    }
-                )
         if block_seconds <= 0:
             slot = (
                 _SEPARATOR_BLOCK_LIMITER.acquire(separator_instances)
@@ -1139,7 +1019,7 @@ def run_vocal_separation(
                 else None
             )
             try:
-                separator_lease = acquire_separator(
+                separator_lease = _acquire_separator(
                     str(merge_path.parent),
                     MERGE_FORMAT,
                     selected_batch_size,
@@ -1150,10 +1030,7 @@ def run_vocal_separation(
                 _record_applied_accel(metadata_sink, separator_lease)
 
                 output_names = {"Vocals": merge_path.stem}
-                pipeline_started = time.perf_counter()
                 output_files = separator.separate(str(input_path), output_names)
-                if cloud_profile:
-                    block_pipeline_sec += time.perf_counter() - pipeline_started
                 if not output_files:
                     raise SystemExit(
                         "No output files were produced by audio-separator."
@@ -1161,10 +1038,7 @@ def run_vocal_separation(
             finally:
                 if slot is not None:
                     slot.release()
-            delivery_started = time.perf_counter()
             _finish_delivery(merge_path, output_path, output_mode)
-            if cloud_profile:
-                delivery_sec += time.perf_counter() - delivery_started
             separation_completed = True
             return output_path
 
@@ -1188,7 +1062,7 @@ def run_vocal_separation(
         )
 
         with tempfile.TemporaryDirectory(prefix="vocal_blocks_") as tmpdir:
-            separator_lease = acquire_separator(
+            separator_lease = _acquire_separator(
                 tmpdir,
                 MERGE_FORMAT,
                 selected_batch_size,
@@ -1197,7 +1071,6 @@ def run_vocal_separation(
             )
             separator = separator_lease.separator
             _record_applied_accel(metadata_sink, separator_lease)
-            pipeline_started = time.perf_counter()
 
             if separator_instances > 1 and len(blocks) > 1:
                 max_workers = min(separator_instances, len(blocks))
@@ -1239,7 +1112,6 @@ def run_vocal_separation(
                                 batch_size=selected_batch_size,
                                 use_amp=amp_enabled,
                                 accel_backend=accel_backend,
-                                sample_rate=selected_sample_rate,
                                 instances=separator_instances,
                                 block=block,
                             )
@@ -1309,7 +1181,7 @@ def run_vocal_separation(
                                     torch.cuda.empty_cache()
                                 except Exception:
                                     pass
-                            separator_lease = acquire_separator(
+                            separator_lease = _acquire_separator(
                                 tmpdir,
                                 MERGE_FORMAT,
                                 selected_batch_size,
@@ -1348,17 +1220,11 @@ def run_vocal_separation(
                     gc.collect()
                     progress.block_finished()
 
-            if cloud_profile:
-                block_pipeline_sec += time.perf_counter() - pipeline_started
-
         if out_file is None:
             raise SystemExit("No output files were produced by audio-separator.")
         out_file.close()
         out_file = None
-        delivery_started = time.perf_counter()
         _finish_delivery(merge_path, output_path, output_mode)
-        if cloud_profile:
-            delivery_sec += time.perf_counter() - delivery_started
         separation_completed = True
         return output_path
     finally:
@@ -1396,16 +1262,6 @@ def run_vocal_separation(
         print_peak_resource_usage(
             device_for_usage, resource_profile, sampler=memory_sampler
         )
-        if cloud_profile:
-            separator_timing = {
-                "model_setup_sec": round(model_setup_sec, 3),
-                "block_pipeline_sec": round(block_pipeline_sec, 3),
-                "delivery_sec": round(delivery_sec, 3),
-                "total_sec": round(time.perf_counter() - stage_started, 3),
-            }
-            if metadata_sink is not None:
-                metadata_sink["timing"] = separator_timing
-            current_reporter().debug("separator timing", separator_timing)
         watchdog.disarm()
 
 
@@ -1424,7 +1280,6 @@ def main() -> int:
                 pad_seconds=args.pad_seconds,
                 gpu_budget_gb=args.gpu_budget_gb,
                 batch_size=args.batch_size,
-                vocal_profile=args.vocal_profile,
             )
         print(output)
     except Exception as exc:

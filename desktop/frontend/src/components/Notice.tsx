@@ -1,0 +1,54 @@
+import { useCallback, useEffect, useState } from "react";
+import "./Notice.css";
+
+const defaultDismissDelayMs = 6000;
+
+type NoticeProps = {
+  message: string;
+  /** Keeps the existing per-site styling (.library-message, .keys-message, …). */
+  className?: string;
+  /** 0 disables the timer, leaving the notice up until it is closed by hand. */
+  autoDismissMs?: number;
+  /** Clears the caller's message state. Omit for notices derived from live state,
+      which can only be hidden locally. */
+  onDismiss?: () => void;
+};
+
+export function Notice({ message, className = "", autoDismissMs = defaultDismissDelayMs, onDismiss }: NoticeProps) {
+  const [dismissed, setDismissed] = useState("");
+  const [held, setHeld] = useState(false);
+
+  const close = useCallback(() => {
+    setDismissed(message);
+    onDismiss?.();
+  }, [message, onDismiss]);
+
+  const hidden = !message || dismissed === message;
+
+  useEffect(() => {
+    // Pointer or keyboard focus inside the notice holds the timer: a message the
+    // reader is still working through should not disappear underneath them.
+    if (hidden || held || autoDismissMs <= 0) return;
+    const timer = window.setTimeout(close, autoDismissMs);
+    return () => window.clearTimeout(timer);
+  }, [hidden, held, autoDismissMs, close]);
+
+  if (hidden) return null;
+
+  return (
+    <p
+      className={`notice ${className}`.trim()}
+      role="status"
+      aria-live="polite"
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+    >
+      <span className="notice-text">{message}</span>
+      <button className="notice-close" type="button" aria-label="关闭提示" title="关闭提示" onClick={close}>
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" /></svg>
+      </button>
+    </p>
+  );
+}
