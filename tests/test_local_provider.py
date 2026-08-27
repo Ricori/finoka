@@ -101,6 +101,16 @@ class LocalProviderTests(unittest.TestCase):
         self.assertIn("stable_json", provider.artifacts(task["task_id"])["artifacts"])
         provider.shutdown()
 
+    def test_completed_task_cleans_in_progress_progress_message(self) -> None:
+        provider = self.provider()
+        task = provider.start(self.request())
+        task_id = task["task_id"]
+        provider._update_progress(task_id, "stage", {"stage": "final-srt", "message": "正在处理"})
+        self.assertEqual(provider.status(task_id)["progress"]["message"], "正在处理")
+        provider._set_state(task_id, "completed")
+        self.assertEqual(provider.status(task_id)["progress"]["message"], "字幕已完成")
+        provider.shutdown()
+
     def test_local_provider_rejects_cloud_vocal_profile(self) -> None:
         provider = self.provider()
         request = self.request()
@@ -215,11 +225,11 @@ class LocalProviderTests(unittest.TestCase):
         vswhere.write_bytes(b"")
         vcvars.parent.mkdir(parents=True)
         vcvars.write_bytes(b"")
-        calls: list[list[str]] = []
+        calls: list[list[str] | str] = []
 
-        def run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        def run(command: list[str] | str, **_kwargs: object) -> SimpleNamespace:
             calls.append(command)
-            if command[0] == str(vswhere):
+            if isinstance(command, (list, tuple)) and command and command[0] == str(vswhere):
                 return SimpleNamespace(returncode=0, stdout=str(install) + "\n")
             return SimpleNamespace(
                 returncode=0,

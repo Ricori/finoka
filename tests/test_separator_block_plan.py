@@ -152,7 +152,11 @@ class PinnedUpstreamCopyTests(unittest.TestCase):
             f"print(','.join(sorted({{{watched}}} & set(sys.modules))))"
         )
         completed = subprocess.run(
-            [sys.executable, "-S", "-c", probe], capture_output=True, text=True
+            [sys.executable, "-S", "-c", probe],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout.strip(), "")

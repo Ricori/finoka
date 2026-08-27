@@ -132,8 +132,15 @@ class PurelyAdditiveTests(unittest.TestCase):
         names = [item["path"] for item in upstream["patches"]]
         self.assertEqual(names[0], "0001-split-vad-prefix-and-qwen-pass.patch")
         engine_patches = {
-            "0001-split-vad-prefix-and-qwen-pass.patch",
-            "0003-desktop-model-routing.patch",
+            "0003-desktop-model-routing.patch": [
+                "src/finesub/llm/llm_runtime.py",
+                "src/finesub/llm/routing/model_routes.py",
+            ],
+            "0004-subprocess-text-encoding-and-msvc-include.patch": [
+                "src/finesub/media/ffmpeg.py",
+                "src/finesub/media/source.py",
+                "src/finesub/speech/preprocessing/separator/separator_aoti.py",
+            ],
         }
         for name in names[1:]:
             with self.subTest(patch=name):
@@ -143,13 +150,7 @@ class PurelyAdditiveTests(unittest.TestCase):
                     if not path.startswith("src/finesub_bootstrap/")
                 ]
                 if name in engine_patches:
-                    self.assertEqual(
-                        outside,
-                        [
-                            "src/finesub/llm/llm_runtime.py",
-                            "src/finesub/llm/routing/model_routes.py",
-                        ],
-                    )
+                    self.assertEqual(outside, engine_patches[name])
                 else:
                     self.assertEqual(outside, [])
 

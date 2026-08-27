@@ -1,10 +1,10 @@
 {
   "archive_sha256": "6b349f4d62bf3841b1b1f976d39e5bb5f213bc7ab1c8fbd01d5f942823e2d6a5",
   "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
-  "content_sha256": "ab46c9d46aa72c3375dfee001aa5911303bafafb2ccfe140b521be4b67d7fa80",
+  "content_sha256": "1dcbcb69386df5bb4ab8445359243e4220c9ead3b6a232c66e1c6dc02d5fca9a",
   "engine_bundle_id": "finesub-0.4.1+2a320ede3f5c",
   "engine_version": "0.4.1",
-  "files_manifest_sha256": "f75687de3a063b604c03802fceab2e635c5a603e1f264b9342ccd6442b44f664",
+  "files_manifest_sha256": "2e646c6baa12b6524ea65738ff784a6f11669d4f95670a0138e25b8c8b58e140",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
@@ -17,6 +17,10 @@
     {
       "path": "0003-desktop-model-routing.patch",
       "sha256": "7fa7f5cef3b9c370cbd6b747087629c76a27609fdc3ec6bbdf83245c2015e459"
+    },
+    {
+      "path": "0004-subprocess-text-encoding-and-msvc-include.patch",
+      "sha256": "ab080dd47fb753a056ca2948bf6deb9d910f622c587363f7c26bed6eb87fbbb6"
     }
   ],
   "ref": "v0.4.1",

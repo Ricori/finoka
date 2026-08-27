@@ -63,7 +63,7 @@ def _issue(code: str, message: str) -> dict[str, str]:
 
 
 def _clear_legacy_separator_decode_probes(environment: Mapping[str, str]) -> None:
-    """Retry AOT builds whose only recorded failure was the old locale bug."""
+    """Retry AOT builds whose only recorded failure was the old locale bug or missing MSVC headers."""
 
     models_root = environment.get("FINESUB_MODEL_DIR")
     if not models_root:
@@ -77,8 +77,9 @@ def _clear_legacy_separator_decode_probes(environment: Mapping[str, str]) -> Non
         try:
             value = json.loads(probe.read_text(encoding="utf-8"))
             reason = str(value.get("reason") or "") if isinstance(value, Mapping) else ""
-            if isinstance(value, Mapping) and value.get("aoti") == "unavailable" and "UnicodeDecodeError" in reason and "utf-8" in reason:
-                probe.unlink(missing_ok=True)
+            if isinstance(value, Mapping) and value.get("aoti") == "unavailable":
+                if ("UnicodeDecodeError" in reason and "utf-8" in reason) or "array" in reason or "C1083" in reason:
+                    probe.unlink(missing_ok=True)
         except (OSError, json.JSONDecodeError):
             continue
 
@@ -127,7 +128,8 @@ def _prepare_msvc_environment(
         if not vcvars.is_file():
             return
         activated = _run(
-            ["cmd.exe", "/d", "/s", "/c", f'call "{vcvars}" >nul && set'],
+            f'call "{vcvars}" >nul && set',
+            shell=True,
             capture_output=True,
             text=True,
             encoding=locale.getencoding(),
@@ -658,8 +660,7 @@ class LocalProvider:
             gpu_index = request_device.split(":", 1)[1].strip()
             if gpu_index.isdigit():
                 environment["CUDA_VISIBLE_DEVICES"] = gpu_index
-        if self._provisioner is not None:
-            _prepare_msvc_environment(environment)
+        _prepare_msvc_environment(environment)
         with self._lock:
             if not self._separator_probe_checked:
                 _clear_legacy_separator_decode_probes(environment)
@@ -795,6 +796,10 @@ class LocalProvider:
             raise ValueError(state)
         snapshot = self.status(task_id)
         snapshot["state"] = state
+        if state == "completed":
+            if snapshot.get("progress") and isinstance(snapshot["progress"], dict):
+                if snapshot["progress"].get("message") in {"正在处理", "处理中"}:
+                    snapshot["progress"]["message"] = "字幕已完成"
         if error is not ...:
             snapshot["error"] = error
         snapshot["updated_at"] = utc_now()

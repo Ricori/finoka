@@ -111,7 +111,7 @@ export default function App() {
   const cloudThumbnailsTried = useRef(new Set<string>());
   const adoptedCloudEntries = useRef(new Set<string>());
   const syncedTasks = useRef(new Set<string>());
-  const openedTasks = useRef(new Set<string>());
+  const completedTasks = useRef(new Set<string>());
   const taskHistoryHydrated = useRef(false);
   const preferencesHydrated = useRef(false);
   const taskHistoryRef = useRef(taskHistory);
@@ -674,13 +674,15 @@ export default function App() {
 
   useEffect(() => {
     const snapshot = pipeline.snapshot;
-    if (!snapshot || snapshot.state !== "completed" || !pipeline.artifacts || !activeMedia) return;
-    if (openedTasks.current.has(snapshot.task_id)) return;
-    openedTasks.current.add(snapshot.task_id);
-    void loadLibrary().finally(() => {
-      void openEditor(activeMedia);
-    });
-  }, [activeMedia, loadLibrary, openEditor, pipeline.artifacts, pipeline.snapshot]);
+    if (!snapshot || snapshot.state !== "completed" || !pipeline.artifacts) return;
+    if (completedTasks.current.has(snapshot.task_id)) return;
+    completedTasks.current.add(snapshot.task_id);
+    void loadLibrary();
+    void loadCacheStatus();
+    if (activeMedia) {
+      setLibraryMessage(okNotice(`"${activeMedia.title}" 字幕处理完成，可以直接编辑。`));
+    }
+  }, [activeMedia, loadCacheStatus, loadLibrary, pipeline.artifacts, pipeline.snapshot]);
 
   const renameMedia = useCallback((entry: MediaEntry) => {
     setDialog({ kind: "rename", entry, value: entry.title });

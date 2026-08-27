@@ -63,6 +63,7 @@ export function taskStateLabel(state: TaskSnapshot["state"]): string {
     the stage empty, and the fallback must not tell the user "处理中" right
     beside a 失败 badge. */
 export function taskStageLabel(stage: string, state?: TaskSnapshot["state"]): string {
+  if (state === "completed") return "处理完成";
   const label = {
     queued: "等待调度",
     starting: "准备运行环境",
@@ -99,7 +100,13 @@ export function taskActivityText(snapshot: TaskSnapshot, nowMs = Date.now()): st
     const usefulDetail = detail && !INTERNAL_BLOCK_TIMECODE.test(detail) ? detail : "";
     return usefulDetail ? `已用时 ${elapsed} · ${usefulDetail}` : `已用时 ${elapsed}`;
   }
-  if (snapshot.state === "completed") return snapshot.progress?.message || "字幕已完成";
+  if (snapshot.state === "completed") {
+    const detail = String(snapshot.progress?.message ?? "").trim();
+    if (detail && detail !== "正在处理" && detail !== "处理中" && !detail.startsWith("正在")) {
+      return detail;
+    }
+    return "字幕已完成";
+  }
   return snapshot.progress?.message || taskStateLabel(snapshot.state);
 }
 

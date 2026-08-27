@@ -55,7 +55,7 @@ class FinokaReporter:
         emit("log", {"message": message, "fields": dict(fields or {})})
 
     def completed(self, output, elapsed_sec: float) -> None:
-        return
+        emit("progress", {"completed": 100, "total": 100, "unit": "%", "message": "字幕已完成"})
 
     def failed(self, stage: str, message: str) -> None:
         emit("failed", {"stage": stage, "message": message})

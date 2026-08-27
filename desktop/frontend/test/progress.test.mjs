@@ -59,6 +59,11 @@ test("raw tasks use the shorter stage map and active tasks never reach 100", () 
 test("internal stage names are replaced with user-facing labels", () => {
   assert.equal(taskStageLabel("vocal"), "处理音频");
   assert.equal(taskStageLabel("aligned"), "语音识别");
+  assert.equal(taskStageLabel("final-srt"), "整理最终字幕");
+  assert.equal(taskStageLabel("final-srt", "running"), "整理最终字幕");
+  assert.equal(taskStageLabel("final-srt", "completed"), "处理完成");
+  assert.equal(taskStageLabel("raw-srt", "completed"), "处理完成");
+  assert.equal(taskStageLabel("completed", "completed"), "处理完成");
   assert.equal(taskStageLabel("unknown-internal-stage"), "处理中");
   // A task that died before its first stage event has an empty stage, and the
   // row must not read "处理中" next to its own 失败 badge.
@@ -84,3 +89,24 @@ test("activity text keeps useful backend detail after elapsed time", () => {
     "已用时 0:09 · 正在识别第 3 段",
   );
 });
+
+test("completed task activity text overrides in-progress messages", () => {
+  const taskWithRunningMsg = snapshot("final-srt", {
+    state: "completed",
+    progress: { completed: 0, total: null, unit: "", message: "正在处理" },
+  });
+  assert.equal(taskActivityText(taskWithRunningMsg), "字幕已完成");
+
+  const taskWithProcessingMsg = snapshot("final-srt", {
+    state: "completed",
+    progress: { completed: 0, total: null, unit: "", message: "处理中" },
+  });
+  assert.equal(taskActivityText(taskWithProcessingMsg), "字幕已完成");
+
+  const taskWithDetail = snapshot("final-srt", {
+    state: "completed",
+    progress: { completed: 1, total: 1, unit: "", message: "已有结果，跳过" },
+  });
+  assert.equal(taskActivityText(taskWithDetail), "已有结果，跳过");
+});
+

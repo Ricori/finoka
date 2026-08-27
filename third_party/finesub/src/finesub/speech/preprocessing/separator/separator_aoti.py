@@ -112,6 +112,13 @@ def _find_vcvars() -> Path | None:
     return vcvars if vcvars.is_file() else None
 
 
+def _msvc_include_ready() -> bool:
+    include_dirs = [
+        Path(item) for item in os.environ.get("INCLUDE", "").split(os.pathsep) if item
+    ]
+    return any((directory / "array").is_file() for directory in include_dirs)
+
+
 def cxx_toolchain_available() -> bool:
     """Whether :func:`build_packages` would find a compiler, without side effects.
 
@@ -124,16 +131,20 @@ def cxx_toolchain_available() -> bool:
     the AOTI path has been run on.
     """
 
-    return shutil.which("cl.exe") is not None or _find_vcvars() is not None
+    return (
+        shutil.which("cl.exe") is not None and _msvc_include_ready()
+    ) or _find_vcvars() is not None
 
 
 def _activate_msvc() -> str:
     existing = shutil.which("cl.exe")
-    if existing is not None:
+    if existing is not None and _msvc_include_ready():
         return existing
 
     vcvars = _find_vcvars()
     if vcvars is None:
+        if existing is not None:
+            return existing
         raise RuntimeError("AOTInductor on Windows requires MSVC (cl.exe)")
 
     completed = subprocess.run(
