@@ -20,6 +20,7 @@ import type { Capabilities, TaskRequest, TaskSnapshot } from "../providers/types
 import { MediaDialog } from "../components/MediaDialog.tsx";
 import type { NoticeTone } from "../components/Notice.tsx";
 import { TranscriptionDialog } from "../components/TranscriptionDialog.tsx";
+import { UpdateButton, UpdateOverlay, useSelfUpdate } from "../components/UpdateCenter.tsx";
 import { WindowDropOverlay } from "../components/WindowDropOverlay.tsx";
 import { AccountPage } from "../pages/AccountPage.tsx";
 import { AdminKeysPage } from "../pages/AdminKeysPage.tsx";
@@ -108,6 +109,7 @@ export default function App() {
   const [transcriptionMedia, setTranscriptionMedia] = useState<MediaEntry | null>(null);
   const [transcriptionBusy, setTranscriptionBusy] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState("");
+  const selfUpdate = useSelfUpdate();
   const cloudThumbnailsTried = useRef(new Set<string>());
   const adoptedCloudEntries = useRef(new Set<string>());
   const syncedTasks = useRef(new Set<string>());
@@ -899,6 +901,7 @@ export default function App() {
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-file-drop-target>
       <WindowDropOverlay onFilesDropped={handleDroppedFiles} />
+      <UpdateOverlay update={selfUpdate} />
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-glyph">F</span>
@@ -966,6 +969,7 @@ export default function App() {
             </div>
             {section === "library" && <label className="library-search"><span>⌕</span><input type="search" placeholder="搜索标题或文件名" value={query} onChange={(event) => setQuery(event.target.value)} /></label>}
             <div className="topbar-actions">
+              <UpdateButton update={selfUpdate} />
               <button className="theme-button" aria-label="切换主题" title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"} onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}>{theme === "dark" ? "☼" : "◐"}</button>
               {section === "library" ? (
                 <button className="primary-button" disabled={libraryBusy} onClick={() => void importMedia()}>{libraryBusy ? "正在导入…" : "＋ 添加媒体"}</button>

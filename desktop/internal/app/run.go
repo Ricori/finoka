@@ -13,6 +13,7 @@ import (
 	"github.com/Ricori/finoka/desktop/internal/library"
 	"github.com/Ricori/finoka/desktop/internal/preferences"
 	"github.com/Ricori/finoka/desktop/internal/provider"
+	"github.com/Ricori/finoka/desktop/internal/selfupdate"
 	"github.com/Ricori/finoka/desktop/internal/sidecar"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -27,12 +28,15 @@ func init() {
 	application.RegisterEvent[[]library.Entry]("library:changed")
 	application.RegisterEvent[string]("editor:request-close")
 	application.RegisterEvent[bool]("home:refresh")
+	application.RegisterEvent[selfupdate.Status]("update:status")
+	application.RegisterEvent[map[string]string]("update:ready")
 }
 
 // Run owns the desktop lifecycle. Sidecar startup failure is intentionally
 // non-fatal: the shell remains available so the settings/runtime UI can explain
 // what is missing. The failure is retained in the manager's safe Snapshot.
 func Run(assets fs.FS) error {
+	selfupdate.CleanupReplacedExecutables()
 	dataDirectory, err := DataDirectory()
 	if err != nil {
 		return err
@@ -76,6 +80,10 @@ func Run(assets fs.FS) error {
 		return err
 	}
 	windowService := NewWindowService(preferencesService, libraryService)
+	updateService, err := selfupdate.New(dataDirectory)
+	if err != nil {
+		return err
+	}
 
 	applicationInstance := application.New(application.Options{
 		Name:        "Finoka",
@@ -86,6 +94,7 @@ func Run(assets fs.FS) error {
 			application.NewService(cloudService),
 			application.NewService(preferencesService),
 			application.NewService(windowService),
+			application.NewService(updateService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -117,6 +126,13 @@ func Run(assets fs.FS) error {
 	homeOptions, deferredState := deferWindowStart(homeOptions)
 	home := applicationInstance.Window.NewWithOptions(homeOptions)
 	windowService.attach(applicationInstance, home)
+	// A missing or unreachable manifest must not block startup: the shell
+	// simply stays on the current build.
+	if err := selfupdate.Attach(updateService, applicationInstance); err != nil {
+		log.Printf("auto update: %v", err)
+	} else {
+		selfupdate.Start(updateService, windowService.editorIsOpen)
+	}
 	if deferredState != application.WindowStateNormal {
 		home.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) { showDeferredWindow(home, deferredState) })
 	}

@@ -201,3 +201,11 @@ func (s *WindowService) installEditorHooks(editor *application.WebviewWindow) {
 		}
 	})
 }
+
+// editorIsOpen reports whether the editor window is holding a session, which
+// defers a mandatory update install until the user closes it.
+func (s *WindowService) editorIsOpen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.editor != nil
+}

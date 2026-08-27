@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Events } from "@wailsio/runtime";
+import { desktopUpdate } from "../../bridge/update.ts";
 import { AUTOSAVE_MS } from "../constants";
+import { promptMandatoryUpdate } from "../lib/closeFlow";
 import { isLeaving, reportBootError } from "../session";
 import { expJob, exportStore } from "../store/exportStore";
 import { flushLayout } from "../store/layoutStore";
@@ -36,6 +38,13 @@ export function useDesktopEvents() {
       removeEventListener("pagehide", onPageHide);
       flushLayout();
     };
+  }, []);
+
+  // 强制更新等的就是这个窗口关掉；状态事件可能早于编辑器脚本就绪，所以补查一次。
+  useEffect(() => {
+    const off = desktopUpdate.onStatus(promptMandatoryUpdate);
+    void desktopUpdate.status().then(promptMandatoryUpdate).catch(() => undefined);
+    return off;
   }, []);
 
   useEffect(() => startAutosave(AUTOSAVE_MS), []);

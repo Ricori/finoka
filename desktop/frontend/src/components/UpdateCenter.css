@@ -1,0 +1,23 @@
+.update-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); border-radius: 9px; padding: 7px 12px; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.update-button:hover { background: color-mix(in srgb, var(--accent) 20%, var(--panel)); }
+
+/* A mandatory update owns the window, so it sits above every other dialog. */
+.update-gate { z-index: 60; }
+
+.update-progress { overflow: hidden; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); }
+.update-progress span { display: block; height: 100%; border-radius: inherit; background: var(--grad); transition: width .2s ease-out; }
+.update-progress.indeterminate span { width: 38%; animation: update-sweep 1.2s ease-in-out infinite; }
+
+@keyframes update-sweep {
+  from { translate: -100%; }
+  to { translate: 268%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-progress.indeterminate span { width: 100%; animation: none; opacity: .55; }
+  .update-progress span { transition: none; }
+}
+
+.update-stage { margin: 14px 0 0 !important; color: var(--mut); font-size: 12px; }
+
+.update-notes { max-height: 42vh; margin: 18px 0 0; overflow: auto; border: 1px solid var(--line-soft, var(--line)); border-radius: 10px; padding: 13px 14px; background: color-mix(in srgb, var(--bg) 72%, var(--panel)); color: var(--mut); font: inherit; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
