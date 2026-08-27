@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import importlib.util
+import locale
 import os
 import shutil
 import signal
@@ -80,6 +81,70 @@ def _clear_legacy_separator_decode_probes(environment: Mapping[str, str]) -> Non
                 probe.unlink(missing_ok=True)
         except (OSError, json.JSONDecodeError):
             continue
+
+
+def _prepare_msvc_environment(
+    environment: dict[str, str],
+    *,
+    _run: Callable[..., Any] = subprocess.run,
+    _windows: bool = os.name == "nt",
+) -> None:
+    """Populate MSVC and Windows SDK variables when only cl.exe is on PATH."""
+
+    if not _windows:
+        return
+    include_dirs = [Path(item) for item in environment.get("INCLUDE", "").split(os.pathsep) if item]
+    if any((directory / "array").is_file() for directory in include_dirs):
+        return
+
+    program_files_x86 = environment.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    vswhere = Path(program_files_x86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.is_file():
+        return
+    try:
+        located = _run(
+            [
+                str(vswhere),
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            env=environment,
+        )
+        roots = located.stdout.strip().splitlines() if located.returncode == 0 else []
+        if not roots:
+            return
+        vcvars = Path(roots[0]) / "VC" / "Auxiliary" / "Build" / "vcvars64.bat"
+        if not vcvars.is_file():
+            return
+        activated = _run(
+            ["cmd.exe", "/d", "/s", "/c", f'call "{vcvars}" >nul && set'],
+            capture_output=True,
+            text=True,
+            encoding=locale.getencoding(),
+            errors="replace",
+            timeout=30,
+            env=environment,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if activated.returncode != 0:
+            return
+    except (OSError, subprocess.SubprocessError):
+        return
+
+    for line in activated.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key:
+            environment[key] = value
 
 
 def runtime_report(settings: FineSubSettings | None = None, provisioner: RuntimeProvisioner | None = None) -> dict[str, Any]:
@@ -582,6 +647,8 @@ class LocalProvider:
         # decode MSVC's GBK diagnostics as UTF-8 during AOT compilation.
         environment["PYTHONUTF8"] = "0"
         environment["PYTHONIOENCODING"] = "utf-8"
+        if self._provisioner is not None:
+            _prepare_msvc_environment(environment)
         with self._lock:
             if not self._separator_probe_checked:
                 _clear_legacy_separator_decode_probes(environment)

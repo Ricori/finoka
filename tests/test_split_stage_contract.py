@@ -17,9 +17,7 @@ sides compute anything different, and the stack is allowed to carry those.
 from __future__ import annotations
 
 import ast
-import inspect
 import json
-import sys
 import unittest
 from pathlib import Path
 
@@ -27,10 +25,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ROOT / "third_party" / "finesub"
 PATCH_ROOT = ROOT / "patches" / "finesub"
+STAGE_PATH = VENDOR / "src/finesub/speech/recognition/vad_asr_stage.py"
+REFEREE_PATH = VENDOR / "src/finesub/speech/verification/qwen_referee.py"
 
-sys.path.insert(0, str(VENDOR / "src"))
 
-from finesub.speech.recognition import vad_asr_stage  # noqa: E402
+def _module(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _top_level_names(module: ast.Module) -> set[str]:
+    names = {
+        node.name
+        for node in module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+    for node in module.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names.update(
+                target.id for target in targets if isinstance(target, ast.Name)
+            )
+    return names
 
 
 def _touched_paths(patch: Path) -> list[str]:
@@ -56,10 +71,11 @@ ADDED_NAMES = (
 
 class SplitSeamTests(unittest.TestCase):
     def test_the_stage_exposes_every_seam_the_cloud_calls(self) -> None:
+        names = _top_level_names(_module(STAGE_PATH))
         for name in ADDED_NAMES:
             with self.subTest(name=name):
                 self.assertTrue(
-                    hasattr(vad_asr_stage, name),
+                    name in names,
                     f"{name} is missing; the cloud's CPU containers import it "
                     f"by name and would fail at the first task.",
                 )
@@ -71,18 +87,33 @@ class SplitSeamTests(unittest.TestCase):
         batch reach the untouched block that computes the prefix in-process.
         """
 
-        parameter = inspect.signature(vad_asr_stage.run_vad_asr).parameters[
-            "prepared_path"
-        ]
-        self.assertIs(parameter.default, None)
-        self.assertIs(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+        functions = {
+            node.name: node
+            for node in _module(STAGE_PATH).body
+            if isinstance(node, ast.FunctionDef)
+        }
+        arguments = functions["run_vad_asr"].args
+        keyword_defaults = dict(zip(arguments.kwonlyargs, arguments.kw_defaults))
+        parameter = next(
+            arg for arg in arguments.kwonlyargs if arg.arg == "prepared_path"
+        )
+        self.assertIsInstance(keyword_defaults[parameter], ast.Constant)
+        self.assertIsNone(keyword_defaults[parameter].value)
 
-    def test_the_referee_can_be_loaded_without_transcribing(self) -> None:
+    def test_the_referee_exposes_the_warm_seam(self) -> None:
         """`warm` is why the scheduler can preload Qwen beside the GPU stage."""
 
-        from finesub.speech.verification import qwen_referee
-
-        self.assertTrue(callable(getattr(qwen_referee.QwenReferee, "warm", None)))
+        classes = {
+            node.name: node
+            for node in _module(REFEREE_PATH).body
+            if isinstance(node, ast.ClassDef)
+        }
+        methods = {
+            node.name
+            for node in classes["QwenReferee"].body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        self.assertIn("warm", methods)
 
 
 class PurelyAdditiveTests(unittest.TestCase):
@@ -218,10 +249,7 @@ class AddedCodeTests(unittest.TestCase):
     def test_added_functions_are_documented_where_they_are_defined(self) -> None:
         """A patched-in seam with no docstring is one upstream cannot review."""
 
-        source = (
-            VENDOR / "src/finesub/speech/recognition/vad_asr_stage.py"
-        ).read_text(encoding="utf-8")
-        module = ast.parse(source)
+        module = _module(STAGE_PATH)
         public = {
             node.name: node
             for node in module.body

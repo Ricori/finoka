@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -9,6 +10,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -17,6 +19,7 @@ from finoka.local_provider import (
     LocalProvider,
     ProviderError,
     _clear_legacy_separator_decode_probes,
+    _prepare_msvc_environment,
     runtime_report,
 )
 from finoka.sidecar import SidecarServer, session_authorized
@@ -176,6 +179,33 @@ class LocalProviderTests(unittest.TestCase):
 
         self.assertFalse(decode_probe.exists())
         self.assertTrue(compiler_probe.exists())
+
+    def test_msvc_environment_is_activated_when_standard_headers_are_missing(self) -> None:
+        program_files = self.root / "Program Files (x86)"
+        vswhere = program_files / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+        install = self.root / "Visual Studio" / "BuildTools"
+        vcvars = install / "VC" / "Auxiliary" / "Build" / "vcvars64.bat"
+        vswhere.parent.mkdir(parents=True)
+        vswhere.write_bytes(b"")
+        vcvars.parent.mkdir(parents=True)
+        vcvars.write_bytes(b"")
+        calls: list[list[str]] = []
+
+        def run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            calls.append(command)
+            if command[0] == str(vswhere):
+                return SimpleNamespace(returncode=0, stdout=str(install) + "\n")
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"INCLUDE={self.root / 'msvc' / 'include'}{os.pathsep}{self.root / 'sdk' / 'include'}\nLIB={self.root / 'msvc' / 'lib'}\n",
+            )
+
+        environment = {"ProgramFiles(x86)": str(program_files), "PATH": "existing"}
+        _prepare_msvc_environment(environment, _run=run, _windows=True)
+
+        self.assertEqual(len(calls), 2)
+        self.assertIn(str(self.root / "msvc" / "include"), environment["INCLUDE"])
+        self.assertEqual(environment["LIB"], str(self.root / "msvc" / "lib"))
 
     def test_cancel_and_resume_interrupted_task(self) -> None:
         provider = self.provider()
