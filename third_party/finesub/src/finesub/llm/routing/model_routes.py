@@ -1017,6 +1017,75 @@ def load_model_routes(
             f"known: {sorted(presets)}"
         )
 
+    # Desktop-friendly quick routing. A preferred target is prepended to the
+    # selected preset's existing group, so text-only OpenAI/Anthropic models
+    # automatically fall back to a media-capable packaged target for audio or
+    # video calls instead of making a multimodal task unroutable.
+    default_target = str(user.get("default_target") or "").strip()
+    task_route_groups = {
+        "correction": ("correction-mm", "correction-text"),
+        "planning": ("planning-mm", "planning-text"),
+        "research": ("research",),
+        "search_judge": ("search_judge",),
+        "knowledge": ("knowledge",),
+    }
+    requested_targets = {
+        name: str(user.get(f"task_route_{name}") or "").strip()
+        for name in task_route_groups
+    }
+    missing_targets = sorted(
+        {
+            target_id
+            for target_id in (default_target, *requested_targets.values())
+            if target_id and target_id not in targets
+        }
+    )
+    if missing_targets:
+        raise ModelRouteConfigError(
+            f"Configured LLM routing references missing targets: {missing_targets}"
+        )
+    if default_target or any(requested_targets.values()):
+        base_preset = presets[active_preset_id]
+        bindings = dict(base_preset.bindings)
+        target_by_task_group: dict[str, str] = {}
+        if default_target:
+            target_by_task_group.update(
+                {task_group_id: default_target for task_group_id in TASK_GROUP_IDS}
+            )
+        for route_name, target_id in requested_targets.items():
+            if target_id:
+                target_by_task_group.update(
+                    {
+                        task_group_id: target_id
+                        for task_group_id in task_route_groups[route_name]
+                    }
+                )
+        for task_group_id, target_id in target_by_task_group.items():
+            base_group_id = bindings.get((task_group_id, "quality"))
+            if base_group_id is None and active_preset_id != "default":
+                base_group_id = presets["default"].bindings.get(
+                    (task_group_id, "quality")
+                )
+            existing = (
+                model_groups[base_group_id].target_ids if base_group_id else ()
+            )
+            members = tuple(dict.fromkeys((target_id, *existing)))
+            group_id = f"finoka-route:{task_group_id}"
+            model_groups[group_id] = ModelGroup(
+                group_id, members, MappingProxyType({})
+            )
+            bindings[(task_group_id, "quality")] = group_id
+        synthetic_id = "finoka-routed"
+        presets[synthetic_id] = Preset(
+            synthetic_id,
+            "Finoka 模型路由",
+            base_preset.test_target_id,
+            MappingProxyType(bindings),
+            base_preset.thinking,
+            base_preset.agent_session,
+        )
+        active_preset_id = synthetic_id
+
     # What the active run can actually reach: the active preset's bindings and
     # the default preset's (per-cell fallback).
     referenced_group_ids = set(presets[active_preset_id].bindings.values()) | set(

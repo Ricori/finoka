@@ -1,43 +1,180 @@
-"""Install one pinned FineSub model inside the managed runtime."""
+"""Install one pinned FineSub model inside the managed runtime.
+
+The installer runs in a child process so Hugging Face can select a regional
+endpoint before importing ``huggingface_hub``. Machine-readable events are
+written as one JSON object per line for the desktop progress UI.
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
+import time
 from pathlib import Path
+from typing import Any, Callable
 
 
-def install_model(model_id: str, models_root: Path, data_root: Path) -> None:
+EventSink = Callable[[dict[str, Any]], None]
+
+
+def emit_event(event: dict[str, Any]) -> None:
+    # Keep the process protocol ASCII-only. On Windows, a child attached to a
+    # pipe may otherwise encode Chinese with the active ANSI code page while
+    # the parent correctly expects UTF-8, producing replacement characters in
+    # an otherwise valid progress event. json.loads restores the Chinese text.
+    print(json.dumps(event, ensure_ascii=True, separators=(",", ":")), flush=True)
+
+
+class ByteProgressReporter:
+    """Throttle byte events and calculate a recent transfer rate."""
+
+    def __init__(self, model_id: str, total: int, sink: EventSink) -> None:
+        self.model_id = model_id
+        self.total = max(0, int(total))
+        self.sink = sink
+        self._last_time = time.monotonic()
+        self._last_bytes = 0
+        self._last_emit = 0.0
+
+    def update(self, completed: int, *, force: bool = False) -> None:
+        now = time.monotonic()
+        completed = max(0, int(completed))
+        if self.total:
+            completed = min(completed, self.total)
+        if not force and completed < self.total and now - self._last_emit < 0.1:
+            return
+        elapsed = max(now - self._last_time, 1e-6)
+        speed = max(0.0, (completed - self._last_bytes) / elapsed)
+        self.sink({
+            "type": "progress",
+            "resource": self.model_id,
+            "completed": completed,
+            "total": self.total,
+            "unit": "bytes",
+            "bytes_per_second": speed,
+            "message": f"正在下载模型：{self.model_id}",
+        })
+        self._last_time = now
+        self._last_bytes = completed
+        self._last_emit = now
+
+
+class _SilentStream:
+    """A file-like sink that prevents tqdm control characters in NDJSON."""
+
+    def write(self, _value: str) -> int:
+        return 0
+
+    def flush(self) -> None:
+        return None
+
+
+def reporting_tqdm(reporter: ByteProgressReporter):
+    """Build a tqdm subclass that reports Hugging Face's aggregate byte bar."""
+
+    from tqdm.auto import tqdm
+
+    class ReportingTqdm(tqdm):
+        def __init__(self, *args, **kwargs) -> None:
+            self._reports_bytes = str(kwargs.get("desc", "")).startswith("Downloading bytes")
+            kwargs["file"] = _SilentStream()
+            kwargs["disable"] = False
+            super().__init__(*args, **kwargs)
+            self._reports_bytes = str(getattr(self, "desc", "")).startswith("Downloading bytes")
+
+        def update(self, n: int | float = 1):
+            displayed = super().update(n)
+            if getattr(self, "_reports_bytes", False):
+                reporter.update(int(self.n))
+            return displayed
+
+        def close(self) -> None:
+            if getattr(self, "_reports_bytes", False):
+                reporter.update(int(self.n), force=True)
+            super().close()
+
+    return ReportingTqdm
+
+
+def _stage(sink: EventSink, model_id: str, stage: str, message: str) -> None:
+    sink({"type": "stage", "resource": model_id, "stage": stage, "message": message})
+
+
+def _install_separator(entry, models_root: Path, data_root: Path, sink: EventSink) -> None:
     from finesub_bootstrap.download_routes import resolve_region
+    from finesub_bootstrap.model_fetch import fetch_fixed_files
+
+    total = sum(max(0, wanted.size) for wanted in entry.files if wanted.is_verifiable)
+    reporter = ByteProgressReporter("separator", total, sink)
+    completed_before = 0
+    previous_downloaded = 0
+    previous_total = 0
+
+    def progress(value) -> None:
+        nonlocal completed_before, previous_downloaded, previous_total
+        downloaded = max(0, int(value.downloaded))
+        item_total = max(0, int(value.total))
+        if previous_total and (downloaded < previous_downloaded or item_total != previous_total):
+            completed_before += previous_total
+        previous_downloaded = downloaded
+        previous_total = item_total
+        reporter.update(completed_before + downloaded)
+
+    _stage(sink, "separator", "downloading", "正在下载音频分离模型")
+    fetch_fixed_files(
+        entry,
+        models_root / "audio-separator",
+        data_root=data_root,
+        region=resolve_region(data_root).region,
+        progress=progress,
+    )
+    reporter.update(total, force=True)
+    _stage(sink, "separator", "verifying", "正在校验音频分离模型")
+
+
+def _install_huggingface(entry, model_id: str, models_root: Path, sink: EventSink) -> Path:
+    from huggingface_hub import snapshot_download
+
+    arguments = {
+        "repo_id": entry.repo,
+        "revision": entry.revision,
+        "cache_dir": models_root / "huggingface" / "hub",
+    }
+    _stage(sink, model_id, "preparing", f"正在检查 {model_id} 模型缓存")
+    dry_run = snapshot_download(**arguments, dry_run=True)
+    total = sum(
+        max(0, int(getattr(item, "file_size", 0) or 0))
+        for item in dry_run
+        if bool(getattr(item, "will_download", False))
+    )
+    reporter = ByteProgressReporter(model_id, total, sink)
+    if total:
+        reporter.update(0, force=True)
+        _stage(sink, model_id, "downloading", f"正在下载模型：{model_id}")
+    snapshot = Path(snapshot_download(**arguments, tqdm_class=reporting_tqdm(reporter)))
+    reporter.update(total, force=True)
+    return snapshot
+
+
+def install_model(model_id: str, models_root: Path, data_root: Path, *, sink: EventSink = emit_event) -> None:
     from finesub_bootstrap.model_manifest import entry_for, file_matches
 
     entry = entry_for(model_id)
     if entry is None:
         raise RuntimeError(f"FineSub model manifest has no {model_id!r} entry")
     if model_id == "separator":
-        from finesub_bootstrap.model_fetch import fetch_fixed_files
-
-        fetch_fixed_files(
-            entry,
-            models_root / "audio-separator",
-            data_root=data_root,
-            region=resolve_region(data_root).region,
-        )
+        _install_separator(entry, models_root, data_root, sink)
+        _stage(sink, model_id, "completed", f"模型 {model_id} 已下载并校验")
         return
 
     if not entry.repo or not entry.revision:
         raise RuntimeError(f"FineSub model {model_id!r} has no pinned repository")
-    from huggingface_hub import snapshot_download
-
-    snapshot = Path(
-        snapshot_download(
-            repo_id=entry.repo,
-            revision=entry.revision,
-            cache_dir=models_root / "huggingface" / "hub",
-        )
-    )
+    snapshot = _install_huggingface(entry, model_id, models_root, sink)
+    _stage(sink, model_id, "verifying", f"正在校验模型：{model_id}")
     mismatches = [wanted.name for wanted in entry.files if wanted.is_verifiable and not file_matches(snapshot / wanted.name, wanted)]
     if mismatches:
         raise RuntimeError(f"FineSub model {model_id!r} failed manifest verification: {', '.join(mismatches)}")
+    _stage(sink, model_id, "completed", f"模型 {model_id} 已下载并校验")
 
 
 def main(argv: list[str] | None = None) -> int:

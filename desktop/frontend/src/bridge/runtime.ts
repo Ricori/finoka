@@ -5,7 +5,10 @@ export interface RuntimeItem {
   version?: string;
   state: "missing" | "downloading" | "outdated" | "ready" | "failed";
   detail?: string;
+  source?: "managed" | "system";
 }
+
+export type RuntimeInstallTarget = "media" | "runtime" | "models" | "all" | "git" | "yt-dlp" | "tokcount";
 
 export interface RuntimeProvisionState {
   schema: 1;
@@ -29,8 +32,22 @@ export interface RuntimeProvisionState {
   };
 }
 
+export interface PythonBootstrapState {
+  schema: 1;
+  platform: string;
+  supported: boolean;
+  state: "missing" | "running" | "ready" | "failed" | "unavailable";
+  stage: string;
+  message: string;
+  python?: string;
+  progress: { completed: number; total: number; unit: string; bytes_per_second?: number } | null;
+}
+
 export const fineSubRuntime = {
+  pythonStatus: () => ProviderService.PythonBootstrapStatus() as Promise<unknown> as Promise<PythonBootstrapState>,
+  installPython: () => ProviderService.InstallPython() as Promise<unknown> as Promise<PythonBootstrapState>,
   status: () => ProviderService.RuntimeProvisionStatus() as Promise<unknown> as Promise<RuntimeProvisionState>,
-  install: (target: "media" | "runtime" | "models" | "all") => ProviderService.InstallRuntime(target) as Promise<unknown> as Promise<RuntimeProvisionState>,
+  install: (target: RuntimeInstallTarget) => ProviderService.InstallRuntime(target) as Promise<unknown> as Promise<RuntimeProvisionState>,
   cancel: () => ProviderService.CancelRuntimeInstall() as Promise<unknown> as Promise<RuntimeProvisionState>,
+  removeAll: () => ProviderService.RemoveRuntime() as Promise<unknown> as Promise<RuntimeProvisionState>,
 };

@@ -37,7 +37,8 @@ func SidecarConfig() (sidecar.Config, error) {
 	}
 	python := os.Getenv(pythonEnvironment)
 	if python == "" {
-		python = firstAvailableExecutable(bundledPythonCandidates(resourceRoot)...)
+		pythonCandidates := append([]string{managedBootstrapPython(data)}, bundledPythonCandidates(resourceRoot)...)
+		python = firstAvailableExecutable(pythonCandidates...)
 	}
 	scriptCandidates := []string{"scripts/run_local_sidecar.py", "../scripts/run_local_sidecar.py"}
 	vendorCandidates := []string{"third_party/finesub", "../third_party/finesub"}
@@ -56,6 +57,13 @@ func SidecarConfig() (sidecar.Config, error) {
 		requirePath(config.Args[0], "sidecar script"),
 		requirePath(config.Args[4], "FineSub vendor directory"),
 	)
+}
+
+func managedBootstrapPython(dataDirectory string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(dataDirectory, "bootstrap", "launcher", "Scripts", "python.exe")
+	}
+	return filepath.Join(dataDirectory, "bootstrap", "launcher", "bin", "python3")
 }
 
 // packagedResourceRoot locates the Python source bundle staged beside a raw

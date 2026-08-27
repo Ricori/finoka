@@ -297,6 +297,7 @@ def _gemini_generate_content(
     max_tokens: Optional[int],
     tools: Optional[List[Dict[str, Any]]],
     timeout: float,
+    api_base: str = GEMINI_API_BASE,
 ) -> Dict[str, Any]:
     """Call the Gemini generateContent REST endpoint directly.
 
@@ -305,7 +306,7 @@ def _gemini_generate_content(
     this shape natively.
     """
     model_id = model.split("/", 1)[-1] if "/" in model else model
-    url = f"{GEMINI_API_BASE}/models/{model_id}:generateContent"
+    url = f"{api_base.rstrip('/')}/models/{model_id}:generateContent"
 
     contents, system_parts = _messages_to_gemini_body(messages)
     body: Dict[str, Any] = {"contents": contents}
@@ -532,6 +533,7 @@ def chat_complete(
                         max_tokens=max_tokens,
                         tools=_native_search_tools(native_search_tool) if native_search_tool else None,
                         timeout=LLM_API_TIMEOUT_SECONDS,
+                        api_base=(env_map.get("GEMINI_BASE_URL") or GEMINI_API_BASE),
                     )
                 _record_api_attempt(
                     api_attempts,

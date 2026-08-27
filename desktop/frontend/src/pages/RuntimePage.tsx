@@ -1,5 +1,6 @@
 import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/finoka/desktop/internal/sidecar/models.js";
-import type { RuntimeItem, RuntimeProvisionState } from "../bridge/runtime.ts";
+import { useState } from "react";
+import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeItem, RuntimeProvisionState } from "../bridge/runtime.ts";
 import { Mark } from "../components/Mark.tsx";
 import type { Capabilities } from "../providers/types.ts";
 import "./RuntimePage.css";
@@ -9,10 +10,13 @@ interface RuntimePageProps {
   capabilities: Capabilities | null;
   message: string;
   provision: RuntimeProvisionState | null;
+  pythonBootstrap: PythonBootstrapState | null;
   ready: boolean;
   sidecar: SidecarSnapshot | null;
-  onInstall: (target: "media" | "runtime" | "models" | "all") => Promise<void>;
+  onInstall: (target: RuntimeInstallTarget) => Promise<void>;
+  onInstallPython: () => Promise<void>;
   onCancelInstall: () => Promise<void>;
+  onRemoveAll: () => Promise<void>;
 }
 
 const installPhases = [
@@ -30,6 +34,8 @@ const assetStateLabels: Record<RuntimeItem["state"], string> = {
   failed: "安装失败",
 };
 
+const optionalToolIds = new Set(["git", "yt-dlp", "tokcount"]);
+
 const stageOrder: Record<string, number> = {
   preparing: 0,
   resource: 0,
@@ -39,6 +45,9 @@ const stageOrder: Record<string, number> = {
   activating: 3,
   runtime: 3,
   model: 3,
+  installing_python: 3,
+  installing_dependencies: 3,
+  completed: 4,
 };
 
 function formatBytes(value: number): string {
@@ -49,10 +58,24 @@ function formatBytes(value: number): string {
   return `${amount >= 100 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
 }
 
-function ProvisionProgress({ job, onCancel }: { job: RuntimeProvisionState["job"]; onCancel: () => Promise<void> }) {
+interface ProgressJob {
+  resource: string;
+  stage: string;
+  message: string;
+  progress: { completed: number; total: number; unit: string; bytes_per_second?: number } | null;
+}
+
+function ProvisionProgress({ job, onCancel, cancellable = true }: { job: ProgressJob; onCancel: () => Promise<void>; cancellable?: boolean }) {
   const progress = job.progress;
   const percentage = progress?.total ? Math.min(100, Math.max(0, progress.completed / progress.total * 100)) : 0;
   const activePhase = stageOrder[job.stage] ?? 0;
+  const progressDescription = progress?.total
+    ? `${formatBytes(progress.completed)} / ${formatBytes(progress.total)}`
+    : job.stage === "installing_dependencies" || job.stage === "activating" || job.stage === "runtime"
+      ? "正在安装已下载的依赖"
+      : job.stage === "verifying" || job.stage === "extracting"
+        ? job.message
+        : "正在准备下载";
   return (
     <section className="provision-progress-card" role="status" aria-live="polite">
       <div className="provision-progress-heading">
@@ -62,13 +85,13 @@ function ProvisionProgress({ job, onCancel }: { job: RuntimeProvisionState["job"
           <strong>{job.message || "正在准备下载"}</strong>
         </div>
         <b>{progress?.total ? `${Math.round(percentage)}%` : "处理中"}</b>
-        <button className="cancel-button" onClick={() => void onCancel()} type="button">取消</button>
+        {cancellable && <button className="cancel-button" onClick={() => void onCancel()} type="button">取消</button>}
       </div>
       <div className={`provision-progress-track ${progress?.total ? "" : "indeterminate"}`}>
         <span style={progress?.total ? { width: `${percentage}%` } : undefined} />
       </div>
       <div className="provision-progress-meta">
-        <span>{progress?.total ? `${formatBytes(progress.completed)} / ${formatBytes(progress.total)}` : "正在建立安全下载连接"}</span>
+        <span>{progressDescription}</span>
         <span>{progress?.bytes_per_second ? `${formatBytes(progress.bytes_per_second)}/s` : "校验后自动安装"}</span>
       </div>
       <div className="provision-phase-list">
@@ -82,25 +105,47 @@ function ProvisionProgress({ job, onCancel }: { job: RuntimeProvisionState["job"
   );
 }
 
-function AssetTile({ item }: { item: RuntimeItem }) {
+function AssetTile({ item, optional = false, busy = false, installing = false, onInstall }: {
+  item: RuntimeItem;
+  optional?: boolean;
+  busy?: boolean;
+  installing?: boolean;
+  onInstall?: () => Promise<void>;
+}) {
+  const ready = item.state === "ready";
+  const stateLabel = optional && !ready
+    ? item.state === "downloading" ? "下载中" : item.state === "outdated" ? "可按需更新" : "按需安装"
+    : ready && item.source === "system" ? "系统已安装" : assetStateLabels[item.state] ?? item.state;
   return (
-    <div>
-      <span className={item.state === "ready" ? "asset-ready" : "asset-missing"}>{item.state === "ready" ? "✓" : "↓"}</span>
-      <div><strong>{item.id}</strong><small>{item.version ? `${item.version} · ` : ""}{assetStateLabels[item.state] ?? item.state}</small></div>
+    <div className={optional ? "optional-asset-tile" : undefined} title={item.detail}>
+      <span className={ready ? "asset-ready" : optional ? "asset-optional" : "asset-missing"}>{ready ? "✓" : optional ? "○" : "↓"}</span>
+      <div><strong>{item.id}</strong><small>{item.version ? `${item.version} · ` : ""}{stateLabel}</small></div>
+      {optional && !ready && onInstall && (
+        <button className="optional-install-button" disabled={busy} onClick={() => void onInstall()} type="button">
+          {installing ? "安装中…" : item.state === "outdated" ? "更新" : "下载"}
+        </button>
+      )}
     </div>
   );
 }
 
-export function RuntimePage({ capabilities, message, provision, ready, sidecar, onCancelInstall, onInstall }: RuntimePageProps) {
+export function RuntimePage({ capabilities, message, provision, pythonBootstrap, ready, sidecar, onCancelInstall, onInstall, onInstallPython, onRemoveAll }: RuntimePageProps) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const issues = capabilities?.runtime?.issues ?? [];
   const stages = capabilities?.runtime?.stages ?? [];
   const job = provision?.job;
   const mediaInstalling = job?.state === "running" && job.target === "media";
-  const mediaState = mediaInstalling ? "downloading" : provision?.media_ready ? "ready" : "missing";
+  const mediaStage = stages.find((stage) => stage.id === "media");
+  const ffmpegReady = provision?.media_ready === true || (mediaStage !== undefined && !mediaStage.issues.some((issue) => issue.code === "missing_ffmpeg"));
+  const mediaState = mediaInstalling ? "downloading" : ffmpegReady ? "ready" : "missing";
+  const pythonInstalling = pythonBootstrap?.state === "running";
+  const showPythonCard = !sidecar?.running || pythonInstalling || pythonBootstrap?.state === "failed";
   const assets = [provision?.runtime, ...(provision?.resources ?? []), ...(provision?.models ?? [])]
     .filter((item): item is RuntimeItem => item !== undefined && item.id !== "ffmpeg" && item.id !== "ffprobe");
-  const readyAssets = assets.filter((item) => item.state === "ready");
-  const pendingAssets = assets.filter((item) => item.state !== "ready");
+  const optionalTools = assets.filter((item) => optionalToolIds.has(item.id));
+  const requiredAssets = assets.filter((item) => !optionalToolIds.has(item.id));
+  const readyAssets = requiredAssets.filter((item) => item.state === "ready");
+  const pendingAssets = requiredAssets.filter((item) => item.state !== "ready");
   return (
     <section className="runtime-layout">
       <article className="panel runtime-diagnostics">
@@ -137,7 +182,29 @@ export function RuntimePage({ capabilities, message, provision, ready, sidecar, 
           </div>
         </div>
         <p className="provision-hint">「一键准备全部」= 先执行「仅装运行时」，再执行「仅补缺失模型」。已就绪的部分会自动跳过，重复执行只补缺失或损坏的内容。</p>
-        <section className={`required-dependency-card ${mediaState}`}>
+        {showPythonCard && <section className={`required-dependency-card ${pythonBootstrap?.state ?? "missing"}`}>
+          <div className="required-dependency-main">
+            <div className="required-dependency-icon" aria-hidden="true">PY</div>
+            <div className="required-dependency-copy">
+              <span>启动依赖 · AUTOMATIC</span>
+              <h3>Python 3.12</h3>
+              <p>{pythonBootstrap?.message || "Finoka 将自动下载隔离的 Python，不会修改系统 Python。"}</p>
+            </div>
+            <div className="required-dependency-action">
+              <small>{pythonInstalling ? "↓ 正在安装" : pythonBootstrap?.state === "failed" ? "! 安装失败" : pythonBootstrap?.state === "ready" ? "✓ 已安装" : "! 尚未安装"}</small>
+              <button className="primary-button" disabled={!pythonBootstrap?.supported || pythonInstalling} onClick={() => void onInstallPython()}>
+                {pythonInstalling ? "正在启用…" : pythonBootstrap?.state === "failed" ? "重试安装" : pythonBootstrap?.state === "ready" ? "重新启用" : "立即安装"}
+              </button>
+            </div>
+          </div>
+          {pythonInstalling && pythonBootstrap && <ProvisionProgress job={{
+            resource: "Python 3.12",
+            stage: pythonBootstrap.stage,
+            message: pythonBootstrap.message,
+            progress: pythonBootstrap.progress,
+          }} onCancel={async () => undefined} cancellable={false} />}
+        </section>}
+        {mediaState !== "ready" && <section className={`required-dependency-card ${mediaState}`}>
           <div className="required-dependency-main">
             <div className="required-dependency-icon" aria-hidden="true">FF</div>
             <div className="required-dependency-copy">
@@ -146,14 +213,14 @@ export function RuntimePage({ capabilities, message, provision, ready, sidecar, 
               <p>用于视频探测、缩略图、波形、音频提取和视频导出；缺失时无法导入视频。</p>
             </div>
             <div className="required-dependency-action">
-              <small>{mediaState === "ready" ? "✓ 已就绪" : mediaState === "downloading" ? "↓ 下载中" : "! 尚未安装"}</small>
+              <small>{mediaState === "downloading" ? "↓ 下载中" : "! 尚未安装"}</small>
               <button className="primary-button" disabled={!provision?.media_supported || job?.state === "running"} onClick={() => void onInstall("media")}>
-                {mediaState === "ready" ? "检查并修复" : mediaState === "downloading" ? "正在安装…" : "立即下载"}
+                {mediaState === "downloading" ? "正在安装…" : "立即下载"}
               </button>
             </div>
           </div>
           {mediaInstalling && job && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
-        </section>
+        </section>}
         {!provision?.supported && <p className="success-copy">当前 {provision?.platform ?? "平台"} 支持上方媒体必备工具；本地 GPU 流水线仍仅面向 Windows x64/NVIDIA，也可继续使用云端容器。</p>}
         {job?.state === "running" && !mediaInstalling && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
         {job?.state !== "running" && <Notice className={`provision-message ${job?.state ?? ""}`} message={job?.message ?? ""} />}
@@ -173,7 +240,40 @@ export function RuntimePage({ capabilities, message, provision, ready, sidecar, 
             </div>
           </section>
         )}
-        {provision?.root && <small className="runtime-root">安装目录：{provision.root}</small>}
+        {optionalTools.length > 0 && (
+          <section className="asset-group optional">
+            <div className="asset-group-heading"><strong>可选工具</strong><small>按需使用，不影响环境就绪状态</small></div>
+            <div className="asset-grid">
+              {optionalTools.map((item) => <AssetTile
+                item={item}
+                key={`${item.id}:${item.version ?? ""}`}
+                optional
+                busy={job?.state === "running"}
+                installing={job?.state === "running" && job.target === item.id}
+                onInstall={() => onInstall(item.id as RuntimeInstallTarget)}
+              />)}
+            </div>
+          </section>
+        )}
+        {provision?.root && <div className="runtime-storage-row">
+          <small className="runtime-root">安装目录：{provision.root}</small>
+          <button
+            className={confirmRemove ? "runtime-remove-button confirming" : "runtime-remove-button"}
+            disabled={job?.state === "running"}
+            onBlur={() => setConfirmRemove(false)}
+            onClick={() => {
+              if (!confirmRemove) {
+                setConfirmRemove(true);
+                return;
+              }
+              setConfirmRemove(false);
+              void onRemoveAll();
+            }}
+            type="button"
+          >
+            {confirmRemove ? "再次点击确认删除" : "删除所有环境"}
+          </button>
+        </div>}
       </article>
     </section>
   );

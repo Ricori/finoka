@@ -38,8 +38,8 @@ Key 登录与媒体库合并、自动字幕同步，以及 JASSUB 预览和 SRT/
 
 ## 当前参考基线
 
-- 现有前端与桌面能力：`/Users/chika/Documents/Develop/youtube-live-translate/desktop` 或者 https://github.com/Ricori/youtube-live-translate
-- 现有云端编辑契约：`/Users/chika/Documents/Develop/youtube-live-translate/vod/api/edit.py` 或者 https://github.com/Ricori/youtube-live-translate
+- 现有前端与桌面能力：`https://github.com/Ricori/youtube-live-translate/desktop`
+- 现有云端编辑契约：`https://github.com/Ricori/youtube-live-translate`
 - FineSub 上游：`https://github.com/caca2331/finesub`
 - 本次调研时的 FineSub 基线：`0.4.1`，commit
   `2a320ede3f5c29e431a4525aab01d97945f349c2`
@@ -76,6 +76,8 @@ macOS 产物位于 `desktop/bin/Finoka.app`，Windows 产物是单文件
 `desktop/bin/Finoka.exe`。生产二进制会嵌入 `src/finoka`、固定 FineSub
 源码、运行时锁和模型清单，首次启动时按内容哈希解压到用户数据目录；应用允许使用 `FINOKA_PYTHON`、
 `FINOKA_SIDECAR_SCRIPT`、`FINOKA_VENDOR_DIR` 和 `FINOKA_DATA_DIR` 覆盖诊断路径。
+Windows x64 终端用户无需预装 Python：找不到可用解释器时，环境管理页会自动下载经 SHA-256
+校验的 `uv`，安装隔离的 Python 3.12 启动环境并启用本地服务。
 
 应用管理的用户数据统一保存在 Windows `%APPDATA%\Finoka` 或 macOS
 `~/Library/Application Support/Finoka`。其中 `videos/` 是可清理的视频工作副本，
@@ -116,9 +118,3 @@ python3 scripts/run_local_sidecar.py
 ```bash
 python3 scripts/sync_finesub.py sync --ref v0.4.1
 ```
-
-## 发布前外部验收
-
-1. 在 Windows x64/NVIDIA 全新用户目录执行“全部准备”，验证运行时、三个模型和短视频完整流水线。
-2. 部署 Modal 测试环境，执行 L4 真媒体、容器抢占、取消、恢复和 R2 临时对象清理演练。
-3. 固化签名、安装包版本和升级策略；这些动作涉及真实发布凭据，不在仓库测试中自动执行。

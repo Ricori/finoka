@@ -114,6 +114,9 @@ func (s *Service) PickRelink(id string) (Entry, error) {
 		AttachToWindow(window).
 		AddFilter("视频文件", "*.mp4;*.m4v;*.mov;*.mkv;*.webm").
 		PromptForSingleSelection()
+	if dialogCancelled(err) {
+		err = nil
+	}
 	if err != nil || path == "" {
 		return Entry{}, err
 	}
@@ -233,6 +236,9 @@ func (s *Service) SaveSubtitle(defaultName, content string) (string, error) {
 	path, err := app.Dialog.SaveFile().SetFilename(name).
 		AddFilter(strings.ToUpper(strings.TrimPrefix(extension, "."))+" 字幕", "*"+extension).
 		AttachToWindow(window).PromptForSingleSelection()
+	if dialogCancelled(err) {
+		err = nil
+	}
 	if err != nil || path == "" {
 		return "", err
 	}
@@ -266,6 +272,9 @@ func (s *Service) ExportVideo(id, ass string) (string, error) {
 	}
 	name := strings.TrimSuffix(entry.Title, filepath.Ext(entry.Title)) + " - 字幕.mp4"
 	output, err := app.Dialog.SaveFile().SetFilename(name).AddFilter("MP4 视频", "*.mp4").AttachToWindow(window).PromptForSingleSelection()
+	if dialogCancelled(err) {
+		err = nil
+	}
 	if err != nil || output == "" {
 		return "", err
 	}

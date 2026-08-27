@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from finoka.provision import CANCELLED_MESSAGE, DONE_MESSAGES, RuntimeProvisionError, RuntimeProvisioner
+from finoka.provision import CANCELLED_MESSAGE, DONE_MESSAGES, OPTIONAL_TOOLS, RuntimeProvisionError, RuntimeProvisioner, parse_model_install_event
 
 
 VENDOR = Path(__file__).resolve().parents[1] / "third_party" / "finesub"
@@ -106,3 +106,51 @@ def test_cancelled_job_stops_before_downloading_and_is_not_a_failure(tmp_path: P
 def test_completion_copy_tells_runtime_only_apart_from_full_prepare() -> None:
     assert DONE_MESSAGES["runtime"] != DONE_MESSAGES["all"]
     assert "模型仍需单独下载" in DONE_MESSAGES["runtime"]
+
+
+def test_model_installer_events_are_validated_before_updating_ui() -> None:
+    event = parse_model_install_event(
+        '{"type":"progress","resource":"whisper","completed":25,"total":100,"bytes_per_second":12.5,"message":"下载中"}',
+        "whisper",
+    )
+    assert event == {
+        "type": "progress",
+        "completed": 25,
+        "total": 100,
+        "bytes_per_second": 12.5,
+        "message": "下载中",
+    }
+    assert parse_model_install_event("ordinary log output", "whisper") is None
+    assert parse_model_install_event('{"type":"progress","resource":"other"}', "whisper") is None
+
+
+def test_optional_tools_are_explicit_install_targets() -> None:
+    assert OPTIONAL_TOOLS == ("git", "yt-dlp", "tokcount")
+    assert all(tool in DONE_MESSAGES for tool in OPTIONAL_TOOLS)
+
+
+def test_remove_all_preserves_tasks_and_user_data(tmp_path: Path) -> None:
+    provisioner = RuntimeProvisioner(tmp_path, VENDOR)
+    assert provisioner.paths is not None
+    replaceable = (
+        provisioner.paths.runtime,
+        provisioner.paths.models,
+        provisioner.paths.cache,
+        provisioner.paths.agent_capsules,
+    )
+    for directory in replaceable:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "fixture").write_text("replaceable", encoding="utf-8")
+    task = provisioner.paths.tasks / "task.json"
+    task.parent.mkdir(parents=True, exist_ok=True)
+    task.write_text("important", encoding="utf-8")
+    user_data = provisioner.paths.user_data / "settings.json"
+    user_data.parent.mkdir(parents=True, exist_ok=True)
+    user_data.write_text("important", encoding="utf-8")
+
+    status = provisioner.remove_all()
+
+    assert all(not directory.exists() for directory in replaceable)
+    assert task.read_text(encoding="utf-8") == "important"
+    assert user_data.read_text(encoding="utf-8") == "important"
+    assert status["job"]["target"] == "remove-all"

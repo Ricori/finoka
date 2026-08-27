@@ -52,6 +52,15 @@
 .provision-phase-list .active i { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
 .provision-phase-list .complete { color: var(--mut); }
 .provision-phase-list .complete i { border-color: transparent; background: color-mix(in srgb, #64d9aa 17%, transparent); color: #64d9aa; }
+.asset-group.optional .asset-group-heading strong::before { background: var(--mut); }
+.asset-optional { color: var(--mut); background: color-mix(in srgb, var(--mut) 14%, transparent); }
+.optional-asset-tile { grid-template-columns: auto minmax(0, 1fr) auto !important; }
+.optional-install-button { padding: 6px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--accent); font-size: 11px; font-weight: 650; cursor: pointer; }
+.optional-install-button:disabled { opacity: .48; cursor: not-allowed; }
+.runtime-storage-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.runtime-remove-button { flex: 0 0 auto; padding: 6px 9px; border: 1px solid color-mix(in srgb, var(--warn) 28%, var(--line-soft)); border-radius: 8px; background: transparent; color: var(--mut); font-size: 10px; cursor: pointer; }
+.runtime-remove-button.confirming { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
+.runtime-remove-button:disabled { opacity: .42; cursor: not-allowed; }
 
 @keyframes runtime-download { 0%, 100% { transform: translateY(-2px); opacity: .65; } 50% { transform: translateY(2px); opacity: 1; } }
 @keyframes runtime-indeterminate { from { transform: translateX(-110%); } to { transform: translateX(310%); } }

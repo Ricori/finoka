@@ -77,6 +77,14 @@ def runtime_report(settings: FineSubSettings | None = None, provisioner: Runtime
     ]
     if missing_modules and not managed_runtime_ready:
         asr_issues.append(_issue("missing_runtime", "AI 运行时缺少：" + "、".join(missing_modules)))
+    if managed is not None:
+        missing_models = [
+            str(item.get("id"))
+            for item in managed.get("models", [])
+            if item.get("state") != "ready"
+        ]
+        if missing_models:
+            asr_issues.append(_issue("missing_model", "ASR 所需模型尚未安装：" + "、".join(missing_models)))
 
     settings_snapshot = settings.snapshot() if settings is not None else {"llmKeyConfigured": False, "retrievalKeyConfigured": False}
     local_agent = next((name for name in ("codex", "claude", "agy") if shutil.which(name)), "")
@@ -306,6 +314,17 @@ class LocalProvider:
             return self._provisioner.cancel()
         except RuntimeProvisionError as exc:
             raise ProviderError("runtime_install_not_running", str(exc), http_status=409) from exc
+
+    def remove_runtime(self) -> dict[str, Any]:
+        if self._provisioner is None:
+            raise ProviderError("runtime_unavailable", "FineSub runtime installer is unavailable", http_status=503)
+        with self._lock:
+            if any(process.poll() is None for process in self._processes.values()):
+                raise ProviderError("runtime_in_use", "有本地任务正在运行，请先停止任务再删除环境", http_status=409)
+        try:
+            return self._provisioner.remove_all()
+        except RuntimeProvisionError as exc:
+            raise ProviderError("runtime_remove_unavailable", str(exc), http_status=409) from exc
 
     def get_settings(self) -> dict[str, Any]:
         if self._settings is None:

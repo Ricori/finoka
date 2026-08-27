@@ -190,6 +190,17 @@ Finoka 自己的 `src/finoka/document_store.py` 有同样形状的交换，修�
 固定上游基线 + 已登记 patch 栈 = 已提交 vendor
 ```
 
+当前除拆分 GPU 阶段的 `0001` 外，`0003-desktop-model-routing.patch` 也会修改
+`src/finesub`，边界严格限定为两个 LLM 文件：
+
+- `routing/model_routes.py`：读取桌面端写入的首选 target，并把它放到原模型组首位；
+  原组成员仍作为回退，因此纯文本 OpenAI/Anthropic 模型不会阻断音频或视频任务。
+- `llm_runtime.py`：Gemini 直连请求读取桌面端保存的 `GEMINI_BASE_URL`。
+
+这份补丁不改变没有桌面路由设置时的默认模型顺序，也不修改 prompt、窗口规划或
+模型能力声明。上游提供等价的首选 target overlay 与 Gemini Base URL 配置后应删除
+`0003`；合同测试固定其只能触碰上述两个文件，避免功能边界继续扩张。
+
 最低快速检查：
 
 ```bash

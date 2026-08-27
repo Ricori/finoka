@@ -88,8 +88,8 @@ class SplitSeamTests(unittest.TestCase):
 class PurelyAdditiveTests(unittest.TestCase):
     """The patch may add; it may not rewrite what local execution runs."""
 
-    def test_the_engine_patch_stack_is_this_one_patch(self) -> None:
-        """Only the split may touch the engine; the rest is installer plumbing.
+    def test_engine_patches_are_explicit_and_the_rest_is_installer_plumbing(self) -> None:
+        """Every engine patch is named here; all remaining patches are bootstrap-only.
 
         The cloud is meant to run upstream code. A patch under ``src/finesub``
         is a second thing local and cloud no longer share, so it has to be
@@ -100,6 +100,10 @@ class PurelyAdditiveTests(unittest.TestCase):
         upstream = json.loads((VENDOR / "UPSTREAM.json").read_text(encoding="utf-8"))
         names = [item["path"] for item in upstream["patches"]]
         self.assertEqual(names[0], "0001-split-vad-prefix-and-qwen-pass.patch")
+        engine_patches = {
+            "0001-split-vad-prefix-and-qwen-pass.patch",
+            "0003-desktop-model-routing.patch",
+        }
         for name in names[1:]:
             with self.subTest(patch=name):
                 outside = [
@@ -107,7 +111,16 @@ class PurelyAdditiveTests(unittest.TestCase):
                     for path in _touched_paths(PATCH_ROOT / name)
                     if not path.startswith("src/finesub_bootstrap/")
                 ]
-                self.assertEqual(outside, [])
+                if name in engine_patches:
+                    self.assertEqual(
+                        outside,
+                        [
+                            "src/finesub/llm/llm_runtime.py",
+                            "src/finesub/llm/routing/model_routes.py",
+                        ],
+                    )
+                else:
+                    self.assertEqual(outside, [])
 
     def test_the_patch_touches_only_the_two_files_the_split_needs(self) -> None:
         self.assertEqual(

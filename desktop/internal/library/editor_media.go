@@ -92,6 +92,9 @@ func (s *Service) ExportVideoRange(id, defaultName, ass string, t0, t1 float64, 
 		name += ".mp4"
 	}
 	output, err := app.Dialog.SaveFile().SetFilename(name).AddFilter("MP4 视频", "*.mp4").AttachToWindow(window).PromptForSingleSelection()
+	if dialogCancelled(err) {
+		err = nil
+	}
 	if err != nil || output == "" {
 		return ExportResult{}, err
 	}

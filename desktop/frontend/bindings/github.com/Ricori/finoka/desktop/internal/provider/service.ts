@@ -34,12 +34,28 @@ export function DocumentPeaks(videoID: string): $CancellablePromise<{ [_ in stri
     return $Call.ByID(1291765324, videoID);
 }
 
+export function InstallPython(): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(1411586738);
+}
+
 export function InstallRuntime(target: string): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(3997580972, target);
 }
 
 export function ListTasks(): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(927138817);
+}
+
+export function PythonBootstrapStatus(): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(3430045125);
+}
+
+/**
+ * RemoveRuntime removes replaceable managed environments and caches. The
+ * sidecar preserves tasks, subtitle documents, and user settings.
+ */
+export function RemoveRuntime(): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(2762506059);
 }
 
 export function ResumeTask(taskID: string): $CancellablePromise<{ [_ in string]?: any } | null> {

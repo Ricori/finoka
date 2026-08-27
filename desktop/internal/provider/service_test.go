@@ -20,6 +20,19 @@ type fakeCaller struct {
 	calls []call
 }
 
+type fakePythonBootstrap struct {
+	installed bool
+}
+
+func (f *fakePythonBootstrap) Status() map[string]any {
+	return map[string]any{"state": "missing"}
+}
+
+func (f *fakePythonBootstrap) Install() (map[string]any, error) {
+	f.installed = true
+	return map[string]any{"state": "running"}, nil
+}
+
 func (f *fakeCaller) Snapshot() sidecar.Snapshot {
 	return sidecar.Snapshot{Running: true, BaseURL: "http://127.0.0.1:1234", PID: 42}
 }
@@ -42,7 +55,9 @@ func TestServiceMapsFixedProviderEndpoints(t *testing.T) {
 	_, _ = service.Capabilities()
 	_, _ = service.RuntimeProvisionStatus()
 	_, _ = service.InstallRuntime("media")
+	_, _ = service.InstallRuntime("yt-dlp")
 	_, _ = service.CancelRuntimeInstall()
+	_, _ = service.RemoveRuntime()
 	_, _ = service.Settings()
 	_, _ = service.SaveKeys(map[string]any{"GEMINI_FREE": "secret"})
 	_, _ = service.ListTasks()
@@ -58,7 +73,9 @@ func TestServiceMapsFixedProviderEndpoints(t *testing.T) {
 		{method: "GET", endpoint: "/v1/capabilities"},
 		{method: "GET", endpoint: "/v1/runtime/provision"},
 		{method: "POST", endpoint: "/v1/runtime/provision", body: map[string]any{"target": "media"}},
+		{method: "POST", endpoint: "/v1/runtime/provision", body: map[string]any{"target": "yt-dlp"}},
 		{method: "POST", endpoint: "/v1/runtime/provision/cancel", body: map[string]any{}},
+		{method: "DELETE", endpoint: "/v1/runtime/provision"},
 		{method: "GET", endpoint: "/v1/settings"},
 		{method: "PUT", endpoint: "/v1/settings/keys", body: map[string]any{"keys": map[string]any{"GEMINI_FREE": "secret"}}},
 		{method: "GET", endpoint: "/v1/tasks?limit=100"},
@@ -87,6 +104,34 @@ func TestServiceRejectsUnknownRuntimeTarget(t *testing.T) {
 	}
 	if len(transport.calls) != 0 {
 		t.Fatalf("invalid runtime target reached transport: %#v", transport.calls)
+	}
+}
+
+func TestServiceAcceptsOptionalRuntimeTargets(t *testing.T) {
+	transport := &fakeCaller{}
+	service, _ := New(transport)
+	for _, target := range []string{"git", "yt-dlp", "tokcount"} {
+		if _, err := service.InstallRuntime(target); err != nil {
+			t.Fatalf("optional target %q was rejected: %v", target, err)
+		}
+	}
+}
+
+func TestServiceExposesNativePythonBootstrapWithoutCallingSidecar(t *testing.T) {
+	transport := &fakeCaller{}
+	bootstrap := &fakePythonBootstrap{}
+	service, err := New(transport, bootstrap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status := service.PythonBootstrapStatus(); status["state"] != "missing" {
+		t.Fatalf("status = %#v", status)
+	}
+	if status, err := service.InstallPython(); err != nil || status["state"] != "running" || !bootstrap.installed {
+		t.Fatalf("install status = %#v, err = %v", status, err)
+	}
+	if len(transport.calls) != 0 {
+		t.Fatalf("native bootstrap reached sidecar: %#v", transport.calls)
 	}
 }
 

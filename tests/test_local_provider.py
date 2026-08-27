@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from finoka.local_provider import LocalProvider, ProviderError
+from finoka.local_provider import LocalProvider, ProviderError, runtime_report
 from finoka.sidecar import SidecarServer, session_authorized
 
 
@@ -177,6 +177,31 @@ class LocalProviderTests(unittest.TestCase):
             server.server_close()
             provider.shutdown()
             thread.join(timeout=2)
+
+    def test_missing_managed_models_block_asr_readiness(self) -> None:
+        media_tool = self.source
+
+        class Provisioner:
+            def status(self) -> dict:
+                return {
+                    "runtime": {"state": "ready"},
+                    "resources": [],
+                    "models": [
+                        {"id": "separator", "state": "ready"},
+                        {"id": "whisper", "state": "missing"},
+                        {"id": "qwen-referee", "state": "missing"},
+                    ],
+                }
+
+            def tool_path(self, _name: str) -> Path:
+                return media_tool
+
+        report = runtime_report(provisioner=Provisioner())
+        model_issue = next(issue for issue in report["issues"] if issue["code"] == "missing_model")
+        self.assertIn("whisper", model_issue["message"])
+        self.assertIn("qwen-referee", model_issue["message"])
+        raw_stage = next(stage for stage in report["stages"] if stage["id"] == "raw-srt")
+        self.assertFalse(raw_stage["ready"])
 
 
 if __name__ == "__main__":

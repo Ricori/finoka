@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import threading
@@ -13,7 +14,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-TARGETS = {"media", "runtime", "models", "all"}
+OPTIONAL_TOOLS = ("git", "yt-dlp", "tokcount")
+TARGETS = {"media", "runtime", "models", "all", *OPTIONAL_TOOLS}
 PIPELINE_MODELS = ("separator", "whisper", "qwen-referee")
 
 # The two runtime buttons differ only in how far they go, so each target says so
@@ -25,12 +27,18 @@ START_MESSAGES = {
     "runtime": "正在准备安装运行时（不含模型）",
     "models": "正在准备下载缺失的模型",
     "all": "正在准备安装运行时并下载缺失的模型",
+    "git": "正在准备安装可选工具 Git",
+    "yt-dlp": "正在准备安装可选工具 yt-dlp",
+    "tokcount": "正在准备安装可选工具 tokcount",
 }
 DONE_MESSAGES = {
     "media": "FFmpeg 与 FFprobe 已准备就绪",
     "runtime": "运行时已就绪；模型仍需单独下载",
     "models": "缺失的模型已全部下载并校验完成",
     "all": "运行时与所需模型已全部准备就绪",
+    "git": "可选工具 Git 已安装并校验完成",
+    "yt-dlp": "可选工具 yt-dlp 已安装并校验完成",
+    "tokcount": "可选工具 tokcount 已安装并校验完成",
 }
 CANCELLED_MESSAGE = "已取消；已下载的部分会保留，下次继续时不必重头再来"
 
@@ -41,6 +49,43 @@ class RuntimeProvisionError(RuntimeError):
 
 class RuntimeProvisionCancelled(RuntimeError):
     """Raised at our own checkpoints once the user has asked the job to stop."""
+
+
+def parse_model_install_event(line: str, model_id: str) -> dict[str, Any] | None:
+    """Validate one child-process event, leaving ordinary log lines untouched."""
+
+    try:
+        value = json.loads(line)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(value, dict) or value.get("resource") != model_id:
+        return None
+    event_type = value.get("type")
+    message = value.get("message")
+    if not isinstance(message, str):
+        return None
+    if event_type == "stage":
+        stage = value.get("stage")
+        if stage not in {"preparing", "downloading", "verifying", "completed"}:
+            return None
+        return {"type": "stage", "stage": stage, "message": message}
+    if event_type != "progress":
+        return None
+    try:
+        completed = max(0, int(value["completed"]))
+        total = max(0, int(value["total"]))
+        bytes_per_second = max(0.0, float(value.get("bytes_per_second", 0.0)))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    if total:
+        completed = min(completed, total)
+    return {
+        "type": "progress",
+        "completed": completed,
+        "total": total,
+        "bytes_per_second": bytes_per_second,
+        "message": message,
+    }
 
 
 class RuntimeProvisioner:
@@ -83,7 +128,7 @@ class RuntimeProvisioner:
             self._bootstrap_error = f"{type(exc).__name__}: {exc}"
 
         if not self._bootstrap_error and self._runtime_supported:
-            from finesub_bootstrap.environment import RuntimeEnvironment
+            from finoka.runtime_install import ProgressRuntimeEnvironment
 
             def managed_uv() -> Path:
                 assert self.resources is not None
@@ -92,11 +137,12 @@ class RuntimeProvisioner:
                     raise FileNotFoundError("FineSub uv bootstrap resource is not installed")
                 return executable
 
-            self.runtime = RuntimeEnvironment(
+            self.runtime = ProgressRuntimeEnvironment(
                 paths=self.paths,
                 app_source=self.vendor,
                 runtime_lock=self.vendor / "runtime" / "pylock.win-py312.toml",
                 uv_executable=managed_uv,
+                download_progress=self._progress,
             )
         self._lock = threading.RLock()
         self._cancel = threading.Event()
@@ -155,6 +201,17 @@ class RuntimeProvisioner:
         from finesub_bootstrap.model_caches import PIPELINE_MODEL_IDS, missing_pipeline_models
 
         resources = [item.model_dump(mode="json") for item in self.resources.check_all()]
+        for item in resources:
+            item["source"] = "managed"
+            if item["id"] not in {"git", "tokcount"} or item["state"] == "ready":
+                continue
+            system_tool = shutil.which(item["id"])
+            if system_tool:
+                item.update(
+                    state="ready",
+                    source="system",
+                    detail=f"使用系统安装：{system_tool}",
+                )
         if self.runtime is not None:
             runtime_status = self.runtime.status().model_dump(mode="json")
         else:
@@ -186,7 +243,7 @@ class RuntimeProvisioner:
 
     def start(self, target: str) -> dict[str, Any]:
         if target not in TARGETS:
-            raise RuntimeProvisionError("target must be media, runtime, models, or all")
+            raise RuntimeProvisionError("target must be media, runtime, models, all, git, yt-dlp, or tokcount")
         if target == "media" and not self._media_supported:
             raise RuntimeProvisionError(f"managed FFmpeg is unavailable on {self.platform}")
         if target != "media" and not self._runtime_supported:
@@ -259,6 +316,8 @@ class RuntimeProvisioner:
 
             ensure_store(self.paths)
             self._stop_if_cancelled()
+            if target in OPTIONAL_TOOLS:
+                self._install_optional_tool(target)
             if target == "media":
                 self._install_media_tools()
             if target in {"runtime", "all"}:
@@ -290,6 +349,19 @@ class RuntimeProvisioner:
                 self._update(state="cancelled", stage="cancelled", message=CANCELLED_MESSAGE, resource="", progress=None, error=None)
                 return
             self._update(state="failed", stage="failed", message=str(exc), error={"code": "runtime_install_failed", "message": str(exc)}, progress=None)
+
+    def _install_optional_tool(self, resource_id: str) -> None:
+        assert self.resources is not None
+        if resource_id not in self.resources.resources:
+            raise RuntimeProvisionError(f"当前平台没有可安装的 {resource_id} 资源")
+        self._update(resource=resource_id, stage="resource", message=f"正在准备 {resource_id}", progress=None)
+
+        def resource_stage(stage: str, message: str) -> None:
+            self._stage(stage, f"{resource_id}：{message}", reset_progress=stage == "downloading")
+
+        self.resources.install(resource_id, self._progress, stage=resource_stage, should_pause=self._cancelled)
+        if self.resources.status(resource_id).state != "ready":
+            raise RuntimeProvisionError(f"{resource_id} 安装完成后仍不可用")
 
     def _install_media_tools(self) -> None:
         assert self.resources is not None
@@ -328,6 +400,15 @@ class RuntimeProvisioner:
         assert self.paths is not None and self.runtime is not None
         self._stage("model", f"正在下载并校验 FineSub 模型：{model_id}")
         environment = self.worker_environment()
+        environment["PYTHONUTF8"] = "1"
+        environment["PYTHONIOENCODING"] = "utf-8"
+        # Hugging Face reads its endpoint during import, so region routing must
+        # be present in the child environment before model_install starts.
+        # The shared endpoint helper leaves an explicit user HF_ENDPOINT
+        # untouched and only selects the configured mirror for mainland China.
+        from finesub_bootstrap.environment import _apply_download_endpoints
+
+        _apply_download_endpoints(environment, self.paths.data_root)
         project_src = Path(__file__).resolve().parents[1]
         python_paths = [str(project_src), str(self.vendor / "src")]
         if environment.get("PYTHONPATH"):
@@ -364,7 +445,25 @@ class RuntimeProvisioner:
         def read_output() -> None:
             assert process.stdout is not None
             for line in process.stdout:
-                tail.append(line.rstrip())
+                output = line.rstrip()
+                event = parse_model_install_event(output, model_id)
+                if event is None:
+                    tail.append(output)
+                    continue
+                if event["type"] == "progress":
+                    self._update(
+                        resource=model_id,
+                        stage="downloading",
+                        message=event["message"],
+                        progress={
+                            "completed": event["completed"],
+                            "total": event["total"],
+                            "unit": "bytes",
+                            "bytes_per_second": event["bytes_per_second"],
+                        },
+                    )
+                else:
+                    self._stage(event["stage"], event["message"], reset_progress=event["stage"] == "preparing")
 
         reader = threading.Thread(target=read_output, name="finoka-model-installer-output", daemon=True)
         reader.start()
@@ -388,6 +487,35 @@ class RuntimeProvisioner:
         if self.runtime is None:
             return None
         return self.runtime.python_executable if self.runtime.status().state == "ready" else None
+
+    def remove_all(self) -> dict[str, Any]:
+        """Remove only replaceable managed assets, never tasks or user data."""
+
+        if self.paths is None:
+            raise RuntimeProvisionError("FineSub runtime installer is unavailable")
+        with self._lock:
+            if self._job["state"] == "running":
+                raise RuntimeProvisionError("安装任务运行中，无法删除环境；请先取消安装")
+        targets = (self.paths.runtime, self.paths.models, self.paths.cache, self.paths.agent_capsules)
+        allowed_roots = (self.paths.root.resolve(), self.paths.big_data.resolve())
+        for target in targets:
+            resolved = target.resolve()
+            if not any(resolved != root and root in resolved.parents for root in allowed_roots):
+                raise RuntimeProvisionError(f"拒绝删除托管目录之外的路径：{resolved}")
+        from finesub_bootstrap.fsops import remove_tree
+
+        for target in targets:
+            remove_tree(target)
+        self._update(
+            state="completed",
+            target="remove-all",
+            resource="",
+            stage="completed",
+            message="运行时、模型、可选工具与下载缓存已全部删除；任务、字幕和设置已保留",
+            progress=None,
+            error=None,
+        )
+        return self.status()
 
     def tool_path(self, name: str) -> Path | None:
         if self.resources is None or name not in {"ffmpeg", "ffprobe", "git", "tokcount"}:
@@ -419,4 +547,9 @@ class RuntimeProvisioner:
                 path_dirs.append(str(executable.parent))
         if path_dirs:
             environment["PATH"] = os.pathsep.join([*path_dirs, environment.get("PATH", "")])
+        if "yt-dlp" in self.resources.resources and self.resources.status("yt-dlp").state == "ready":
+            yt_dlp_path = str(self.resources.install_path("yt-dlp"))
+            environment["PYTHONPATH"] = os.pathsep.join(
+                part for part in (yt_dlp_path, environment.get("PYTHONPATH", "")) if part
+            )
         return environment

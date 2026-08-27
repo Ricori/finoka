@@ -1,10 +1,10 @@
 {
   "archive_sha256": "6b349f4d62bf3841b1b1f976d39e5bb5f213bc7ab1c8fbd01d5f942823e2d6a5",
   "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
-  "content_sha256": "fbbd79d7c63d25d30c0b70221cd37d5ca520dc14a52dc06397daee111de81c03",
+  "content_sha256": "6f852d2162bac5204e60cea35933538287b96777ec3ac0f8c722e1155e41e4ff",
   "engine_bundle_id": "finesub-0.4.1+2a320ede3f5c",
   "engine_version": "0.4.1",
-  "files_manifest_sha256": "7a0a6e567327f032a01a9893d2e4ec3295565a7f8c0b51e9426b4c4c18b05959",
+  "files_manifest_sha256": "ae6c1bfecfc5fc972b7cd03fc1a68102d85ccfcf174331dc41751d0f6df3df24",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
@@ -13,6 +13,10 @@
     {
       "path": "0002-retry-directory-publish-rename.patch",
       "sha256": "abb14ae828348bbaae45381fd27f34af4fed3f12722b36a3109ebc3938146953"
+    },
+    {
+      "path": "0003-desktop-model-routing.patch",
+      "sha256": "afad091a40e00aaa8c5cfcf09f6af1c52f178a14932a948e05e3f559b12b4898"
     }
   ],
   "ref": "v0.4.1",

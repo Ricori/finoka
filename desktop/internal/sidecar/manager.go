@@ -125,6 +125,21 @@ func New(config Config) *Manager {
 	}
 }
 
+// Configure replaces the command used by the next Start call. It is used by
+// the native launcher after it has provisioned a private Python interpreter.
+func (m *Manager) Configure(config Config) error {
+	m.transition.Lock()
+	defer m.transition.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.process != nil {
+		return ErrAlreadyRunning
+	}
+	m.config = config
+	m.lastError = ""
+	return nil
+}
+
 func (m *Manager) Start(ctx context.Context) (Snapshot, error) {
 	m.transition.Lock()
 	defer m.transition.Unlock()

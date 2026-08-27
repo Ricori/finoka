@@ -3,10 +3,14 @@ import "./Notice.css";
 
 const defaultDismissDelayMs = 6000;
 
+/** Successful actions read as success; anything else keeps the warning look. */
+export type NoticeTone = "warn" | "success";
+
 type NoticeProps = {
   message: string;
   /** Keeps the existing per-site styling (.library-message, .keys-message, …). */
   className?: string;
+  tone?: NoticeTone;
   /** 0 disables the timer, leaving the notice up until it is closed by hand. */
   autoDismissMs?: number;
   /** Clears the caller's message state. Omit for notices derived from live state,
@@ -14,7 +18,7 @@ type NoticeProps = {
   onDismiss?: () => void;
 };
 
-export function Notice({ message, className = "", autoDismissMs = defaultDismissDelayMs, onDismiss }: NoticeProps) {
+export function Notice({ message, className = "", tone = "warn", autoDismissMs = defaultDismissDelayMs, onDismiss }: NoticeProps) {
   const [dismissed, setDismissed] = useState("");
   const [held, setHeld] = useState(false);
 
@@ -37,7 +41,7 @@ export function Notice({ message, className = "", autoDismissMs = defaultDismiss
 
   return (
     <p
-      className={`notice ${className}`.trim()}
+      className={`notice notice-${tone} ${className}`.trim()}
       role="status"
       aria-live="polite"
       onMouseEnter={() => setHeld(true)}

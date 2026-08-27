@@ -149,7 +149,7 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
               </section>
             </>}
 
-            {mode === "local" && <label className="cleanup-check"><input type="checkbox" checked={request.cleanup_intermediate} onChange={(event) => setRequest((current) => ({ ...current, cleanup_intermediate: event.target.checked }))} /><span><strong>任务完成后清理中间文件</strong><small>保留最终字幕与可编辑文档</small></span></label>}
+            {mode === "local" && <label className="cleanup-check"><input type="checkbox" checked={request.cleanup_intermediate} onChange={(event) => setRequest((current) => ({ ...current, cleanup_intermediate: event.target.checked }))} /><span><strong>任务完成后清理中间文件</strong></span></label>}
             <div className="transcription-summary"><span>将要执行</span><strong>{summary}</strong></div>
             {error && <p className="transcription-error" role="alert">{error}</p>}
           </div>

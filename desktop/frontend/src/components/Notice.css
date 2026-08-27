@@ -21,6 +21,14 @@
   }
 }
 
+/* The tone wins over the per-site class on colour alone, so a page keeps its own
+   margins, padding and radius whichever tone a message carries. */
+.notice.notice-success {
+  border-color: color-mix(in srgb, var(--ok) 32%, transparent);
+  background: color-mix(in srgb, var(--ok) 8%, var(--panel));
+  color: var(--ok);
+}
+
 .notice-text {
   flex: 1;
   min-width: 0;

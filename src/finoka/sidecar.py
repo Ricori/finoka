@@ -74,6 +74,8 @@ class SidecarHandler(BaseHTTPRequestHandler):
             self._json(202, provider.install_runtime(str(self._body().get("target") or "all")))
         elif self.command == "POST" and parts == ["v1", "runtime", "provision", "cancel"]:
             self._json(200, provider.cancel_runtime_install())
+        elif self.command == "DELETE" and parts == ["v1", "runtime", "provision"]:
+            self._json(200, provider.remove_runtime())
         elif self.command == "GET" and parts == ["v1", "settings"]:
             self._json(200, provider.get_settings())
         elif self.command == "PUT" and parts == ["v1", "settings", "keys"]:
@@ -122,6 +124,9 @@ class SidecarHandler(BaseHTTPRequestHandler):
         self._handle()
 
     def do_PUT(self) -> None:
+        self._handle()
+
+    def do_DELETE(self) -> None:
         self._handle()
 
     def _handle(self) -> None:

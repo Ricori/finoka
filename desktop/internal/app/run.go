@@ -57,6 +57,7 @@ func Run(assets fs.FS) error {
 	}
 	config, configErr := SidecarConfig()
 	manager := sidecar.New(config)
+	pythonBootstrap := NewPythonBootstrap(dataDirectory, manager)
 	if configErr != nil {
 		log.Printf("sidecar configuration: %v", configErr)
 	}
@@ -66,7 +67,7 @@ func Run(assets fs.FS) error {
 	if startErr != nil {
 		log.Printf("sidecar startup: %v", startErr)
 	}
-	providerService, err := provider.New(manager)
+	providerService, err := provider.New(manager, pythonBootstrap)
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,7 @@ import type { CloudEntry, CloudSession } from "../bridge/cloud.ts";
 import { fineSubSettings } from "../bridge/settings.ts";
 import type { FineSubSettingsState } from "../bridge/settings.ts";
 import { fineSubRuntime } from "../bridge/runtime.ts";
-import type { RuntimeProvisionState } from "../bridge/runtime.ts";
+import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeProvisionState } from "../bridge/runtime.ts";
 import { desktopPreferences } from "../bridge/preferences.ts";
 import { desktopWindows } from "../bridge/windows.ts";
 import { localProviderBridge, sidecarStatus } from "../bridge/wails.ts";
@@ -18,6 +18,7 @@ import type { PipelineState } from "../home/pipelineController.ts";
 import { LocalExecutionProvider } from "../providers/localProvider.ts";
 import type { Capabilities, TaskRequest, TaskSnapshot } from "../providers/types.ts";
 import { MediaDialog } from "../components/MediaDialog.tsx";
+import type { NoticeTone } from "../components/Notice.tsx";
 import { TranscriptionDialog } from "../components/TranscriptionDialog.tsx";
 import { WindowDropOverlay } from "../components/WindowDropOverlay.tsx";
 import { AccountPage } from "../pages/AccountPage.tsx";
@@ -32,6 +33,13 @@ import type { DialogState, ExecutionMode, LibraryFilter, LibraryItem, LoadState,
 import { activeStates, taskHistoryLimit } from "./types.ts";
 
 const taskPollIntervalMs = 10_000;
+
+/** Library notices carry their own tone so a completed action does not read as a
+    warning. The helpers are module level, keeping setState callers dependency free. */
+type LibraryNotice = { text: string; tone: NoticeTone };
+const noNotice: LibraryNotice = { text: "", tone: "warn" };
+const warnNotice = (text: string): LibraryNotice => ({ text, tone: "warn" });
+const okNotice = (text: string): LibraryNotice => ({ text, tone: "success" });
 
 function NavIcon({ kind }: { kind: NavigationSection }) {
   const paths = {
@@ -70,7 +78,7 @@ export default function App() {
   const [media, setMedia] = useState<MediaEntry[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [libraryBusy, setLibraryBusy] = useState(false);
-  const [libraryMessage, setLibraryMessage] = useState("");
+  const [libraryMessage, setLibraryMessage] = useState<LibraryNotice>(noNotice);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
   const [cacheBusy, setCacheBusy] = useState(false);
   const [cacheMessage, setCacheMessage] = useState("");
@@ -80,6 +88,7 @@ export default function App() {
   const [taskHistoryMessage, setTaskHistoryMessage] = useState("");
   const [settings, setSettings] = useState<FineSubSettingsState | null>(null);
   const [runtimeProvision, setRuntimeProvision] = useState<RuntimeProvisionState | null>(null);
+  const [pythonBootstrap, setPythonBootstrap] = useState<PythonBootstrapState | null>(null);
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [keysBusy, setKeysBusy] = useState(false);
   const [keysMessage, setKeysMessage] = useState("");
@@ -101,6 +110,7 @@ export default function App() {
   const taskHistoryHydrated = useRef(false);
   const preferencesHydrated = useRef(false);
   const taskHistoryRef = useRef(taskHistory);
+  const pythonBootstrapStarted = useRef(false);
 
   useEffect(() => {
     taskHistoryRef.current = taskHistory;
@@ -135,11 +145,12 @@ export default function App() {
     setLoadState("loading");
     setMessage("");
     try {
-      const status = await sidecarStatus();
+      const [status, bootstrap] = await Promise.all([sidecarStatus(), fineSubRuntime.pythonStatus()]);
       setSidecar(status);
+      setPythonBootstrap(bootstrap);
       if (!status.running) {
         setCapabilities(null);
-        setMessage(status.error || "本地执行服务尚未启动");
+        setMessage(bootstrap.state === "running" ? bootstrap.message : status.error || bootstrap.message || "本地执行服务尚未启动");
         setLoadState("error");
         return;
       }
@@ -181,16 +192,16 @@ export default function App() {
       await hydrateThumbnails(entries);
     } catch (value) {
       const detail = value instanceof Error ? value.message : String(value ?? "");
-      setLibraryMessage(detail || "无法连接本地媒体库");
+      setLibraryMessage(warnNotice(detail || "无法连接本地媒体库"));
     }
   }, [hydrateThumbnails]);
 
   const openEditor = useCallback(async (entry: MediaEntry) => {
-    setLibraryMessage("");
+    setLibraryMessage(noNotice);
     try {
       await desktopWindows.openEditor(entry.id);
     } catch (value) {
-      setLibraryMessage(value instanceof Error ? value.message : String(value));
+      setLibraryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
     }
   }, []);
 
@@ -236,9 +247,9 @@ export default function App() {
   const acceptImport = useCallback(async (result: ImportResult) => {
     const failures = result.failed ?? [];
     if (failures.length > 0) {
-      setLibraryMessage(failures.map((failure) => `${failure.name}: ${failure.message}`).join("；"));
+      setLibraryMessage(warnNotice(failures.map((failure) => `${failure.name}: ${failure.message}`).join("；")));
     } else if ((result.added ?? []).length > 0) {
-      setLibraryMessage(`已导入 ${(result.added ?? []).length} 个本地媒体`);
+      setLibraryMessage(okNotice(`已导入 ${(result.added ?? []).length} 个本地媒体`));
     }
     await loadLibrary();
   }, [loadLibrary]);
@@ -261,13 +272,13 @@ export default function App() {
       return;
     }
     setLibraryBusy(true);
-    setLibraryMessage("");
+    setLibraryMessage(noNotice);
     try {
       const result = paths ? await mediaLibrary.importPaths(paths) : await mediaLibrary.pickAndImport();
       await acceptImport(result);
     } catch (value) {
       const detail = value instanceof Error ? value.message : String(value ?? "");
-      setLibraryMessage(detail || "媒体导入失败");
+      setLibraryMessage(warnNotice(detail || "媒体导入失败"));
     } finally {
       setLibraryBusy(false);
     }
@@ -319,10 +330,10 @@ export default function App() {
     const warning = ignored > 0 ? `已忽略 ${ignored} 个非视频文件；支持 MP4 / M4V / MOV / MKV / WebM。` : "";
     if (paths.length > 0) {
       void importMedia(paths).then(() => {
-        if (warning) setLibraryMessage((current) => current ? `${current}；${warning}` : warning);
+        if (warning) setLibraryMessage((current) => warnNotice(current.text ? `${current.text}；${warning}` : warning));
       });
     } else if (warning) {
-      setLibraryMessage(warning);
+      setLibraryMessage(warnNotice(warning));
     }
   }, [importMedia]);
 
@@ -441,7 +452,7 @@ export default function App() {
   }, []);
 
   const startMedia = useCallback(async (entry: MediaEntry) => {
-    setLibraryMessage("");
+    setLibraryMessage(noNotice);
     setTranscriptionError("");
     setTranscriptionMedia(entry);
   }, []);
@@ -462,7 +473,7 @@ export default function App() {
       setTranscriptionMedia(null);
       setSection("tasks");
       void mediaLibrary.cacheMedia(transcriptionMedia.id).then(() => Promise.all([loadLibrary(), loadCacheStatus()])).catch((value) => {
-        setLibraryMessage(`任务已启动，但视频缓存创建失败：${value instanceof Error ? value.message : String(value)}`);
+        setLibraryMessage(warnNotice(`任务已启动，但视频缓存创建失败：${value instanceof Error ? value.message : String(value)}`));
       });
     } catch (value) {
       setTranscriptionError(value instanceof Error ? value.message : String(value));
@@ -564,7 +575,7 @@ export default function App() {
       setDialog(null);
       await (dialog.kind === "cloud-remove" ? loadCloud() : loadLibrary());
     } catch (value) {
-      setLibraryMessage(value instanceof Error ? value.message : String(value));
+      setLibraryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
       setDialog(null);
     } finally {
       setDialogBusy(false);
@@ -576,7 +587,7 @@ export default function App() {
       await mediaLibrary.relink(entry.id);
       await loadLibrary();
     } catch (value) {
-      setLibraryMessage(value instanceof Error ? value.message : String(value));
+      setLibraryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
     }
   }, [loadLibrary]);
 
@@ -622,7 +633,7 @@ export default function App() {
     setKeysMessage("");
     try {
       setSettings(await fineSubSettings.saveKeys(payload));
-      setKeyDraft((current) => Object.fromEntries(Object.entries(current).map(([name, value]) => [name, Object.hasOwn(payload, name) ? "" : value])));
+      setKeyDraft((current) => Object.fromEntries(Object.entries(current).filter(([name]) => !Object.hasOwn(payload, name))));
       setKeysMessage(`${keyName} 已保存。`);
       await refresh();
     } catch (value) {
@@ -632,13 +643,22 @@ export default function App() {
     }
   }, [refresh]);
 
-  const installRuntime = useCallback(async (target: "media" | "runtime" | "models" | "all") => {
+  const installRuntime = useCallback(async (target: RuntimeInstallTarget) => {
     try {
       setRuntimeProvision(await fineSubRuntime.install(target));
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
   }, []);
+
+  const removeRuntime = useCallback(async () => {
+    try {
+      setRuntimeProvision(await fineSubRuntime.removeAll());
+      await refresh();
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  }, [refresh]);
 
   const cancelRuntimeInstall = useCallback(async () => {
     try {
@@ -648,6 +668,35 @@ export default function App() {
     }
   }, []);
 
+  const installPython = useCallback(async () => {
+    setSection("runtime");
+    setMessage("正在准备 Python，以启用本地服务。");
+    try {
+      setPythonBootstrap(await fineSubRuntime.installPython());
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+      setPythonBootstrap(await fineSubRuntime.pythonStatus().catch(() => null));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sidecar?.running || pythonBootstrap?.state !== "missing" || !pythonBootstrap.supported || pythonBootstrapStarted.current) return;
+    pythonBootstrapStarted.current = true;
+    void installPython();
+  }, [installPython, pythonBootstrap, sidecar?.running]);
+
+  useEffect(() => {
+    if (pythonBootstrap?.state !== "running") return;
+    const timer = window.setInterval(() => {
+      void fineSubRuntime.pythonStatus().then((status) => {
+        setPythonBootstrap(status);
+        setMessage(status.message);
+        if (status.state === "ready") void refresh();
+      }).catch(() => undefined);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [pythonBootstrap?.state, refresh]);
+
   const runtimeReady = capabilities?.runtime?.ready === true;
   const issues = capabilities?.runtime?.issues ?? [];
   const title = section === "library"
@@ -655,12 +704,12 @@ export default function App() {
     : section === "tasks"
       ? "处理任务"
       : section === "runtime"
-          ? "运行环境"
-          : section === "account"
-            ? "云端账户"
-            : section === "adminKeys"
-              ? "Key 管理"
-              : "设置";
+        ? "运行环境"
+        : section === "account"
+          ? "云端账户"
+          : section === "adminKeys"
+            ? "Key 管理"
+            : "设置";
   const remoteByFingerprint = useMemo(() => new Map(cloudMedia.filter((entry) => entry.fingerprint).map((entry) => [entry.fingerprint, entry])), [cloudMedia]);
   const cloudOnly = useMemo(() => {
     const localFingerprints = new Set(media.map((entry) => entry.fingerprint));
@@ -747,7 +796,7 @@ export default function App() {
             <span className={`status-dot ${executionMode === "cloud" ? "online" : sidecar?.running ? "local" : ""}`} />
             <div>
               <strong>{executionMode === "cloud" ? "Nonoka Cloud" : "本地运行"}</strong>
-              <small>{executionMode === "cloud" ? cloudSession?.admin ? "管理员 · 不限次" : `剩余 ${cloudSession?.remaining ?? "—"} 次` : runtimeReady ? "运行环境已就绪" : "需要检查环境"}</small>
+              <small>{executionMode === "cloud" ? cloudSession?.admin ? "管理员 · 不限次" : `剩余 ${cloudSession?.remaining ?? "—"} 次` : runtimeReady ? "引擎已就绪" : "需要检查环境"}</small>
             </div>
           </div>
           <div className="sidebar-provider-switch">
@@ -787,21 +836,17 @@ export default function App() {
             </div>
           </header>
 
-          {(section === "library" || section === "tasks") && <section className={`runtime-banner ${runtimeReady ? "ready" : "warning"}`}>
-            <div className="runtime-symbol">{runtimeReady ? "✓" : "!"}</div>
+          {!runtimeReady && (section === "library" || section === "tasks") && <section className={`runtime-banner warning`}>
+            <div className="runtime-symbol">!</div>
             <div className="runtime-copy">
               <span className="eyebrow">本地执行环境</span>
               <h2>
-                {runtimeReady
-                  ? "引擎已准备就绪"
-                  : loadState === "loading"
-                    ? "正在连接本地服务"
-                    : "需要完成运行时配置"}
+                {loadState === "loading"
+                  ? "正在连接本地服务"
+                  : "需要完成运行时配置"}
               </h2>
               <p>
-                {runtimeReady
-                  ? `FineSub ${capabilities.engine.version} · ${capabilities.engine.commit.slice(0, 12)}`
-                  : message || issues[0]?.message || "正在读取 capabilities…"}
+                {message || issues[0]?.message || "正在读取 capabilities…"}
               </p>
             </div>
             <button onClick={() => setSection("runtime")}>查看详情 →</button>
@@ -818,7 +863,8 @@ export default function App() {
               sort={sortMode}
               view={viewMode}
               busy={libraryBusy}
-              message={libraryMessage}
+              message={libraryMessage.text}
+              messageTone={libraryMessage.tone}
               localRunningID={localRunningID}
               runningProgress={pipeline.snapshot?.progress?.total ? Math.min(100, pipeline.snapshot.progress.completed / pipeline.snapshot.progress.total * 100) : 8}
               taskActive={taskActive}
@@ -834,7 +880,7 @@ export default function App() {
               onRemove={removeMedia}
               onDeleteCloud={deleteCloudMedia}
               onRelink={relinkMedia}
-              onDismissMessage={() => setLibraryMessage("")}
+              onDismissMessage={() => setLibraryMessage(noNotice)}
             />
           )}
 
@@ -854,7 +900,7 @@ export default function App() {
           )}
 
           {section === "runtime" && (
-            <RuntimePage capabilities={capabilities} message={message} provision={runtimeProvision} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} />
+            <RuntimePage capabilities={capabilities} message={message} provision={runtimeProvision} pythonBootstrap={pythonBootstrap} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} onInstallPython={installPython} onRemoveAll={removeRuntime} />
           )}
 
           {section === "keys" && (

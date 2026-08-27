@@ -66,6 +66,7 @@ tasks:
     run: once
     sources:
       - ../scripts/run_local_sidecar.py
+      - ../bootstrap-requirements.win-py312.txt
       - ../src/finoka/**/*
       - exclude: ../src/finoka/**/__pycache__/**/*
       - exclude: ../src/finoka/**/*.pyc

@@ -213,6 +213,18 @@ func (s *Service) dialogWindow() (*application.App, *application.WebviewWindow) 
 	return s.app, s.home
 }
 
+// dialogCancelled reports whether a native file dialog closed because the user
+// dismissed it. Windows surfaces that as an error ("cancelled by user") while
+// the other platforms just return an empty selection, so callers treat both as
+// "nothing was picked" instead of a failure worth reporting.
+func dialogCancelled(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "cancelled by user") || strings.Contains(text, "canceled by user")
+}
+
 func (s *Service) List() []Entry {
 	s.mu.RLock()
 	result := append([]Entry(nil), s.entries...)
@@ -241,6 +253,9 @@ func (s *Service) PickAndImport() (ImportResult, error) {
 		AttachToWindow(window).
 		AddFilter("视频文件", "*.mp4;*.m4v;*.mov;*.mkv;*.webm").
 		PromptForMultipleSelection()
+	if dialogCancelled(err) {
+		err = nil
+	}
 	if err != nil || len(paths) == 0 {
 		return ImportResult{Added: []Entry{}, Failed: []ImportFailure{}}, err
 	}

@@ -20,19 +20,43 @@ type caller interface {
 	Snapshot() sidecar.Snapshot
 }
 
-type Service struct {
-	provider caller
+type pythonBootstrap interface {
+	Status() map[string]any
+	Install() (map[string]any, error)
 }
 
-func New(local caller) (*Service, error) {
+type Service struct {
+	provider        caller
+	pythonBootstrap pythonBootstrap
+}
+
+func New(local caller, bootstrap ...pythonBootstrap) (*Service, error) {
 	if local == nil {
 		return nil, errors.New("local provider is required")
 	}
-	return &Service{provider: local}, nil
+	service := &Service{provider: local}
+	if len(bootstrap) > 0 {
+		service.pythonBootstrap = bootstrap[0]
+	}
+	return service, nil
 }
 
 func (s *Service) SidecarStatus() sidecar.Snapshot {
 	return s.provider.Snapshot()
+}
+
+func (s *Service) PythonBootstrapStatus() map[string]any {
+	if s.pythonBootstrap == nil {
+		return map[string]any{"schema": 1, "supported": false, "state": "unavailable", "message": "Python bootstrap is unavailable"}
+	}
+	return s.pythonBootstrap.Status()
+}
+
+func (s *Service) InstallPython() (map[string]any, error) {
+	if s.pythonBootstrap == nil {
+		return nil, errors.New("Python bootstrap is unavailable")
+	}
+	return s.pythonBootstrap.Install()
 }
 
 func (s *Service) Capabilities() (map[string]any, error) {
@@ -48,11 +72,19 @@ func (s *Service) RuntimeProvisionStatus() (map[string]any, error) {
 }
 
 func (s *Service) InstallRuntime(target string) (map[string]any, error) {
-	if target != "media" && target != "runtime" && target != "models" && target != "all" {
-		return nil, errors.New("runtime target must be media, runtime, models, or all")
+	if target != "media" && target != "runtime" && target != "models" && target != "all" && target != "git" && target != "yt-dlp" && target != "tokcount" {
+		return nil, errors.New("runtime target must be media, runtime, models, all, git, yt-dlp, or tokcount")
 	}
 	var result map[string]any
 	err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/runtime/provision", map[string]any{"target": target}, &result)
+	return result, err
+}
+
+// RemoveRuntime removes replaceable managed environments and caches. The
+// sidecar preserves tasks, subtitle documents, and user settings.
+func (s *Service) RemoveRuntime() (map[string]any, error) {
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodDelete, "/v1/runtime/provision", nil, &result)
 	return result, err
 }
 
