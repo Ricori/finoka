@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Finoka</h1>
-  <p><b>本地优先的 AI 视频字幕生成与专业编辑桌面工作站</b></p>
+  <p><b>本地 AI 视频字幕生成与专业编辑桌面工作站</b></p>
   <a href="https://github.com/Ricori/finoka/releases/latest"><img src="https://img.shields.io/github/v/release/Ricori/finoka?label=Release&color=4c1&sort=semver" alt="Release"></a>
   <a href="https://github.com/Ricori/finoka/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS-2ea44f?logo=github&logoColor=white" alt="Download"></a>
   <br>
@@ -44,7 +44,7 @@ Finoka 是专为外语视频翻译与高质量字幕制作打造的桌面应用�
   - **灵活导出**：支持导出 SRT、带样式的 ASS 字幕，以及硬件加速的**字幕内嵌压制视频**。
 - 🛡️ **轻量、安全与现代化体验**
   - **原生 Go + React 19 架构**：依托 Wails v3，超低内存占用，无卡顿启动。
-  - **智能缓存管理**：内置 LRU 视频缓存策略，正在编辑的工程受保护，支持自定义缓存上限。
+  - **智能缓存管理**：内置 LRU 视频缓存策略，工程受保护，支持自定义缓存上限。
   - **本地乐观锁存储**：工程快照与版本历史落盘保护，防止并发覆盖。
 
 ---
@@ -127,8 +127,10 @@ finoka/
 
 ## 📚 进阶架构与规范
 
-- 🏗️ **[系统架构与契约规范](docs/architecture.md)**：深入了解 Provider 执行协议、EditDocument 投影规则、云端同步契约与 Modal API。
+- 🏗️ **[系统架构与契约规范](docs/architecture.md)**：深入了解 Provider 执行协议、EditDocument 投影规则、云端同步契约与后端 API。
+- 🔌 **[Finoka Provider 接口规范](docs/provider-spec.md)**：自建执行后端的完整接口契约——数据模型、状态机、事件流、错误码、产物格式与一致性检查清单。
 - ⚙️ **[FineSub 引擎同步与构建规范](docs/engine.md)**：了解上游引擎同步白名单、补丁栈管理与 CTranslate2 构建规范。
+- ☁️ **[Modal 云端后端架构与运维](docs/modal-backend.md)**：五段式调度编排、Vocal 分离分档策略、AOTI 加速与部署运维命令。
 
 ---
 

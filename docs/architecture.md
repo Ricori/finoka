@@ -24,7 +24,7 @@ Finoka 是一个本地优先的 AI 字幕生产与编辑桌面应用，核心目
 ┌───────────────▼──────┐  ┌───▼──────────────────────────────┐
 │ Local Provider       │  │ Cloud Provider                  │
 │ loopback sidecar     │  │ HTTPS API + 业务 Key             │
-│ 读取本地媒体工作副本 │  │ 仅上传无损音频 / Modal GPU 调度  │
+│ 读取本地媒体工作副本 │  │ 仅上传无损音频 / GPU 调度  │
 └───────────────┬──────┘  └───┬──────────────────────────────┘
                 │             │
                 └──────┬──────┘
@@ -58,9 +58,9 @@ Finoka 是一个本地优先的 AI 字幕生产与编辑桌面应用，核心目
 - 管理本地 FineSub 运行时环境、模型下载、缓存与用户自配的 LLM API Key。
 
 ### 2.3 Cloud Provider（云端执行）
-通过 HTTPS 与 Finoka Modal 后端通信：
+通过 HTTPS 与 Nonoka 后端通信：
 - 基于业务 Key 进行身份认证、任务额度扣减与单 Key 并发控制（默认最多 1 个任务）。
-- 桌面端在本地提取无损音频（`.m4a` 容器）后通过 Presigned URL 上传，**云端不接收原视频、截图或视频帧**。
+- 桌面端在本地提取无损音频（`.m4a` 容器）后通过 Presigned URL 上传，**云端不接收原视频，也不接收参与算法计算的视频帧**。另有一张本地已生成的封面缩略图（JPEG，$\le 5\text{ MB}$）随任务上传，仅用于云端媒体库列表展示，不进入转写或纠错流水线。
 - 云端 GPU 容器执行纯音频流水线，LLM 纠错与翻译固定使用识别文本（`correction.media=text`，`retrieval=none`）。
 - 具备任务状态持久化、容器抢占自动恢复、断点续跑与产物下载能力。
 
@@ -88,9 +88,12 @@ EditDocument      -> t0/t1/ja/zh/words/low_conf/tracks
 ## 3. 统一执行协议 (Execution Contract)
 
 ### 3.1 Provider 接口定义
+> 完整的字段级契约、状态机、错误码、产物格式与自建 Provider 指南见 **[Provider 接口规范](provider-spec.md)**，本节只给出概览。
+
 ```ts
 interface ExecutionProvider {
   capabilities(): Promise<Capabilities>;
+  listTasks(): Promise<TaskListItem[]>;
   start(request: TaskRequest): Promise<TaskSnapshot>;
   status(taskId: string): Promise<TaskSnapshot>;
   events(taskId: string, afterCursor: number): Promise<TaskEventPage>;
@@ -124,9 +127,19 @@ interface ExecutionProvider {
   },
   "devices": [
     {"id": "cuda:0", "name": "NVIDIA GPU", "memory_mb": 12288}
-  ]
+  ],
+  "runtime": {
+    "ready": true,
+    "issues": [],
+    "stages": [
+      {"id": "raw-srt", "label": "VAD、ASR 与原始字幕", "ready": true, "issues": []}
+    ]
+  },
+  "settings": {"llm_key_configured": true}
 }
 ```
+
+`runtime.ready` 为 `false` 时前端直接以 `issues[0].message` 阻止任务提交；`stages` 让拦截精确到具体目标（仅生成原始字幕时不必要求 LLM 就绪）。
 
 > **注意**：Cloud Provider 固定返回 `video_multimodal=false`。服务端独立校验请求，若收到视频多模态参数直接返回 400，不做静默降级。
 
@@ -145,6 +158,7 @@ interface ExecutionProvider {
   "language": "ja",
   "device": "cuda:0",
   "gpu_budget_gb": 8,
+  "vocal_profile": "quality",
   "correction": {
     "enabled": true,
     "media": "video",
@@ -158,7 +172,7 @@ interface ExecutionProvider {
   "cleanup_intermediate": false
 }
 ```
-*云端请求的 `source` 采用上传后的 `upload_id`，不传递本地绝对路径。*
+*云端请求的 `source` 为 `{"kind": "uploaded_audio", "object_id": "..."}`，不传递本地绝对路径。*
 
 ### 3.4 任务状态与快照 (TaskSnapshot)
 ```json
@@ -181,6 +195,7 @@ interface ExecutionProvider {
   "requested_capabilities": {},
   "effective_capabilities": {},
   "error": null,
+  "last_cursor": 128,
   "created_at": "2026-08-28T00:00:00Z",
   "updated_at": "2026-08-28T00:01:00Z"
 }
@@ -216,6 +231,11 @@ interface ExecutionProvider {
       "uri": "file:///.../video-stable.json",
       "sha256": "...",
       "bytes": 12345
+    },
+    "raw_srt": {
+      "uri": "file:///.../video-raw.srt",
+      "sha256": "...",
+      "bytes": 8192
     },
     "annotated_csv": {
       "uri": "file:///.../video-annotated.csv",
