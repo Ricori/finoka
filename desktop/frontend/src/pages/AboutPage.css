@@ -1,0 +1,147 @@
+.about-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr);
+  gap: 17px;
+  max-width: 920px;
+}
+
+.about-layout > .panel {
+  min-height: 330px;
+}
+
+.about-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 30px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 48%),
+    color-mix(in srgb, var(--panel) 94%, transparent);
+}
+
+.about-hero::after {
+  position: absolute;
+  right: -38px;
+  bottom: -60px;
+  width: 190px;
+  height: 190px;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  content: "";
+}
+
+.about-mark {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  background: var(--grad);
+  color: var(--on-grad);
+  box-shadow: 0 15px 38px var(--accent-dim);
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.about-heading {
+  position: relative;
+  z-index: 1;
+}
+
+.about-heading h2 {
+  margin: 8px 0 10px;
+  font-size: 25px;
+  letter-spacing: -.03em;
+}
+
+.about-heading p,
+.about-row p {
+  margin: 0;
+  color: var(--mut);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.about-details {
+  display: grid;
+  align-content: center;
+  padding: 15px 27px;
+}
+
+.about-row {
+  padding: 20px 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.about-row:last-child {
+  border-bottom: 0;
+}
+
+.about-row > div {
+  display: grid;
+  gap: 7px;
+}
+
+.about-row > div > span {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.about-row strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.about-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.about-row a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.about-row a:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.about-row a svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.about-row p {
+  margin-top: 8px;
+}
+
+@media (max-width: 820px) {
+  .about-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .about-layout > .panel {
+    min-height: 0;
+  }
+
+  .about-hero {
+    min-height: 260px !important;
+  }
+}

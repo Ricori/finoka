@@ -40,7 +40,7 @@ func New(dataDirectory string) (*Service, error) {
 	}
 	service := &Service{
 		path: filepath.Join(root, "preferences.json"),
-		data: State{Schema: 2, HomeTheme: "light", EditorTheme: "light", LibraryView: "grid", Bounds: map[string]WindowBounds{}},
+		data: State{Schema: 2, HomeTheme: "light", EditorTheme: "dark", LibraryView: "grid", Bounds: map[string]WindowBounds{}},
 	}
 	if err := service.load(); err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (s *Service) load() error {
 		state.HomeTheme = "light"
 	}
 	if state.EditorTheme != "dark" && state.EditorTheme != "light" {
-		state.EditorTheme = "light"
+		state.EditorTheme = "dark"
 	}
 	if state.LibraryView != "grid" && state.LibraryView != "list" {
 		state.LibraryView = "grid"

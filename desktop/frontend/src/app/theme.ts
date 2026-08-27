@@ -1,7 +1,8 @@
 import type { Theme } from "./types.ts";
 
-export function initialTheme(): Theme {
-  return new URLSearchParams(window.location.search).get("theme") === "dark" ? "dark" : "light";
+export function initialTheme(fallback: Theme = "light"): Theme {
+  const theme = new URLSearchParams(window.location.search).get("theme");
+  return theme === "dark" || theme === "light" ? theme : fallback;
 }
 
 export function applyTheme(theme: Theme): void {

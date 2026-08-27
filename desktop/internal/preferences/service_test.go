@@ -35,14 +35,14 @@ func TestPreferencesPersistValidatedPartialUpdates(t *testing.T) {
 	}
 }
 
-func TestPreferencesDefaultBothWindowsToLightTheme(t *testing.T) {
+func TestPreferencesDefaultsEditorToDarkTheme(t *testing.T) {
 	service, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	state := service.Get()
-	if state.HomeTheme != "light" || state.EditorTheme != "light" {
-		t.Fatalf("themes = %q / %q, want light / light", state.HomeTheme, state.EditorTheme)
+	if state.HomeTheme != "light" || state.EditorTheme != "dark" {
+		t.Fatalf("themes = %q / %q, want light / dark", state.HomeTheme, state.EditorTheme)
 	}
 }
 

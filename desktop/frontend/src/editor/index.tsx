@@ -14,14 +14,14 @@ import "./Editor.css";
 
 function EditorWindow() {
   const [media, setMedia] = useState<MediaEntry | null>(null);
-  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [theme, setTheme] = useState<Theme>(() => initialTheme("dark"));
   const [error, setError] = useState("");
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("id") ?? "";
     Promise.all([mediaLibrary.get(id), desktopPreferences.get()])
       .then(([entry, preferences]) => {
-        const nextTheme = preferences.editorTheme === "dark" ? "dark" : "light";
+        const nextTheme = preferences.editorTheme === "light" ? "light" : "dark";
         // 在挂载编辑器前同步落主题，隐藏窗口首次显示时就已经是最终配色。
         applyTheme(nextTheme);
         setMedia(entry);

@@ -23,6 +23,7 @@ import { TranscriptionDialog } from "../components/TranscriptionDialog.tsx";
 import { UpdateButton, UpdateOverlay, useSelfUpdate } from "../components/UpdateCenter.tsx";
 import { WindowDropOverlay } from "../components/WindowDropOverlay.tsx";
 import { AccountPage } from "../pages/AccountPage.tsx";
+import { AboutPage } from "../pages/AboutPage.tsx";
 import { AdminKeysPage } from "../pages/AdminKeysPage.tsx";
 import { RuntimePage } from "../pages/RuntimePage.tsx";
 import { SettingsPage } from "../pages/SettingsPage.tsx";
@@ -50,6 +51,7 @@ function NavIcon({ kind }: { kind: NavigationSection }) {
     adminKeys: "M8.5 14.5 14 9m-1.5-2.5a3.5 3.5 0 1 1 5 5l-1 1-2-2-2 2-2-2-2 2-2.5-2.5 1-1Z",
     settings:
       "M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5v2m0 13v2m8.5-8.5h-2m-13 0h-2m15-6.5-1.4 1.4M6.9 17.1l-1.4 1.4m13 0-1.4-1.4M6.9 6.9 5.5 5.5",
+    about: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-10v6m0-10v.01",
   } as const;
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -852,7 +854,9 @@ export default function App() {
           ? "云端账户"
           : section === "adminKeys"
             ? "Key 管理"
-            : "设置";
+            : section === "about"
+              ? "关于"
+              : "设置";
   const remoteByFingerprint = useMemo(() => new Map(cloudMedia.filter((entry) => entry.fingerprint).map((entry) => [entry.fingerprint, entry])), [cloudMedia]);
   const cloudOnly = useMemo(() => {
     const localFingerprints = new Set(media.map((entry) => entry.fingerprint));
@@ -933,6 +937,10 @@ export default function App() {
             <NavIcon kind="adminKeys" />
             <span className="nav-text">Key 管理</span>
           </button>}
+          <button className={section === "about" ? "active" : ""} title="关于" onClick={() => setSection("about")}>
+            <NavIcon kind="about" />
+            <span className="nav-text">关于</span>
+          </button>
         </nav>
         <div className="sidebar-spacer" />
         <section className="sidebar-provider" aria-label="执行位置">
@@ -1077,6 +1085,8 @@ export default function App() {
           {section === "account" && (
             <AccountPage session={cloudSession} media={cloudMedia} loginKey={loginKey} busy={accountBusy} message={accountMessage} onLoginKeyChange={setLoginKey} onLogin={login} onLogout={logout} onDismissMessage={() => setAccountMessage("")} />
           )}
+
+          {section === "about" && <AboutPage />}
         </div>
       </main>
 
