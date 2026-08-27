@@ -57,7 +57,7 @@ VENDOR_README = """# FineSub vendor directory
 - 本地 runtime 和云端镜像必须使用同一 `engine_bundle_id`。
 
 上游原始说明保存在 `UPSTREAM_README.md`。具体流程见
-[FineSub 同步与升级策略](../../docs/finesub-sync.md)。
+[FineSub 引擎同步与云端后端运维](../../docs/engine-and-cloud.md)。
 """
 
 

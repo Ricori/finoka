@@ -1,45 +1,30 @@
-# Finoka 总体架构
+# Finoka 系统架构与契约规范
 
-## 1. 目标
+本文档定义了 Finoka 的系统架构、执行协议、字幕文档模型以及云端同步规范。
 
-Finoka 的核心目标是把“字幕产品”和“转写算法”解耦：
+---
 
-- FineSub 持续维护人声分离、VAD、ASR、稳定化、LLM 纠错翻译和知识库流水线。
-- Finoka 维护桌面媒体库、任务入口、双执行模式、字幕文档、专业编辑器和导出。
-- 本地与云端只在执行位置、鉴权和存储方式上不同，不分叉转写算法。
+## 1. 架构总览与设计原则
 
-## 2. 首版范围
+Finoka 是一个本地优先的 AI 字幕生产与编辑桌面应用，核心目标是将“字幕产品体验”与“转写算法流水线”深度解耦：
 
-首版包含：
-
-- Windows x64/NVIDIA 的本地 FineSub 执行。
-- 用户自行配置 FineSub 支持的 LLM/检索 Key。
-- 现有 Wails/React 视频库与字幕编辑器。
-- 云端 FineSub GPU worker 的纯音频任务提交、进度、取消和结果下载。
-- SRT、ASS、内嵌字幕视频的本地导出。
-
-首版不包含：
-
-- 云端多人协作编辑。
-- 本地与云端知识库自动双向合并。
-- FineSub 上游尚未提供的自动说话人分离。
-- macOS 上完整的 FineSub GPU 运行时。现有 Wails 壳可以继续支持 macOS，但
-  FineSub patched CTranslate2、Torch 和分离模型的 macOS 分发需要单独验证。
-
-## 3. 总体结构
+- **算法与流水线解耦**：底层由 [FineSub](https://github.com/caca2331/finesub) 提供人声分离、VAD、Whisper fw-refine、稳定化、LLM 纠错翻译和知识库流水线。
+- **产品与编辑体验**：Finoka 负责桌面媒体库管理、多执行模式调度、统一字幕文档（EditDocument）、专业 JASSUB 轨道编辑与多格式导出。
+- **同源双执行模式**：本地执行与云端执行运行完全相同的 FineSub 引擎快照、产物转换器和任务协议，仅在执行环境、鉴权方式与存储介质上有所区分。
+- **本地优先**：用户媒体和字幕编辑文档默认始终保存在本机；云端任务与字幕云端同步作为独立扩展能力，不破坏离线编辑的核心体验。
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│ Wails + React                                               │
-│ 媒体库 / 任务设置 / 进度 / 编辑器 / 本地导出               │
+│ Wails + React 19                                            │
+│ 媒体库 / 任务设置 / 进度展示 / JASSUB 编辑器 / 本地导出    │
 └──────────────────────┬──────────────────────────────────────┘
                        │ Finoka Execution Contract
                 ┌──────┴──────┐
                 │             │
 ┌───────────────▼──────┐  ┌───▼──────────────────────────────┐
 │ Local Provider       │  │ Cloud Provider                  │
-│ localhost sidecar    │  │ HTTPS API + 云端任务 Key        │
-│ 直接读取本地文件     │  │ 仅上传音频 / GPU 调度           │
+│ loopback sidecar     │  │ HTTPS API + 业务 Key             │
+│ 读取本地媒体工作副本 │  │ 仅上传无损音频 / Modal GPU 调度  │
 └───────────────┬──────┘  └───┬──────────────────────────────┘
                 │             │
                 └──────┬──────┘
@@ -49,147 +34,295 @@ Finoka 的核心目标是把“字幕产品”和“转写算法”解耦：
              stable / annotated / final SRT
                        │
                        ▼
-              Artifact Projector
+               Artifact Projector
                        │
                        ▼
-                 EditDocument
+                  EditDocument
                        │
                        ▼
-              本地 Document Store
+               本地 Document Store
 ```
 
-## 4. 组件边界
+---
 
-### 4.1 FineSub Engine Bundle
+## 2. 核心组件与职责边界
 
-引擎包由固定上游 commit 生成，包括完整 `finesub`、`finesub_bootstrap`、依赖锁和资源
-manifest。它只提供流水线能力，不知道 Finoka 的页面、账户、媒体库或编辑器。
+### 2.1 FineSub Engine Bundle
+由固定上游 commit 生成的完整独立引擎包，包含 `finesub` 核心、`finesub_bootstrap`、依赖锁定和资源清单。它专注于音频与文本流水线，对 UI 界面、媒体库和编辑器透明。
 
-FineSub 负责：
+### 2.2 Local Provider（本地执行）
+由 Wails 后端启动并监管的 Python sidecar 服务：
+- 仅绑定 `127.0.0.1` 随机端口，启动时生成 256 位随机会话令牌，前端请求均需校验令牌。
+- 直接读取本地媒体文件，不产生网络上传；执行时为任务建立受 LRU 容量上限管理的本机工作副本。
+- 监管隔离 worker 进程；应用退出时将任务标记为 `interrupted`，支持下次启动时断点续跑。
+- 管理本地 FineSub 运行时环境、模型下载、缓存与用户自配的 LLM API Key。
 
-- 人声分离。
-- VAD、Whisper fw-refine、对齐和稳定化。
-- 原文 SRT。
-- LLM 纠错、翻译和后处理。
-- FineSub 知识库。
-- 阶段产物与断点续跑。
+### 2.3 Cloud Provider（云端执行）
+通过 HTTPS 与 Finoka Modal 后端通信：
+- 基于业务 Key 进行身份认证、任务额度扣减与单 Key 并发控制（默认最多 1 个任务）。
+- 桌面端在本地提取无损音频（`.m4a` 容器）后通过 Presigned URL 上传，**云端不接收原视频、截图或视频帧**。
+- 云端 GPU 容器执行纯音频流水线，LLM 纠错与翻译固定使用识别文本（`correction.media=text`，`retrieval=none`）。
+- 具备任务状态持久化、容器抢占自动恢复、断点续跑与产物下载能力。
 
-### 4.2 Local Provider
-
-本地 Provider 是由 Wails 启动和监管的 Python sidecar：
-
-- 只监听 `127.0.0.1` 的随机端口。
-- 启动时生成随机会话令牌，前端每个请求必须携带。
-- 读取本地源视频路径，不做 R2 上传；视频实际参与任务后建立受容量上限管理的本机工作副本。
-- 启动隔离 worker；应用退出时把任务标成 interrupted，并允许继续。
-- 管理本地 FineSub 运行时、模型、缓存和用户 LLM Key。
-- 将 FineSub 事件投影为 Finoka 的统一任务事件。
-
-### 4.3 Cloud Provider
-
-云端 Provider 与本地 Provider 实现同一协议，但增加：
-
-- Finoka 云端任务 Key 鉴权、额度和并发限制。
-- Presigned URL 上传客户端提取的音频；不上传原视频或视频帧。
-- GPU 队列和每任务隔离容器。
-- 持久工作目录和对象存储。
-- 结构化进度持久化。
-- 取消、抢占恢复和结果保留策略。
-
-云端 worker 不应复用桌面窗口生命周期相关的 JobManager。它直接调用同版本 FineSub
-pipeline，并绑定云端 Reporter；任务状态由云端调度层维护。
-
-### 4.4 Artifact Projector
-
-Projector 是最重要的防腐层。它负责把 FineSub 产物转换成稳定的 Finoka 文档：
+### 2.4 Artifact Projector（产物投影层）
+Projector 是连接算法与编辑器的核心防腐层。它负责将 FineSub 阶段产物映射为稳定的 Finoka 编辑文档：
 
 ```text
-stable.json       -> 原始日文、词级时间、源段编号
-*-annotated.csv   -> 纠错日文、中文、置信度、源段映射
-final.srt         -> 最终后处理时间轴和中文
+stable.json       -> 原始日文、词级时间戳、源段编号 (source_ids)
+*-annotated.csv   -> 纠错日文、中文翻译、置信度、源段映射
+final.srt         -> 最终后处理时间轴与中文
                     ↓
 EditDocument      -> t0/t1/ja/zh/words/low_conf/tracks
 ```
 
-前端禁止直接读取 FineSub 的内部 artifact。上游 schema 变化只能影响 Projector 和它的
-契约测试，不应扩散到编辑器。
+前端严禁直接解析 FineSub 内部 JSON/CSV 文件，算法细节变化仅在 Projector 层适配并经契约测试覆盖。
 
-### 4.5 Document Store
+### 2.5 Document Store（本地文档存储）
+字幕编辑文档默认持久化于本地：
+- 云端任务完成后下载产物清单，由本地 Projector 生成 `EditDocument`。
+- 编辑修改、版本回滚、自定义音轨、ASS 样式配置与多格式导出全部在本地完成。
+- 文档保存采用 `rev` 乐观锁与原子写入（临时文件写入后原子重命名），避免多窗口或并发写导致数据损坏。
 
-字幕编辑文档默认始终保存在本地，即使任务由云端执行；用户使用业务 Key 登录后，完成的
-字幕产物还会作为独立同步副本写入云端视频库：
+---
 
-- 云端完成后下载 artifact。
-- 本地 Projector 生成 `EditDocument`。
-- 编辑、版本、轨道、ASS 模板和导出均在本机完成。
-- 本地媒体索引与云端视频记录按指纹合并展示，但仍由各自存储分别维护。
-- 本地任务完成后的字幕同步不上传媒体、不暴露路径，也不扣云端转写次数。
+## 3. 统一执行协议 (Execution Contract)
 
-未来若增加协作，应新增独立 `DocumentSyncProvider`。不要把“在哪转写”和“字幕保存在哪”
-再次绑定为一个后端。
+### 3.1 Provider 接口定义
+```ts
+interface ExecutionProvider {
+  capabilities(): Promise<Capabilities>;
+  start(request: TaskRequest): Promise<TaskSnapshot>;
+  status(taskId: string): Promise<TaskSnapshot>;
+  events(taskId: string, afterCursor: number): Promise<TaskEventPage>;
+  cancel(taskId: string): Promise<TaskSnapshot>;
+  retry(taskId: string): Promise<TaskSnapshot>;
+  resume(taskId: string): Promise<TaskSnapshot>;
+  artifacts(taskId: string): Promise<ArtifactManifest>;
+}
+```
 
-## 5. 本地与云端的差异
+### 3.2 能力声明 (Capabilities)
+前端根据 Provider 返回的 `features` 动态渲染可用选项，严禁硬编码区分。
 
-| 维度 | 本地 | 云端 |
+```json
+{
+  "provider": "local",
+  "adapter_schema": 1,
+  "artifact_schema": 1,
+  "engine": {
+    "name": "finesub",
+    "version": "0.4.1",
+    "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2"
+  },
+  "features": {
+    "raw_srt": true,
+    "translation": true,
+    "video_multimodal": true,
+    "knowledge": true,
+    "resume": true,
+    "diarization": false
+  },
+  "devices": [
+    {"id": "cuda:0", "name": "NVIDIA GPU", "memory_mb": 12288}
+  ]
+}
+```
+
+> **注意**：Cloud Provider 固定返回 `video_multimodal=false`。服务端独立校验请求，若收到视频多模态参数直接返回 400，不做静默降级。
+
+### 3.3 任务请求 (TaskRequest)
+```json
+{
+  "schema": 1,
+  "provider": "local",
+  "source": {
+    "kind": "local_file",
+    "path": "/absolute/path/video.mp4",
+    "title": "video",
+    "fingerprint": "..."
+  },
+  "target": "final-srt",
+  "language": "ja",
+  "device": "cuda:0",
+  "gpu_budget_gb": 8,
+  "correction": {
+    "enabled": true,
+    "media": "video",
+    "retrieval": "local",
+    "difficulty": "quality",
+    "fast": "auto",
+    "extra_info": "",
+    "extra_style": ""
+  },
+  "knowledge": "update",
+  "cleanup_intermediate": false
+}
+```
+*云端请求的 `source` 采用上传后的 `upload_id`，不传递本地绝对路径。*
+
+### 3.4 任务状态与快照 (TaskSnapshot)
+```json
+{
+  "schema": 1,
+  "task_id": "task_abc123",
+  "provider": "local",
+  "state": "running",
+  "stage": "aligned",
+  "progress": {
+    "completed": 42,
+    "total": 100,
+    "unit": "segments",
+    "message": "正在转写"
+  },
+  "engine": {
+    "version": "0.4.1",
+    "commit": "2a320ede3f5c29e431a4525aab01d97945f349c2"
+  },
+  "requested_capabilities": {},
+  "effective_capabilities": {},
+  "error": null,
+  "created_at": "2026-08-28T00:00:00Z",
+  "updated_at": "2026-08-28T00:01:00Z"
+}
+```
+统一状态枚举：`queued` | `running` | `completed` | `failed` | `cancelled` | `interrupted`。
+
+### 3.5 任务事件流 (TaskEvent)
+```json
+{
+  "cursor": 17,
+  "task_id": "task_abc123",
+  "type": "progress",
+  "timestamp": "2026-08-28T00:00:30Z",
+  "payload": {
+    "stage": "aligned",
+    "completed": 42,
+    "total": 100,
+    "unit": "segments",
+    "message": "正在识别"
+  }
+}
+```
+事件类型：`started` | `stage` | `progress` | `warning` | `log` | `completed` | `failed` | `cancelled`。通过递增 `cursor` 支持断线补读。
+
+### 3.6 产物清单 (ArtifactManifest)
+```json
+{
+  "schema": 1,
+  "task_id": "task_abc123",
+  "engine_commit": "2a320ede3f5c29e431a4525aab01d97945f349c2",
+  "artifacts": {
+    "stable_json": {
+      "uri": "file:///.../video-stable.json",
+      "sha256": "...",
+      "bytes": 12345
+    },
+    "annotated_csv": {
+      "uri": "file:///.../video-annotated.csv",
+      "sha256": "...",
+      "bytes": 23456
+    },
+    "final_srt": {
+      "uri": "file:///.../video.srt",
+      "sha256": "...",
+      "bytes": 10240
+    }
+  }
+}
+```
+
+---
+
+## 4. 字幕文档模型与存储
+
+### 4.1 编辑核心句结构 (Seg)
+```ts
+interface Seg {
+  t0: number;          // 起始时间 (秒)
+  t1: number;          // 结束时间 (秒)
+  ja: string;          // 日文（原文或纠错后）
+  zh: string;          // 中文翻译
+  words?: WordToken[]; // 词级时间戳
+  low_conf?: boolean;  // 低置信度标记
+}
+```
+
+### 4.2 字段映射与对齐规则
+| EditDocument 字段 | FineSub 产物来源 | 备注 |
 | --- | --- | --- |
-| 媒体输入 | 本地路径 | 客户端提取音频后 Presigned URL 上传 |
-| 视频多模态纠错 | 按本地能力启用 | 不支持，固定为纯文本纠错 |
-| 业务鉴权 | 无；仅 localhost 会话令牌 | 云端任务 Key |
-| LLM Key | 用户本机配置，禁止上传 | 云端 Secret |
-| FineSub 版本 | 本地 engine bundle | 同版本容器镜像 |
-| 中间产物 | 本地任务目录 | 持久卷/对象存储 |
-| 进度 | sidecar 事件 | SSE/长轮询/轮询 |
-| 最终编辑文档 | 本地 | 下载后本地生成 |
-| 知识库 | 本地 Markdown/git | 云端按用户隔离 |
+| `t0 / t1` | final.srt 对应行时间轴 | 无 LLM 纠错时回退使用 stable 段时间 |
+| `ja` | annotated.csv 的 `corrected_text` | 无 LLM 纠错时使用 stable 的 `text` |
+| `zh` | annotated.csv / final.srt 翻译 | raw 模式时为空 |
+| `words` | annotated 的 `source_ids` 映射合并 | 关联 stable 词级时间 |
+| `low_conf` | annotated 的 `conf == low` | 标记需人工复核的段落 |
 
-## 6. 版本与兼容
+> **对齐断言**：当 annotated 与 final.srt 行数不一致时，Projector 必须判定失败并保留原始产物，禁止通过截断或模糊匹配猜测对齐。用户在编辑器中自定义增加的轨道属于 Finoka 文档本身，后台重投影时不得覆盖人工轨道。
 
-每个任务必须记录：
+### 4.3 本地存储目录布局
+每个本地视频工程保存在数据目录下的 `documents/<video-id>/`：
+- `document.json`：当前最新可编辑字幕文档。
+- `original.json`：首次投影结果（用于比对修改与知识积累）。
+- `history/<rev>.json`：历史版本快照。
+- `peaks.json`：本地音频波形数据。
+- `artifacts.json`：FineSub 产物元数据与哈希。
 
-- `engine_version`
-- `engine_commit`
-- `runtime_manifest_sha256`
-- `adapter_schema`
-- `artifact_schema`
-- 实际任务参数和执行能力降级
+---
 
-本地 sidecar 和云端 API 都提供 `capabilities()`。前端按能力显示选项，不按版本字符串猜测。
-建议服务端至少兼容当前和前一个 `adapter_schema`。
+## 5. 云端同步与媒体库契约
 
-## 7. 媒体上传策略
+### 5.1 身份、鉴权与配额
+- 桌面端使用业务 Key 登录，请求头携带 `Authorization: Bearer <key>`。
+- 服务端以 Key 的 SHA-256 作为索引，`ADMIN_TOKEN` 具备全局管理权限。
+- 任务配额 `remaining` 仅在**创建新的云端 FineSub 转写任务**时扣减 1 次。
+- **本地完成的字幕同步不消耗云端转写次数**。
+- 单个业务 Key 同时最多并发运行 1 个云端转写任务。
 
-本地直接把原视频交给 FineSub，并可按本机能力使用视频多模态纠错。
+### 5.2 媒体库指纹合并
+登录后，客户端读取本地 `library.json` 与云端 `/v1/library`：
+- 界面按媒体指纹合并呈现，本地卡片展示同步徽标。
+- 若存在云端记录但缺失本地视频，提示“需要重新定位本地视频”。
+- **云端永远不存储客户端本地绝对路径**。
 
-云端首版只提供纯音频流水线：
+### 5.3 本地任务自动同步流程
+本地任务完成后，Go 后端自动触发同步：
+1. 校验产物路径必须位于 Finoka `tasks/` 白名单内。
+2. 提取 `stable_json`、`raw_srt`、`annotated_csv`、`final_srt`（总计限制 $\le 32\text{ MB}$）。
+3. 调用 `POST /v1/library/sync` 上传字幕文本、引擎 commit 与媒体指纹。
+4. 服务端按指纹更新对应记录，不上传音视频，不扣减配额。
 
-- 桌面端在本机从媒体中提取音频后通过 Presigned URL 上传。压缩源音轨直接 `-c:a copy`
-  原样搬运，未压缩源转 ALAC；不重采样、不下混、不改位深，所以上传环节自身不引入损失。
-- 不上传原视频、截图、关键帧或其他视觉内容。
-- Cloud Provider 的 `capabilities()` 固定返回 `video_multimodal=false`。
-- 云端识别使用上传音频，纠错与翻译固定使用 `correction.media="text"`。
-- 云端固定 `retrieval="none"`，不启用 FineSub 本地或模型原生网页搜索增强。
-- 服务端收到视频多模态请求时直接拒绝；旧版 `media="audio"` 请求仅兼容归一化为文本纠错。
-- UI 在云端模式下不显示视频多模态与网页检索选项，并明确提示纠错只使用文本上下文。
+### 5.4 无损音频提取与上传
+云端任务只需纯音频：
+- **压缩源音轨**（AAC/Opus/MP3/FLAC 等）：使用 `-c:a copy -f mp4` 原样提取入 `.m4a` 容器。
+- **未压缩源或特殊格式**（PCM/WMA 等）：使用 `-c:a alac` 无损重编码。
+- **不重采样、不下混、不改变位深**，保证上传音频零损失。
+- 单个音频限制：时长 $\le 2\text{ 小时}$，对象大小 $\le 4\text{ GiB}$，Presigned PUT 有效期 4 小时。
 
-本地和云端仍使用同版本 FineSub 引擎与相同 artifact schema；这项能力差异必须记录在
-任务的 `requested_capabilities` 和 `effective_capabilities` 中。
+---
 
-## 8. 知识库策略
+## 6. Modal 云端 API 规范
 
-首版采用两个独立域：
+| 方法 | 路径 | 描述 | 配额影响 |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/v1/session` | 验证当前 Key，获取剩余额度与进行中任务数 | 无 |
+| `GET` | `/v1/library` | 获取云端视频列表（管理员返回所有 Key 的视频） | 无 |
+| `POST` | `/v1/library/sync` | 同步本地已完成的字幕产物 | 无 |
+| `DELETE` | `/v1/library/{video_id}` | 删除云端视频记录与字幕产物 | 无 |
+| `POST` | `/v1/uploads/init` | 获取音频上传 Presigned URL | 无 |
+| `POST` | `/v1/tasks` | 提交云端转写任务并启动 GPU Worker | **扣减 1 次** |
+| `GET` | `/v1/tasks?limit={n}` | 查询当前 Key 的任务列表 | 无 |
+| `GET` | `/v1/tasks/{id}` | 查询指定任务详情与阶段快照 | 无 |
+| `GET` | `/v1/tasks/{id}/events` | 增量读取任务阶段事件与进度 | 无 |
+| `POST` | `/v1/tasks/{id}/cancel` | 取消任务执行并保留已完成阶段断点 | 无 |
+| `POST` | `/v1/tasks/{id}/resume` | 从中断/失败处断点续跑 | 不重复扣减 |
+| `GET` | `/v1/admin/keys` | 管理员查询所有 Key 的密钥、余量与统计 | 无 |
+| `POST` | `/v1/admin/keys` | 管理员创建新业务 Key | 无 |
+| `PUT` | `/v1/admin/keys/{key_id}` | 管理员修改 Key 名称与余量 | 无 |
+| `DELETE` | `/v1/admin/keys/{key_id}` | 管理员吊销 Key | 无 |
 
-- 本地任务使用本地 FineSub 知识库。
-- 云端任务使用云端用户隔离知识库。
-- 不自动互相覆盖。
-- 后续通过显式导出/导入或带版本的同步协议交换。
+---
 
-这样可以避免同名条目、git 分支、离线修改和云端并发写入之间出现不可解释冲突。
+## 7. 安全模型
 
-## 9. 许可证
-
-- 现有 Nonoka Desktop 为 GPL-3.0。
-- FineSub Python 代码为 MIT。
-- `src/finesub/llm/prompt_templates` 单独为 CC BY-SA 4.0。
-
-Finoka 整体采用 GPL-3.0 是自然组合；同步时必须保留 FineSub MIT LICENSE，并对 prompt
-模板保留单独许可证、署名和修改说明。本节仅记录工程处理原则，不替代正式法律意见。
+1. **本地 Sidecar 隔离**：仅监听 loopback，每次启动使用随机端口与 256 位令牌。
+2. **用户 Key 保护**：本地配置的 LLM Key 保存在本地独立存储中，严禁写入日志、上传云端或暴露给前端持久化。
+3. **媒体流沙盒**：本地内置的 Loopback 媒体服务器为视频流生成 24 字节随机 Token 路由，支持 HTTP 206 Range 分块传输，防止外部进程探测。

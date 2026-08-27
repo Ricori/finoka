@@ -124,7 +124,7 @@ class PurelyAdditiveTests(unittest.TestCase):
 
         The cloud is meant to run upstream code. A patch under ``src/finesub``
         is a second thing local and cloud no longer share, so it has to be
-        justified in ``docs/finesub-sync.md`` before it is added here. One
+        justified in ``docs/engine-and-cloud.md`` before it is added here. One
         under ``src/finesub_bootstrap`` is not: no container ever runs it.
         """
 
