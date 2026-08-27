@@ -6,10 +6,10 @@ invoking `subprocess.run(..., capture_output=True, text=True)` without explicit
 subprocess module to crash with `UnicodeDecodeError` when ffprobe or ffmpeg
 emits UTF-8 metadata. Additionally, having `cl.exe` in PATH without `INCLUDE`
 containing `<array>` causes `_activate_msvc` to skip `vcvars64.bat` activation,
-leading to compilation errors in AOT Inductor.
+and Triton generates invalid C11 `{}` initializers for `CUlaunchAttribute`.
 
 Removal: Delete once upstream applies explicit UTF-8 subprocess decoding on media
-helpers and checks MSVC include readiness before skipping vcvars.
+helpers, checks MSVC include readiness, and Triton fixes empty struct initializers in C11.
 
 diff --git a/src/finesub/media/ffmpeg.py b/src/finesub/media/ffmpeg.py
 index 2cfdee3..dfdce91 100644
@@ -68,7 +68,7 @@ index 99268ab..7becb5a 100644
      except Exception:
          return {}
 diff --git a/src/finesub/speech/preprocessing/separator/separator_aoti.py b/src/finesub/speech/preprocessing/separator/separator_aoti.py
-index 8540d7e..5978d39 100644
+index 8540d7e..b46e10e 100644
 --- a/src/finesub/speech/preprocessing/separator/separator_aoti.py
 +++ b/src/finesub/speech/preprocessing/separator/separator_aoti.py
 @@ -112,6 +112,13 @@ def _find_vcvars() -> Path | None:
@@ -85,7 +85,7 @@ index 8540d7e..5978d39 100644
  def cxx_toolchain_available() -> bool:
      """Whether :func:`build_packages` would find a compiler, without side effects.
  
-@@ -124,16 +131,20 @@ def cxx_toolchain_available() -> bool:
+@@ -124,16 +131,64 @@ def cxx_toolchain_available() -> bool:
      the AOTI path has been run on.
      """
  
@@ -93,9 +93,53 @@ index 8540d7e..5978d39 100644
 +    return (
 +        shutil.which("cl.exe") is not None and _msvc_include_ready()
 +    ) or _find_vcvars() is not None
++
++
++def _patch_triton_windows_driver() -> None:
++    """Fix Triton's invalid empty struct initializers `{}` under MSVC `/std:c11`."""
++    try:
++        import triton.backends.nvidia.driver as nv_driver
++
++        if hasattr(nv_driver, "make_launcher"):
++            orig_make = nv_driver.make_launcher
++
++            def patched_make(*args: Any, **kwargs: Any) -> str:
++                src = orig_make(*args, **kwargs)
++                return src.replace(
++                    "CUlaunchAttribute clusterAttr = {};",
++                    "CUlaunchAttribute clusterAttr = {0};",
++                ).replace(
++                    "CUlaunchAttribute clusterSchedulingAttr = {};",
++                    "CUlaunchAttribute clusterSchedulingAttr = {0};",
++                )
++
++            nv_driver.make_launcher = patched_make
++    except Exception:
++        pass
++    try:
++        import triton.runtime.build as triton_build
++
++        if hasattr(triton_build, "_cc_cmd"):
++            orig_cc_cmd = triton_build._cc_cmd
++
++            def patched_cc_cmd(*args: Any, **kwargs: Any) -> list[str]:
++                cmd = orig_cc_cmd(*args, **kwargs)
++                if os.name == "nt":
++                    if "/link" in cmd:
++                        link_idx = cmd.index("/link")
++                        if "/wd5105" not in cmd:
++                            cmd.insert(link_idx, "/wd5105")
++                    elif "/wd5105" not in cmd:
++                        cmd.append("/wd5105")
++                return cmd
++
++            triton_build._cc_cmd = patched_cc_cmd
++    except Exception:
++        pass
  
  
  def _activate_msvc() -> str:
++    _patch_triton_windows_driver()
      existing = shutil.which("cl.exe")
 -    if existing is not None:
 +    if existing is not None and _msvc_include_ready():

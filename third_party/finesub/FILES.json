@@ -1,5 +1,5 @@
 {
-  "content_sha256": "1dcbcb69386df5bb4ab8445359243e4220c9ead3b6a232c66e1c6dc02d5fca9a",
+  "content_sha256": "82865ba30203ee62f713f0732a0fa75abd557dbe979cc296975663c0168ba208",
   "files": [
     {
       "bytes": 1734,
@@ -932,9 +932,9 @@
       "sha256": "961a188e9182dc80c25b8a517fe6d291d8915cfd277830bf3f4c03ea8ae2c03d"
     },
     {
-      "bytes": 24131,
+      "bytes": 25723,
       "path": "src/finesub/speech/preprocessing/separator/separator_aoti.py",
-      "sha256": "de47900e559b320df34086e366217c6039ceb5019f33f97acd775582ed547340"
+      "sha256": "5b0d9006c2f1fbdc3873e45b3e715d4ad614195b30ca02717e01d0383d0d3220"
     },
     {
       "bytes": 20004,

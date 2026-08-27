@@ -63,7 +63,7 @@ def _issue(code: str, message: str) -> dict[str, str]:
 
 
 def _clear_legacy_separator_decode_probes(environment: Mapping[str, str]) -> None:
-    """Retry AOT builds whose only recorded failure was the old locale bug or missing MSVC headers."""
+    """Retry AOT builds whose recorded failure was a fixed toolchain or locale bug."""
 
     models_root = environment.get("FINESUB_MODEL_DIR")
     if not models_root:
@@ -78,7 +78,14 @@ def _clear_legacy_separator_decode_probes(environment: Mapping[str, str]) -> Non
             value = json.loads(probe.read_text(encoding="utf-8"))
             reason = str(value.get("reason") or "") if isinstance(value, Mapping) else ""
             if isinstance(value, Mapping) and value.get("aoti") == "unavailable":
-                if ("UnicodeDecodeError" in reason and "utf-8" in reason) or "array" in reason or "C1083" in reason:
+                if (
+                    ("UnicodeDecodeError" in reason and "utf-8" in reason)
+                    or "array" in reason
+                    or "C1083" in reason
+                    or "C2059" in reason
+                    or "__triton_launcher" in reason
+                    or "autotuning" in reason
+                ):
                     probe.unlink(missing_ok=True)
         except (OSError, json.JSONDecodeError):
             continue
