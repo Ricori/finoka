@@ -54,6 +54,37 @@ def _replace_when_free(temporary: Path, path: Path) -> None:
             time.sleep(_REPLACE_BACKOFF_SECONDS * attempt)
 
 
+#: The same denial, seen from the other side. `os.replace` is atomic in that a
+#: reader sees the old record or the new one, never a torn one -- but on
+#: Windows the name itself is briefly unopenable while the swap runs, and a
+#: reader that arrives in that instant is denied rather than made to wait.
+#: `LocalProvider.status` reads `snapshot.json` from the worker-reader thread
+#: and from the desktop UI's poll while the worker rewrites it on every event,
+#: so that instant is hit often: it failed a task with `[Errno 13] Permission
+#: denied` on a record that was perfectly readable a millisecond later.
+#: The budget outlasts the writer's, so a reader racing a writer that is
+#: itself retrying still wins rather than both giving up together.
+_READ_ATTEMPTS = _REPLACE_ATTEMPTS + 1
+_READ_BACKOFF_SECONDS = _REPLACE_BACKOFF_SECONDS
+
+
+def _read_json_when_free(path: Path) -> Any:
+    """Read a record written by `_atomic_json`, waiting out a racing swap.
+
+    A missing name is not a race and is not retried -- callers turn it into
+    "no such task" or "no such document", and that answer must stay immediate.
+    """
+    for attempt in range(1, _READ_ATTEMPTS + 1):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            raise
+        except OSError:
+            if attempt == _READ_ATTEMPTS:
+                raise
+            time.sleep(_READ_BACKOFF_SECONDS * attempt)
+
+
 def _atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -88,7 +119,7 @@ class DocumentStore:
     def read(self, video_id: str) -> dict[str, Any]:
         path = self.directory(video_id) / "document.json"
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
+            value = _read_json_when_free(path)
         except FileNotFoundError as exc:
             raise DocumentNotFound(video_id) from exc
         if not isinstance(value, dict):

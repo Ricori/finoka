@@ -19,6 +19,13 @@ export interface Entry {
     "duration": number;
     "status": string;
     "source": string;
+
+    /**
+     * Reported by whichever desktop started the task, not probed by the
+     * backend. False for entries synced from a local run: those never went
+     * through an upload, so the bucket has no frame for them.
+     */
+    "thumbnailAvailable"?: boolean;
     "engineCommit"?: string;
     "createdAt": string;
     "updatedAt": string;

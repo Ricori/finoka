@@ -146,6 +146,64 @@ test("PipelineController coalesces overlapping refreshes and deduplicates cursor
   assert.deepEqual(controller.current().events.map((item) => item.cursor), [1]);
 });
 
+test("PipelineController retries a cancelled task instead of resuming it", async () => {
+  const calls = [];
+  let state = "running";
+  const provider = {
+    async capabilities() { return capabilities(); },
+    async start() { return snapshot(); },
+    async status() { return snapshot(state); },
+    async events() { return { schema: 1, task_id: taskId, events: [], next_cursor: 0, state }; },
+    async cancel() { calls.push("cancel"); state = "cancelled"; return snapshot(state); },
+    async retry() { calls.push("retry"); state = "queued"; return snapshot(state); },
+    async resume() { calls.push("resume"); return snapshot("running"); },
+    async artifacts() { return { schema: 1, task_id: taskId, engine_commit: "fixture", artifacts: {} }; },
+  };
+  const controller = new PipelineController(provider);
+  await controller.start(request());
+  assert.equal((await controller.cancel()).state, "cancelled");
+  assert.equal((await controller.retry()).state, "queued");
+  assert.deepEqual(calls, ["cancel", "retry"]);
+  assert.equal(controller.current().error, null);
+});
+
+test("PipelineController keeps a terminal snapshot when the event page fails", async () => {
+  const provider = {
+    async capabilities() { return capabilities(); },
+    async start() { return snapshot(); },
+    async status() { return snapshot("failed"); },
+    async events() { throw new Error("event page unavailable"); },
+    async cancel() { return snapshot("cancelled"); },
+    async retry() { return snapshot(); },
+    async resume() { return snapshot(); },
+    async artifacts() { throw new Error("must not be read"); },
+  };
+  const controller = new PipelineController(provider);
+  await controller.start(request());
+  await controller.refresh();
+  assert.equal(controller.current().snapshot.state, "failed");
+  assert.match(controller.current().error.message, /event page unavailable/);
+});
+
+test("PipelineController keeps a completed snapshot when artifacts are not ready", async () => {
+  const provider = {
+    async capabilities() { return capabilities(); },
+    async start() { return snapshot(); },
+    async status() { return snapshot("completed"); },
+    async events() { return { schema: 1, task_id: taskId, events: [], next_cursor: 0, state: "completed" }; },
+    async cancel() { return snapshot("cancelled"); },
+    async retry() { return snapshot(); },
+    async resume() { return snapshot(); },
+    async artifacts() { throw new Error("artifacts_not_ready"); },
+  };
+  const controller = new PipelineController(provider);
+  await controller.start(request());
+  await controller.refresh();
+  assert.equal(controller.current().snapshot.state, "completed");
+  assert.equal(controller.current().artifacts, null);
+  assert.match(controller.current().error.message, /artifacts_not_ready/);
+});
+
 test("PipelineController enforces runtime state before start", async () => {
   const unavailable = {
     async capabilities() { return capabilities({ runtime: { ready: false, issues: [{ code: "missing_gpu", message: "GPU missing" }] } }); },

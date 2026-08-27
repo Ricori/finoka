@@ -5,12 +5,15 @@ import { buildAss } from './assBuild';
 import { subCanvas, video } from './media';
 import JASSUB from "jassub";
 import workerUrl from "jassub/dist/worker/worker.js?worker&url";
+import webViewWorkerUrl from "../vendor/jassub-worker.js?url";
 import wasmUrl from "jassub/dist/wasm/jassub-worker-modern.wasm?url";
 
 const bundledFontUrls = [
   new URL("fonts/FZZhunYuan.woff2", document.baseURI).href,
   new URL("fonts/JingNanBoBoHei.woff2", document.baseURI).href,
 ];
+
+const isWebView2 = !!(window as Window & { chrome?: { webview?: unknown } }).chrome?.webview;
 
 // 字幕预览：交给 libass 本体（JASSUB/WASM）渲染。以前那套 DOM 叠层怎么调都对不齐。
 // JASSUB 打包成 IIFE 挂在全局（file:// 下 <script type="module"> 加载不了）
@@ -27,7 +30,7 @@ export function preloadSubtitles(): Promise<any> {
     const inst = new JASSUB({
       canvas,
       subContent: lastAss,
-      workerUrl,
+      workerUrl: isWebView2 ? webViewWorkerUrl : workerUrl,
       wasmUrl, modernWasmUrl: wasmUrl,
       fonts: bundledFontUrls,
       defaultFont: "方正准圆_gbk",

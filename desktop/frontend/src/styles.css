@@ -1595,6 +1595,15 @@ html.wails-fullscreen .workspace-titlebar {
   background: #a62014;
 }
 
+/* 浅色标题栏是暖白，9% 的正文色几乎看不出 hover；和编辑器窗口用同一档加深。 */
+body.light #wails-window-controls button:not(.wails-close):hover {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+body.light #wails-window-controls button:not(.wails-close):active {
+  background: color-mix(in srgb, var(--text) 20%, transparent);
+}
+
 /* The glyphs come from the shell's own caption font, so they match the size,
    weight and hinting of every other Windows titlebar at any scaling factor. */
 #wails-window-controls span {

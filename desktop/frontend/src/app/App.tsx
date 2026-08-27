@@ -77,6 +77,9 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [media, setMedia] = useState<MediaEntry[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [cloudThumbnails, setCloudThumbnails] = useState<Record<string, string>>({});
+  const [adoptFailed, setAdoptFailed] = useState<ReadonlySet<string>>(() => new Set());
+  const [adoptingCloud, setAdoptingCloud] = useState<ReadonlySet<string>>(() => new Set());
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [libraryMessage, setLibraryMessage] = useState<LibraryNotice>(noNotice);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
@@ -105,6 +108,8 @@ export default function App() {
   const [transcriptionMedia, setTranscriptionMedia] = useState<MediaEntry | null>(null);
   const [transcriptionBusy, setTranscriptionBusy] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState("");
+  const cloudThumbnailsTried = useRef(new Set<string>());
+  const adoptedCloudEntries = useRef(new Set<string>());
   const syncedTasks = useRef(new Set<string>());
   const openedTasks = useRef(new Set<string>());
   const taskHistoryHydrated = useRef(false);
@@ -185,6 +190,29 @@ export default function App() {
     setThumbnails(Object.fromEntries(pairs.filter((pair) => pair !== null)));
   }, []);
 
+  // Cloud-only entries have no local file to draw a frame from, so their cover
+  // comes from the bucket the task uploaded it to. Each id is attempted once
+  // per session: an entry started by a desktop that had no cover to send will
+  // never grow one, and retrying on every library refresh only costs requests.
+  useEffect(() => {
+    const pending = cloudMedia.filter((entry) => entry.thumbnailAvailable && !cloudThumbnailsTried.current.has(entry.id));
+    if (pending.length === 0) return;
+    pending.forEach((entry) => cloudThumbnailsTried.current.add(entry.id));
+    // Not cancelled on re-run either: the ids are already marked as tried, so
+    // a teardown mid-fetch would lose those covers for the rest of the session.
+    void Promise.all(pending.map(async (entry) => {
+      try {
+        return [entry.id, await cloudAccount.thumbnail(entry.id)] as const;
+      } catch {
+        return null;
+      }
+    })).then((pairs) => {
+      const resolved = pairs.filter((pair) => pair !== null);
+      if (resolved.length === 0) return;
+      setCloudThumbnails((current) => ({ ...current, ...Object.fromEntries(resolved) }));
+    });
+  }, [cloudMedia]);
+
   const loadLibrary = useCallback(async () => {
     try {
       const entries = await mediaLibrary.list();
@@ -195,6 +223,84 @@ export default function App() {
       setLibraryMessage(warnNotice(detail || "无法连接本地媒体库"));
     }
   }, [hydrateThumbnails]);
+
+  // A cloud entry only merges into a local card by fingerprint, which makes it
+  // look synced while the subtitles still live entirely in the cloud: the card
+  // says 字幕已同步 and the button still offers to transcribe the media again.
+  // This is the set of media that answers to a finished cloud entry and has no
+  // local document yet -- derived during render rather than recorded when the
+  // download starts, because a card that renders before the effect has run
+  // would offer 开始转写 for that frame and spend a cloud task if clicked.
+  const pendingAdoptions = useMemo(() => {
+    if (!cloudSession?.authenticated) return [];
+    return media
+      // The media this app is transcribing right now is excluded: its own
+      // pipeline projects the result the moment the task finishes, and both
+      // paths would otherwise download the same artifacts at once.
+      .filter((entry) => entry.available && !entry.documentAvailable && entry.fingerprint && entry.id !== activeMedia?.id)
+      .flatMap((entry) => {
+        const remote = cloudMedia.find((item) => item.status === "completed" && item.fingerprint === entry.fingerprint);
+        return remote ? [{ key: `${remote.id}:${entry.id}`, localID: entry.id, videoID: remote.id }] : [];
+      })
+      .filter((pair) => !adoptFailed.has(pair.key));
+  }, [activeMedia?.id, adoptFailed, cloudMedia, cloudSession?.authenticated, media]);
+  const adoptingMedia = useMemo(() => new Set(pendingAdoptions.map((pair) => pair.localID)), [pendingAdoptions]);
+
+  // Pull the finished text down, once per pair, whether the media arrived
+  // through 关联本地视频, a plain import or a relink. Deliberately not
+  // cancelled on re-run: the adoption changes the very library the set above
+  // is derived from, so this re-runs while the download is still in flight,
+  // and tearing the run down there dropped the refresh that makes the new
+  // document visible. The tried-set is what keeps the work from repeating.
+  useEffect(() => {
+    const fresh = pendingAdoptions.filter((pair) => !adoptedCloudEntries.current.has(pair.key));
+    if (fresh.length === 0) return;
+    fresh.forEach((pair) => adoptedCloudEntries.current.add(pair.key));
+    void (async () => {
+      const adopted = new Set<string>();
+      const failed = new Set<string>();
+      for (const pair of fresh) {
+        // Sequential on purpose: each projection round-trips through the local
+        // provider.
+        try {
+          await cloudAccount.adoptLibraryEntry(pair.videoID, pair.localID);
+          adopted.add(pair.localID);
+        } catch {
+          // Left for the user to transcribe locally: recording the failure is
+          // what puts 开始转写 back on the card.
+          failed.add(pair.key);
+        }
+      }
+      if (failed.size > 0) setAdoptFailed((current) => new Set([...current, ...failed]));
+      if (adopted.size === 0) return;
+      setLibraryMessage(okNotice(`已从云端取回 ${adopted.size} 个视频的字幕，可以直接编辑。`));
+      await loadLibrary();
+      // The document exists -- this code is what wrote it. Asserting that on
+      // top of the refresh keeps a library:changed snapshot taken before the
+      // projection from putting these cards back to 取回字幕中.
+      setMedia((current) => current.map((entry) => adopted.has(entry.id) ? { ...entry, documentAvailable: true } : entry));
+    })();
+  }, [loadLibrary, pendingAdoptions]);
+
+  // Editing a cloud entry whose video never reached this machine. The
+  // subtitles are what the user came for; the library keeps a placeholder for
+  // the fingerprint so the document has an owner, and 关联视频 later fills that
+  // same entry in.
+  const editCloudEntry = useCallback(async (entry: CloudEntry) => {
+    setLibraryMessage(noNotice);
+    setAdoptingCloud((current) => new Set([...current, entry.id]));
+    try {
+      const localID = await cloudAccount.adoptCloudEntry(entry.id);
+      await loadLibrary();
+      await desktopWindows.openEditor(localID);
+    } catch (value) {
+      const detail = value instanceof Error ? value.message : String(value ?? "");
+      setLibraryMessage(warnNotice(detail || "无法取回云端字幕"));
+      await loadLibrary();
+    } finally {
+      setAdoptingCloud((current) => new Set([...current].filter((id) => id !== entry.id)));
+    }
+  }, [loadLibrary]);
 
   const openEditor = useCallback(async (entry: MediaEntry) => {
     setLibraryMessage(noNotice);
@@ -431,15 +537,48 @@ export default function App() {
     setTaskHistoryMessage("");
     try {
       const isCurrent = pipeline.snapshot?.task_id === item.taskId;
+      // "继续" covers three states, and the local provider accepts only one of
+      // them through resume: a shutdown leaves a task interrupted, while a
+      // cancelled or failed one has to be retried. Both reuse the engine's
+      // checkpoints, so the button means the same thing to the user either way.
+      const restart = item.snapshot.state === "interrupted" ? "resume" : "retry";
       const snapshot = isCurrent
-        ? action === "cancel" ? await controller.cancel() : await controller.resume()
-        : action === "cancel" ? await taskProvider.cancel(item.taskId) : await taskProvider.resume(item.taskId);
+        ? action === "cancel"
+          ? await controller.cancel()
+          : restart === "resume" ? await controller.resume() : await controller.retry()
+        : action === "cancel"
+          ? await taskProvider.cancel(item.taskId)
+          : restart === "resume" ? await taskProvider.resume(item.taskId) : await taskProvider.retry(item.taskId);
       if (!snapshot) return;
       setTaskHistory((current) => current.map((record) => record.taskId === item.taskId ? { ...record, snapshot } : record));
     } catch (value) {
       setTaskHistoryMessage(value instanceof Error ? value.message : String(value));
     }
   }, [cloudProvider, controller, localProvider, pipeline.snapshot?.task_id]);
+
+  /** The library locks every start button while a task runs, so the card that
+      shows the progress is also where the way out belongs -- reaching the task
+      history page should not be the only way to stop a run. */
+  const cancelActiveTask = useCallback(async () => {
+    const taskId = pipeline.snapshot?.task_id;
+    if (!taskId) return;
+    setLibraryMessage(noNotice);
+    try {
+      const snapshot = await controller.cancel();
+      if (!snapshot) return;
+      setTaskHistory((current) => current.map((record) => record.taskId === taskId ? { ...record, snapshot } : record));
+      setLibraryMessage(okNotice("已取消处理。已完成的环节会保留，可在处理历史中继续。"));
+    } catch (value) {
+      setLibraryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
+    }
+  }, [controller, pipeline.snapshot?.task_id]);
+
+  // Cloud tasks report stages, not engine output, so the log reader is wired
+  // to the local provider alone and the task list hides the toggle elsewhere.
+  const localTaskLogs = useCallback(
+    (taskId: string, afterCursor: number) => localProvider.events(taskId, afterCursor),
+    [localProvider],
+  );
 
   const clearTaskHistory = useCallback(() => {
     const active = taskHistoryRef.current.filter((item) => activeStates.has(item.snapshot.state));
@@ -857,6 +996,9 @@ export default function App() {
               items={libraryItems}
               visibleItems={visibleItems}
               thumbnails={thumbnails}
+              cloudThumbnails={cloudThumbnails}
+              adoptingMedia={adoptingMedia}
+              adoptingCloud={adoptingCloud}
               remoteByFingerprint={remoteByFingerprint}
               filter={libraryFilter}
               filterCounts={filterCounts}
@@ -876,8 +1018,10 @@ export default function App() {
               onImport={importMedia}
               onOpen={(entry) => void openEditor(entry)}
               onStart={startMedia}
+              onCancel={cancelActiveTask}
               onRename={renameMedia}
               onRemove={removeMedia}
+              onEditCloud={editCloudEntry}
               onDeleteCloud={deleteCloudMedia}
               onRelink={relinkMedia}
               onDismissMessage={() => setLibraryMessage(noNotice)}
@@ -891,6 +1035,7 @@ export default function App() {
               activeCount={activeTaskCount}
               message={taskHistoryMessage}
               pipelineError={pipeline.error?.message}
+              logSource={localTaskLogs}
               onNavigateLibrary={() => setSection("library")}
               onOpenEditor={(entry) => void openEditor(entry)}
               onClearTasks={clearTaskHistory}
@@ -936,6 +1081,7 @@ export default function App() {
         localReady={runtimeReady}
         localCapabilities={capabilities}
         cloudCapabilities={cloudCapabilities}
+        settings={settings}
         localIssue={message || issues[0]?.message}
         cloudAuthenticated={cloudSession?.authenticated === true}
         cloudRemaining={cloudSession?.remaining ?? undefined}
@@ -944,6 +1090,7 @@ export default function App() {
         onClose={() => { if (!transcriptionBusy) setTranscriptionMedia(null); }}
         onOpenRuntime={() => { setTranscriptionMedia(null); setSection("runtime"); }}
         onOpenAccount={() => { setTranscriptionMedia(null); setSection("account"); }}
+        onOpenKeys={() => { setTranscriptionMedia(null); setSection("keys"); }}
         onStart={confirmTranscription}
       />}
     </div>

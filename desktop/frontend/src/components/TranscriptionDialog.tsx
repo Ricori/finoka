@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MediaEntry } from "../bridge/library.ts";
 import { cloudTaskRequest, localTaskRequest } from "../home/defaultRequest.ts";
 import type { Capabilities, TaskRequest } from "../providers/types.ts";
+import type { FineSubSettingsState } from "../bridge/settings.ts";
 import type { ExecutionMode } from "../app/types.ts";
 import { CustomSelect } from "./CustomSelect.tsx";
 import "./TranscriptionDialog.css";
@@ -12,6 +13,7 @@ interface TranscriptionDialogProps {
   localReady: boolean;
   localCapabilities: Capabilities | null;
   cloudCapabilities: Capabilities | null;
+  settings: FineSubSettingsState | null;
   localIssue?: string;
   cloudAuthenticated: boolean;
   cloudRemaining?: number;
@@ -20,6 +22,7 @@ interface TranscriptionDialogProps {
   onClose: () => void;
   onOpenRuntime: () => void;
   onOpenAccount: () => void;
+  onOpenKeys: () => void;
   onStart: (mode: ExecutionMode, request: TaskRequest) => Promise<void>;
 }
 
@@ -30,16 +33,47 @@ const languageOptions = [
   ["auto", "自动检测"],
 ] as const;
 
+const LLM_KEY_HINT = "未配置任何模型 Key（Gemini / OpenAI / Anthropic），无法进行 LLM 纠错、翻译与知识处理。";
+const GEMINI_KEY_HINT = "需要 Gemini Key：音频与视频多模态纠错目前只有 Gemini 模型支持。";
+const RETRIEVAL_KEY_HINT = "需要 Exa、Tavily 或 Gemini 免费池 Key 才能进行本地联网检索。";
+const NATIVE_SEARCH_HINT = "需要 Gemini Key：模型原生检索依赖 Gemini 内置搜索。";
+
+interface KeyLimits {
+  llm: boolean;
+  gemini: boolean;
+  retrieval: boolean;
+  audio: boolean;
+  video: boolean;
+}
+
 function requestFor(mode: ExecutionMode, entry: MediaEntry, capabilities: Capabilities | null): TaskRequest {
   const request = mode === "local" ? localTaskRequest(entry) : cloudTaskRequest(entry);
   if (mode === "local" && capabilities?.devices[0]?.id) request.device = capabilities.devices[0].id;
   return request;
 }
 
+/** 把缺少 Key 的选项拉回可用值；无需改动时返回原对象。 */
+function withinLimits(request: TaskRequest, limits: KeyLimits): TaskRequest {
+  const target = request.target === "final-srt" && !limits.llm ? "raw-srt" : request.target;
+  const media = (request.correction.media === "audio" && !limits.audio) || (request.correction.media === "video" && !limits.video)
+    ? "text"
+    : request.correction.media;
+  const retrieval = (request.correction.retrieval === "local" && !limits.retrieval) || (request.correction.retrieval === "native" && !limits.gemini)
+    ? "none"
+    : request.correction.retrieval;
+  if (target === request.target && media === request.correction.media && retrieval === request.correction.retrieval) return request;
+  return {
+    ...request,
+    target,
+    correction: { ...request.correction, enabled: target === "final-srt", media, retrieval },
+    knowledge: target === "final-srt" ? request.knowledge : "none",
+  };
+}
+
 export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const {
-    entry, initialMode, localReady, localCapabilities, cloudCapabilities, localIssue, cloudAuthenticated,
-    cloudRemaining, busy, error, onClose, onOpenRuntime, onOpenAccount, onStart,
+    entry, initialMode, localReady, localCapabilities, cloudCapabilities, settings, localIssue, cloudAuthenticated,
+    cloudRemaining, busy, error, onClose, onOpenRuntime, onOpenAccount, onOpenKeys, onStart,
   } = props;
   const preferredMode = initialMode === "local"
     ? localReady ? "local" : cloudAuthenticated ? "cloud" : "local"
@@ -53,6 +87,22 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const supportsKnowledge = selectedCapabilities?.features.knowledge === true;
   const finalOutput = request.target === "final-srt";
   const devices = localCapabilities?.devices ?? [];
+
+  const limitsFor = useCallback((target: ExecutionMode): KeyLimits => {
+    // 云端运行的凭据由 Nonoka Cloud 管理；读不到本地设置时也不做限制，避免误锁死。
+    const keys = target === "local" ? settings : null;
+    const hasLocalAgent = (localCapabilities?.runtime?.localAgent ?? "") !== "";
+    const gemini = !keys || keys.keys.some((key) => key.configured && (key.name === "GEMINI_FREE" || key.name === "GEMINI_PAID"));
+    const video = (target === "local" ? localCapabilities : cloudCapabilities)?.features.video_multimodal === true;
+    return {
+      llm: !keys || keys.llmKeyConfigured || hasLocalAgent,
+      gemini,
+      retrieval: !keys || keys.retrievalKeyConfigured,
+      audio: target === "local" && gemini,
+      video: video && gemini,
+    };
+  }, [cloudCapabilities, localCapabilities, settings]);
+  const limits = useMemo(() => limitsFor(mode), [limitsFor, mode]);
 
   const summary = useMemo(() => {
     const output = finalOutput ? "AI 纠错与翻译后的最终字幕" : "识别与断句后的原始字幕";
@@ -71,15 +121,20 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [busy, onClose, step]);
 
+  useEffect(() => {
+    setRequest((current) => withinLimits(current, limits));
+  }, [limits]);
+
   const chooseMode = (nextMode: ExecutionMode) => {
     const ready = nextMode === "local" ? localReady : cloudAuthenticated;
     if (!ready) return;
     setMode(nextMode);
-    setRequest(requestFor(nextMode, entry, localCapabilities));
+    setRequest(withinLimits(requestFor(nextMode, entry, localCapabilities), limitsFor(nextMode)));
     setStep("settings");
   };
 
   const setTarget = (target: TaskRequest["target"]) => {
+    if (target === "final-srt" && !limits.llm) return;
     setRequest((current) => ({
       ...current,
       target,
@@ -124,8 +179,9 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
               <div className="transcription-section-title"><strong>输出内容</strong><span>{mode === "local" ? "本地运行" : "云端运行"}</span></div>
               <div className="option-cards two-columns">
                 <button className={request.target === "raw-srt" ? "selected" : ""} onClick={() => setTarget("raw-srt")}><strong>原始字幕</strong><small>完成识别与断句，不调用 LLM</small></button>
-                <button className={request.target === "final-srt" ? "selected" : ""} onClick={() => setTarget("final-srt")}><strong>最终字幕</strong><small>继续进行纠错、翻译与知识处理</small></button>
+                <button className={`${request.target === "final-srt" ? "selected" : ""} ${limits.llm ? "" : "unavailable"}`.trim()} aria-disabled={!limits.llm || undefined} title={limits.llm ? undefined : LLM_KEY_HINT} onClick={() => setTarget("final-srt")}><strong>最终字幕</strong><small>继续进行纠错、翻译与知识处理</small></button>
               </div>
+              {!limits.llm && <p className="option-unavailable">{LLM_KEY_HINT}<button onClick={onOpenKeys}>前往配置</button></p>}
             </section>
 
             <section className="transcription-section form-grid">
@@ -136,10 +192,10 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
 
             {finalOutput && <>
               <section className="transcription-section form-grid">
-                <label>纠错参考<CustomSelect value={request.correction.media} options={[{ value: "text", label: "仅识别文本" }, ...(mode === "local" ? [{ value: "audio" as const, label: "音频" }] : []), ...(supportsVideo ? [{ value: "video" as const, label: "视频多模态" }] : [])]} onChange={(media) => setRequest((current) => ({ ...current, correction: { ...current.correction, media } }))} /></label>
+                <label>纠错参考<CustomSelect value={request.correction.media} options={[{ value: "text", label: "仅识别文本" }, ...(mode === "local" ? [{ value: "audio" as const, label: "音频", disabled: !limits.audio, hint: limits.audio ? undefined : GEMINI_KEY_HINT }] : []), ...(supportsVideo ? [{ value: "video" as const, label: "视频多模态", disabled: !limits.video, hint: limits.video ? undefined : GEMINI_KEY_HINT }] : [])]} onChange={(media) => setRequest((current) => ({ ...current, correction: { ...current.correction, media } }))} /></label>
                 <label>处理质量<CustomSelect value={request.correction.difficulty} options={[{ value: "efficiency", label: "效率优先" }, { value: "intermediate", label: "均衡" }, { value: "quality", label: "质量优先" }]} onChange={(difficulty) => setRequest((current) => ({ ...current, correction: { ...current.correction, difficulty } }))} /></label>
                 <label>快速模式<CustomSelect value={request.correction.fast} options={[{ value: "auto", label: "自动" }, { value: "on", label: "开启" }, { value: "off", label: "关闭" }]} onChange={(fast) => setRequest((current) => ({ ...current, correction: { ...current.correction, fast } }))} /></label>
-                {mode === "local" && <label>资料检索<CustomSelect value={request.correction.retrieval} options={[{ value: "none", label: "不检索" }, { value: "local", label: "本地检索" }, { value: "native", label: "模型原生检索" }]} onChange={(retrieval) => setRequest((current) => ({ ...current, correction: { ...current.correction, retrieval } }))} /></label>}
+                {mode === "local" && <label>资料检索<CustomSelect value={request.correction.retrieval} options={[{ value: "none", label: "不检索" }, { value: "local", label: "本地检索", disabled: !limits.retrieval, hint: limits.retrieval ? undefined : RETRIEVAL_KEY_HINT }, { value: "native", label: "模型原生检索", disabled: !limits.gemini, hint: limits.gemini ? undefined : NATIVE_SEARCH_HINT }]} onChange={(retrieval) => setRequest((current) => ({ ...current, correction: { ...current.correction, retrieval } }))} /></label>}
                 {supportsKnowledge && <label>知识库<CustomSelect value={request.knowledge} options={[{ value: "none", label: "不使用" }, { value: "collect", label: "读取并收集" }, { value: "update", label: "更新知识库", disabled: mode === "cloud" }]} onChange={(knowledge) => setRequest((current) => ({ ...current, knowledge }))} /></label>}
               </section>
 

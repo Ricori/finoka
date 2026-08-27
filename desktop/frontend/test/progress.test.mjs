@@ -60,6 +60,12 @@ test("internal stage names are replaced with user-facing labels", () => {
   assert.equal(taskStageLabel("vocal"), "处理音频");
   assert.equal(taskStageLabel("aligned"), "语音识别");
   assert.equal(taskStageLabel("unknown-internal-stage"), "处理中");
+  // A task that died before its first stage event has an empty stage, and the
+  // row must not read "处理中" next to its own 失败 badge.
+  assert.equal(taskStageLabel("", "failed"), "未进入处理环节");
+  assert.equal(taskStageLabel("unknown-internal-stage", "cancelled"), "已取消");
+  assert.equal(taskStageLabel("", "queued"), "准备中");
+  assert.equal(taskStageLabel("vocal", "failed"), "处理音频");
 });
 
 test("activity text shows elapsed task time instead of a block timecode", () => {

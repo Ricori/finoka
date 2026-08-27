@@ -13,6 +13,29 @@ export function AdminKeys(): $CancellablePromise<$models.AdminKey[] | null> {
     return $Call.ByID(3379938318);
 }
 
+/**
+ * AdoptCloudEntry makes a finished cloud entry editable on a machine that does
+ * not have the video at all. The subtitles are the deliverable; the media is
+ * only needed to play them back, so the library records a placeholder for the
+ * fingerprint and the document hangs on that. Importing or relinking the video
+ * later fills the same entry in -- the fingerprint has to match, so the pairing
+ * cannot drift. Returns the local media id to open.
+ */
+export function AdoptCloudEntry(videoID: string): $CancellablePromise<string> {
+    return $Call.ByID(3065162032, videoID);
+}
+
+/**
+ * AdoptLibraryEntry projects a finished cloud entry onto local media that this
+ * installation never ran the task for -- the subtitles were produced on another
+ * machine, or before a reinstall, and the video has only just been imported or
+ * relinked here. Without it the card correctly reports the cloud copy while
+ * still offering to transcribe the media all over again.
+ */
+export function AdoptLibraryEntry(videoID: string, localID: string): $CancellablePromise<void> {
+    return $Call.ByID(4232335274, videoID, localID);
+}
+
 export function CancelTask(taskID: string): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(996890780, taskID);
 }
@@ -87,6 +110,16 @@ export function TaskEvents(taskID: string, afterCursor: number): $CancellablePro
 
 export function TaskStatus(taskID: string): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(3360738780, taskID);
+}
+
+/**
+ * ThumbnailDataURL returns the cover of a cloud library entry, mirroring the
+ * local library accessor of the same name so the renderer treats both alike.
+ * The bytes are cached on disk: a cover never changes for a given upload, and
+ * the cloud library is re-read on every refresh.
+ */
+export function ThumbnailDataURL(videoID: string): $CancellablePromise<string> {
+    return $Call.ByID(2358810250, videoID);
 }
 
 export function UpdateAdminKey(identifier: string, name: string, remaining: number): $CancellablePromise<$models.AdminKey> {

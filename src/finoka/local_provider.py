@@ -18,7 +18,13 @@ from typing import Any, Callable, Mapping
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
-from .document_store import DocumentNotFound, DocumentStore, RevisionConflict, _atomic_json
+from .document_store import (
+    DocumentNotFound,
+    DocumentStore,
+    RevisionConflict,
+    _atomic_json,
+    _read_json_when_free,
+)
 from .peaks import generate_peaks
 from .projector import ProjectionError, project_edit_document
 from .provision import RuntimeProvisionError, RuntimeProvisioner
@@ -53,6 +59,27 @@ def _load_upstream(vendor: Path) -> dict[str, Any]:
 
 def _issue(code: str, message: str) -> dict[str, str]:
     return {"code": code, "message": message}
+
+
+def _clear_legacy_separator_decode_probes(environment: Mapping[str, str]) -> None:
+    """Retry AOT builds whose only recorded failure was the old locale bug."""
+
+    models_root = environment.get("FINESUB_MODEL_DIR")
+    if not models_root:
+        return
+    accel_root = Path(models_root).expanduser() / "audio-separator" / "accel"
+    try:
+        probes = tuple(accel_root.glob("*/probe.json"))
+    except OSError:
+        return
+    for probe in probes:
+        try:
+            value = json.loads(probe.read_text(encoding="utf-8"))
+            reason = str(value.get("reason") or "") if isinstance(value, Mapping) else ""
+            if isinstance(value, Mapping) and value.get("aoti") == "unavailable" and "UnicodeDecodeError" in reason and "utf-8" in reason:
+                probe.unlink(missing_ok=True)
+        except (OSError, json.JSONDecodeError):
+            continue
 
 
 def runtime_report(settings: FineSubSettings | None = None, provisioner: RuntimeProvisioner | None = None) -> dict[str, Any]:
@@ -130,6 +157,8 @@ def detect_devices() -> list[dict[str, Any]]:
             [executable, "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=True,
         )
@@ -274,6 +303,7 @@ class LocalProvider:
         self._lock = threading.RLock()
         self._processes: dict[str, subprocess.Popen[str]] = {}
         self._threads: dict[str, threading.Thread] = {}
+        self._separator_probe_checked = False
         self._recover_interrupted()
 
     def _default_worker_command(self, task_id: str, task_dir: Path) -> list[str]:
@@ -388,7 +418,7 @@ class LocalProvider:
 
     def status(self, task_id: str) -> dict[str, Any]:
         try:
-            value = json.loads((self._task_dir(task_id) / "snapshot.json").read_text(encoding="utf-8"))
+            value = _read_json_when_free(self._task_dir(task_id) / "snapshot.json")
         except FileNotFoundError as exc:
             raise ProviderError("task_not_found", f"Unknown task: {task_id}", http_status=404) from exc
         return value
@@ -399,9 +429,9 @@ class LocalProvider:
         records: list[dict[str, Any]] = []
         for snapshot_path in self.root.glob("*/snapshot.json"):
             try:
-                snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+                snapshot = _read_json_when_free(snapshot_path)
                 request_path = snapshot_path.with_name("request.json")
-                request = json.loads(request_path.read_text(encoding="utf-8")) if request_path.is_file() else {}
+                request = _read_json_when_free(request_path) if request_path.is_file() else {}
                 source = request.get("source") if isinstance(request, Mapping) else {}
                 if not isinstance(source, Mapping):
                     source = {}
@@ -435,7 +465,7 @@ class LocalProvider:
         path = self._task_dir(task_id) / "artifacts.json"
         if not path.is_file():
             raise ProviderError("artifacts_not_ready", "Task artifacts are not ready", http_status=409)
-        return json.loads(path.read_text(encoding="utf-8"))
+        return _read_json_when_free(path)
 
     def document(self, video_id: str) -> dict[str, Any]:
         if not _safe_component(video_id):
@@ -448,7 +478,7 @@ class LocalProvider:
     def document_peaks(self, video_id: str) -> dict[str, Any]:
         self.document(video_id)
         try:
-            value = json.loads((self.documents.directory(video_id) / "peaks.json").read_text(encoding="utf-8"))
+            value = _read_json_when_free(self.documents.directory(video_id) / "peaks.json")
         except FileNotFoundError as exc:
             raise ProviderError("peaks_not_found", "Waveform is not ready", http_status=404) from exc
         return value
@@ -537,7 +567,7 @@ class LocalProvider:
 
     def _run_worker(self, task_id: str) -> None:
         task_dir = self._task_dir(task_id)
-        request = json.loads((task_dir / "request.json").read_text(encoding="utf-8"))
+        request = _read_json_when_free(task_dir / "request.json")
         command = self._worker_command(task_id, task_dir)
         environment = self._provisioner.worker_environment() if self._provisioner is not None else os.environ.copy()
         project_src = Path(__file__).resolve().parents[1]
@@ -545,7 +575,18 @@ class LocalProvider:
         if environment.get("PYTHONPATH"):
             python_paths.append(environment["PYTHONPATH"])
         environment["PYTHONPATH"] = os.pathsep.join(python_paths)
-        kwargs: dict[str, Any] = {"stdin": subprocess.PIPE, "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT, "text": True, "encoding": "utf-8", "env": environment}
+        # The worker's own NDJSON must be UTF-8, but stderr also carries native
+        # compiler and library output in the Windows ANSI code page. Keep the
+        # Python standard streams on UTF-8 while leaving locale-based subprocess
+        # decoding on that native code page. PYTHONUTF8=1 would make PyTorch
+        # decode MSVC's GBK diagnostics as UTF-8 during AOT compilation.
+        environment["PYTHONUTF8"] = "0"
+        environment["PYTHONIOENCODING"] = "utf-8"
+        with self._lock:
+            if not self._separator_probe_checked:
+                _clear_legacy_separator_decode_probes(environment)
+                self._separator_probe_checked = True
+        kwargs: dict[str, Any] = {"stdin": subprocess.PIPE, "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT, "text": True, "encoding": "utf-8", "errors": "replace", "env": environment}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
@@ -710,7 +751,7 @@ class LocalProvider:
     def _recover_interrupted(self) -> None:
         for snapshot_path in self.root.glob("*/snapshot.json"):
             try:
-                snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+                snapshot = _read_json_when_free(snapshot_path)
                 task_id = str(snapshot["task_id"])
                 if snapshot.get("state") in {"queued", "running"}:
                     snapshot["state"] = "interrupted"

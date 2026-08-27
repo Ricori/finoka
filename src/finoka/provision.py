@@ -198,7 +198,7 @@ class RuntimeProvisioner:
                 "job": job,
             }
         assert self.resources is not None and self.paths is not None
-        from finesub_bootstrap.model_caches import PIPELINE_MODEL_IDS, missing_pipeline_models
+        from finoka.model_install import missing_managed_models
 
         resources = [item.model_dump(mode="json") for item in self.resources.check_all()]
         for item in resources:
@@ -221,7 +221,7 @@ class RuntimeProvisioner:
                 "state": "missing",
                 "detail": "本地 GPU 运行时当前仅支持 Windows x64/NVIDIA",
             }
-        missing = list(missing_pipeline_models(self.paths.models))
+        missing = list(missing_managed_models(self.paths.models))
         with self._lock:
             job = json.loads(json.dumps(self._job))
         return {
@@ -236,7 +236,7 @@ class RuntimeProvisioner:
             "resources": resources,
             "models": [
                 {"id": model_id, "state": "missing" if model_id in missing else "ready"}
-                for model_id in PIPELINE_MODEL_IDS
+                for model_id in PIPELINE_MODELS
             ],
             "job": job,
         }
@@ -311,7 +311,7 @@ class RuntimeProvisioner:
     def _run(self, target: str) -> None:
         try:
             assert self.paths is not None and self.resources is not None
-            from finesub_bootstrap.model_caches import missing_pipeline_models
+            from finoka.model_install import missing_managed_models
             from finesub_bootstrap.paths import ensure_store
 
             ensure_store(self.paths)
@@ -336,9 +336,14 @@ class RuntimeProvisioner:
                 self._stop_if_cancelled()
                 if self.runtime.status().state != "ready":
                     raise RuntimeProvisionError("请先安装 FineSub Python 运行时")
-                for model_id in missing_pipeline_models(self.paths.models):
+                for model_id in missing_managed_models(self.paths.models):
                     self._stop_if_cancelled()
                     self._install_model(model_id)
+                remaining = missing_managed_models(self.paths.models)
+                if remaining:
+                    raise RuntimeProvisionError(
+                        "模型安装进程已结束，但完整性复核仍未通过：" + "、".join(remaining)
+                    )
             self._update(state="completed", stage="completed", message=DONE_MESSAGES[target], progress=None)
         except Exception as exc:
             # Whatever surfaces once the user has asked to stop is that request

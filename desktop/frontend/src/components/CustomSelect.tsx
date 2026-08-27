@@ -6,6 +6,7 @@ export interface SelectOption<T extends string | number> {
   value: T;
   label: string;
   disabled?: boolean;
+  hint?: string;
 }
 
 interface CustomSelectProps<T extends string | number> {
@@ -195,10 +196,12 @@ export function CustomSelect<T extends string | number>({
             <button
               key={String(option.value)}
               type="button"
-              className={`custom-select-option ${index === activeIndex ? "active" : ""} ${option.value === value ? "selected" : ""}`}
+              className={`custom-select-option ${index === activeIndex ? "active" : ""} ${option.value === value ? "selected" : ""} ${option.disabled ? "unavailable" : ""}`.trimEnd()}
               role="option"
               aria-selected={option.value === value}
-              disabled={option.disabled}
+              aria-disabled={option.disabled || undefined}
+              tabIndex={option.disabled ? -1 : undefined}
+              title={option.hint}
               data-index={index}
               onPointerEnter={() => { if (!option.disabled) setActiveIndex(index); }}
               onClick={() => choose(index)}

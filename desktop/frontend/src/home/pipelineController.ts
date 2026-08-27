@@ -15,6 +15,10 @@ export interface PipelineState {
 
 type Listener = (state: Readonly<PipelineState>) => void;
 
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
 // No login state, upload state, global task key, or backend URL lives here.
 // All task behavior comes from the selected provider's capabilities/contract.
 export class PipelineController {
@@ -65,27 +69,46 @@ export class PipelineController {
     }
   }
 
+  // The state transition is the part that has to land. A task that just failed
+  // or completed stops being active, and the whole UI reads that from here --
+  // so an event page or an artifact manifest that fails to load is reported as
+  // an error beside the new snapshot, never by discarding it and leaving the
+  // app showing a run that already ended.
   private async performRefresh(): Promise<Readonly<PipelineState>> {
     const taskId = this.state.snapshot?.task_id;
     if (!taskId) return this.state;
     const run = this.generation;
     try {
-      const [snapshot, page] = await Promise.all([
+      const [status, page] = await Promise.allSettled([
         this.provider.status(taskId),
         this.provider.events(taskId, this.state.events.at(-1)?.cursor ?? 0),
       ]);
       if (run !== this.generation) return this.state;
-      const byCursor = new Map(this.state.events.map((event) => [event.cursor, event]));
-      for (const event of page.events) byCursor.set(event.cursor, event);
-      const events = [...byCursor.values()].sort((left, right) => left.cursor - right.cursor);
-      let artifacts = this.state.artifacts;
-      if (snapshot.state === "completed" && artifacts === null) {
-        artifacts = await this.provider.artifacts(taskId);
+      if (status.status === "rejected") {
+        this.set({ ...this.state, error: asError(status.reason) });
+        return this.state;
       }
-      this.set({ snapshot, events, artifacts, error: null });
+      const snapshot = status.value;
+      let events = this.state.events;
+      if (page.status === "fulfilled") {
+        const byCursor = new Map(this.state.events.map((event) => [event.cursor, event]));
+        for (const event of page.value.events) byCursor.set(event.cursor, event);
+        events = [...byCursor.values()].sort((left, right) => left.cursor - right.cursor);
+      }
+      let artifacts = this.state.artifacts;
+      let error = page.status === "rejected" ? asError(page.reason) : null;
+      if (snapshot.state === "completed" && artifacts === null) {
+        try {
+          artifacts = await this.provider.artifacts(taskId);
+          if (run !== this.generation) return this.state;
+        } catch (value) {
+          artifacts = null;
+          error = asError(value);
+        }
+      }
+      this.set({ snapshot, events, artifacts, error });
     } catch (value) {
-      const error = value instanceof Error ? value : new Error(String(value));
-      this.set({ ...this.state, error });
+      this.set({ ...this.state, error: asError(value) });
     }
     return this.state;
   }
@@ -102,6 +125,18 @@ export class PipelineController {
     const taskId = this.state.snapshot?.task_id;
     if (!taskId) return null;
     const snapshot = await this.provider.resume(taskId);
+    this.generation += 1;
+    this.set({ ...this.state, snapshot, error: null });
+    return snapshot;
+  }
+
+  // Resume and retry differ in which states they accept: a task interrupted by
+  // a shutdown resumes, one the user cancelled or that failed retries. The
+  // engine reuses its checkpoints either way, so neither restarts from zero.
+  async retry(): Promise<TaskSnapshot | null> {
+    const taskId = this.state.snapshot?.task_id;
+    if (!taskId) return null;
+    const snapshot = await this.provider.retry(taskId);
     this.generation += 1;
     this.set({ ...this.state, snapshot, error: null });
     return snapshot;

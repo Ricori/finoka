@@ -26,6 +26,9 @@
 .option-cards.two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .option-cards button { display: grid; gap: 5px; border: 1px solid var(--line); border-radius: 11px; padding: 12px; background: color-mix(in srgb, var(--bg) 66%, var(--panel)); color: var(--text); cursor: pointer; text-align: left; }
 .option-cards button.selected { border-color: var(--accent-border); box-shadow: inset 0 0 0 1px var(--accent-line); background: var(--accent-dim); }
+.option-cards button.unavailable { cursor: not-allowed; opacity: .5; }
+.option-unavailable { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 9px 2px 0; color: var(--faint); font-size: 11px; line-height: 1.5; }
+.option-unavailable button { flex: 0 0 auto; border: 0; padding: 2px 0; background: transparent; color: var(--accent); cursor: pointer; }
 .option-cards strong { font-size: 12px; }
 .option-cards small { color: var(--mut); font-size: 11px; line-height: 1.45; }
 .form-grid, .prompt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

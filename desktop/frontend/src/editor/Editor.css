@@ -4,8 +4,11 @@
        · 暗色「星夜」：深蓝打底、瞳蓝做强调色，与主页暗色一致
        强调蓝与 ja 轨道蓝同族，靠亮度和选中描边+辉光区分；
        · 亮色「白丝带」：暖白打底，金发金做强调色，加深保证对比，ja/zh 同步加深。
-       编辑器单独保存主题偏好，并由窗口启动参数在首帧同步。 */
-.professional-editor {
+       编辑器单独保存主题偏好，并由窗口启动参数在首帧同步。
+       变量挂在文档根上（而不是 .professional-editor），窗口控件这类直接 append 到
+       body 的浮层才能拿到同一套配色；.light 同时打在 html 和 body 上，两个都写，
+       根元素的 color-scheme 才会跟着切。 */
+:root {
       color-scheme: dark;
       --bg: #171b2a;
       --panel: #1e2333;
@@ -36,7 +39,7 @@
       --font-mono: "Cascadia Code", Consolas, "SF Mono", ui-monospace, monospace;
     }
 
-    body.light .professional-editor {
+    :root.light, body.light {
       color-scheme: light;
       --bg: #f7f5ef;
       --panel: #fffdf8;
@@ -2003,6 +2006,9 @@ html.wails-mac .professional-editor .topbar {
 #wails-window-controls button:active { background: color-mix(in srgb, currentColor 14%, transparent); }
 #wails-window-controls .wails-close:hover { background: #c42b1c; color: #fff; }
 #wails-window-controls .wails-close:active { background: #a62014; }
+/* 浅色标题栏是暖白，9% 的正文色几乎看不出 hover；关闭键另有红底，排除在外。 */
+body.light #wails-window-controls button:not(.wails-close):hover { background: color-mix(in srgb, var(--text) 12%, transparent); }
+body.light #wails-window-controls button:not(.wails-close):active { background: color-mix(in srgb, var(--text) 20%, transparent); }
 #wails-window-controls span { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-size: 10px; font-weight: 400; line-height: 1; }
 #wails-window-controls .wails-min { --wails-non-client-region: minimize; }
 #wails-window-controls .wails-max { --wails-non-client-region: maximize; }

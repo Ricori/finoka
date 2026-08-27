@@ -15,3 +15,4 @@ desktop/.tools/
 desktop/wails_windows_*.syso
 desktop/internal/app/bundled/finoka/*
 !desktop/internal/app/bundled/finoka/.gitkeep
+.temp

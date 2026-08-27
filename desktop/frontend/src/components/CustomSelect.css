@@ -150,7 +150,8 @@
   stroke: var(--accent);
 }
 
-.custom-select-option:disabled {
+.custom-select-option:disabled,
+.custom-select-option.unavailable {
   cursor: not-allowed;
   opacity: .42;
 }

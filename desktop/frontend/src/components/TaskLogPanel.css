@@ -1,0 +1,19 @@
+.task-log-panel { position: relative; display: grid; gap: 8px; border: 1px solid var(--line-soft); border-radius: 11px; padding: 10px 11px; background: var(--raised); }
+.task-log-heading { display: flex; align-items: center; gap: 8px; }
+.task-log-heading strong { color: var(--text); font-size: 11px; }
+.task-log-heading small { flex: 1; overflow: hidden; color: var(--faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.task-log-heading button { border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; background: transparent; color: var(--mut); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.task-log-heading button:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
+.task-log-heading button:disabled { cursor: not-allowed; opacity: .45; }
+.task-log-body { max-height: 232px; overflow-y: auto; overscroll-behavior: contain; border-radius: 8px; background: color-mix(in srgb, var(--panel) 70%, transparent); padding: 7px 9px; font-size: 11px; line-height: 1.7; }
+.task-log-line { display: grid; grid-template-columns: 62px 40px minmax(0, 1fr); gap: 8px; margin: 0; color: var(--mut); font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace; }
+.task-log-line time { color: var(--faint); font-variant-numeric: tabular-nums; }
+.task-log-line b { color: var(--faint); font-weight: 500; }
+.task-log-line span { overflow-wrap: anywhere; white-space: pre-wrap; }
+.task-log-warning span, .task-log-warning b { color: var(--warn); }
+.task-log-failed span, .task-log-failed b { color: var(--warn); font-weight: 700; }
+.task-log-completed span, .task-log-completed b { color: var(--ok); }
+.task-log-stage span { color: var(--text); }
+.task-log-empty { margin: 0; color: var(--faint); font-size: 11px; }
+.task-log-error { margin: 0; color: var(--warn); font-size: 11px; }
+.task-log-follow { position: absolute; right: 18px; bottom: 18px; border: 1px solid var(--accent-line); border-radius: 999px; padding: 4px 10px; background: var(--accent-dim); color: var(--accent); font-size: 11px; cursor: pointer; }

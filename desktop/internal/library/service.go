@@ -363,6 +363,50 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit])
 }
 
+// AddPlaceholder records media the library has subtitles for but no file of:
+// a cloud entry transcribed on another machine, adopted here so the document
+// has something to hang on. The entry is deliberately indistinguishable from
+// one whose source went missing -- the card offers 重新定位 and Relink refuses
+// any file whose fingerprint is not this one.
+func (s *Service) AddPlaceholder(title, fingerprint string, duration float64) (Entry, error) {
+	fingerprint = strings.TrimSpace(fingerprint)
+	if fingerprint == "" || len(fingerprint) > 256 {
+		return Entry{}, errors.New("media fingerprint is required")
+	}
+	s.mu.Lock()
+	for _, existing := range s.entries {
+		if existing.Fingerprint == fingerprint {
+			s.mu.Unlock()
+			return existing, nil
+		}
+	}
+	id, err := randomID()
+	if err != nil {
+		s.mu.Unlock()
+		return Entry{}, err
+	}
+	now := time.Now().UnixMilli()
+	entry := Entry{
+		ID: id, Title: strings.TrimSpace(title), Duration: max(duration, 0),
+		Fingerprint: fingerprint, AddedAt: now, LastAccess: now,
+	}
+	if entry.Title == "" {
+		entry.Title = id
+	}
+	s.entries = append([]Entry{entry}, s.entries...)
+	if err := s.saveLocked(); err != nil {
+		s.entries = s.entries[1:]
+		s.mu.Unlock()
+		return Entry{}, err
+	}
+	s.mu.Unlock()
+	// No change event: the caller projects a document onto this entry and then
+	// refreshes. Announcing the bare placeholder here publishes a snapshot
+	// taken before the subtitles exist, and if it lands after that refresh the
+	// card drops back to "no document" with nothing left to correct it.
+	return entry, nil
+}
+
 func (s *Service) importOne(path string) (Entry, bool, error) {
 	if strings.TrimSpace(path) == "" {
 		return Entry{}, false, errors.New("media path is empty")
@@ -397,11 +441,36 @@ func (s *Service) importOne(path string) (Entry, bool, error) {
 	}
 
 	s.mu.Lock()
-	for _, existing := range s.entries {
-		if existing.Fingerprint == fingerprint {
-			s.mu.Unlock()
-			return existing, false, nil
+	for index, existing := range s.entries {
+		if existing.Fingerprint != fingerprint {
+			continue
 		}
+		// A placeholder added for cloud-only subtitles carries the fingerprint
+		// and nothing else. Importing the video it belongs to has to fill it
+		// in; returning the match unchanged left the card reporting a missing
+		// source right after the user pointed at the file.
+		if !fileExists(existing.SourcePath) {
+			previous := s.entries[index]
+			s.entries[index].SourcePath = absolute
+			s.entries[index].Size = stat.Size()
+			s.entries[index].Duration = metadata.Duration
+			s.entries[index].Width, s.entries[index].Height = metadata.Width, metadata.Height
+			s.entries[index].LastAccess = time.Now().UnixMilli()
+			if err := s.saveLocked(); err != nil {
+				s.entries[index] = previous
+				s.mu.Unlock()
+				return Entry{}, false, err
+			}
+			attached := s.entries[index]
+			s.mu.Unlock()
+			if err := s.thumbnailer.Generate(context.Background(), absolute, s.thumbnailPath(attached.ID), metadata.Duration); err == nil {
+				attached.ThumbnailAvailable = true
+			}
+			attached.Available = true
+			return attached, false, nil
+		}
+		s.mu.Unlock()
+		return existing, false, nil
 	}
 	id, err := randomID()
 	if err != nil {

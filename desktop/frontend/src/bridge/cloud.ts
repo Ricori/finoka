@@ -14,6 +14,9 @@ export const cloudAccount = {
     return (await CloudService.Library()) ?? [];
   },
   deleteLibraryEntry: CloudService.DeleteLibraryEntry,
+  thumbnail: CloudService.ThumbnailDataURL,
+  adoptLibraryEntry: CloudService.AdoptLibraryEntry,
+  adoptCloudEntry: CloudService.AdoptCloudEntry,
   syncLocalTask: CloudService.SyncLocalTask,
   capabilities: CloudService.Capabilities,
   listTasks: CloudService.ListTasks,

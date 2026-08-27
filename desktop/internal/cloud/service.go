@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -27,8 +28,9 @@ import (
 )
 
 const (
-	maxResponseBytes = 16 << 20
-	maxArtifactBytes = 32 << 20
+	maxResponseBytes  = 16 << 20
+	maxArtifactBytes  = 32 << 20
+	maxThumbnailBytes = 5 << 20
 )
 
 var validTaskID = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -43,6 +45,20 @@ type providerCaller interface {
 
 type mediaResolver interface {
 	ResolveMedia(string) (path, title, fingerprint string, duration float64, err error)
+	ThumbnailDataURL(string) (string, error)
+	AddPlaceholder(title, fingerprint string, duration float64) (library.Entry, error)
+}
+
+// mediaTarget is the local media a projection writes its document for. Only
+// localID is required: a cloud-only adoption has no file yet, and the empty
+// path simply means the editor opens without a player until the video is
+// relinked.
+type mediaTarget struct {
+	localID     string
+	path        string
+	title       string
+	fingerprint string
+	duration    float64
 }
 
 type Session struct {
@@ -60,17 +76,21 @@ type Session struct {
 }
 
 type Entry struct {
-	ID           string  `json:"id"`
-	Title        string  `json:"title"`
-	Fingerprint  string  `json:"fingerprint"`
-	Duration     float64 `json:"duration"`
-	Status       string  `json:"status"`
-	Source       string  `json:"source"`
-	EngineCommit string  `json:"engineCommit,omitempty"`
-	CreatedAt    string  `json:"createdAt"`
-	UpdatedAt    string  `json:"updatedAt"`
-	OwnerID      string  `json:"ownerId,omitempty"`
-	OwnerName    string  `json:"ownerName,omitempty"`
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Fingerprint string  `json:"fingerprint"`
+	Duration    float64 `json:"duration"`
+	Status      string  `json:"status"`
+	Source      string  `json:"source"`
+	// Reported by whichever desktop started the task, not probed by the
+	// backend. False for entries synced from a local run: those never went
+	// through an upload, so the bucket has no frame for them.
+	ThumbnailAvailable bool   `json:"thumbnailAvailable,omitempty"`
+	EngineCommit       string `json:"engineCommit,omitempty"`
+	CreatedAt          string `json:"createdAt"`
+	UpdatedAt          string `json:"updatedAt"`
+	OwnerID            string `json:"ownerId,omitempty"`
+	OwnerName          string `json:"ownerName,omitempty"`
 }
 
 type AdminKey struct {
@@ -134,6 +154,7 @@ type Service struct {
 	configPath string
 	linksPath  string
 	root       string
+	thumbRoot  string
 	tasksRoot  string
 	provider   providerCaller
 	media      mediaResolver
@@ -156,6 +177,7 @@ func New(dataDirectory string, provider providerCaller, resolvers ...mediaResolv
 		configPath: filepath.Join(root, "cloud-session.json"),
 		linksPath:  filepath.Join(root, "cloud-tasks.json"),
 		root:       root,
+		thumbRoot:  filepath.Join(root, "cloud-thumbnails"),
 		tasksRoot:  filepath.Join(root, "tasks"),
 		provider:   provider,
 		client:     &http.Client{Timeout: 30 * time.Second},
@@ -209,9 +231,10 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 		return nil, err
 	}
 	var initialized struct {
-		ObjectID    string `json:"objectId"`
-		UploadURL   string `json:"uploadUrl"`
-		ContentType string `json:"contentType"`
+		ObjectID       string `json:"objectId"`
+		UploadURL      string `json:"uploadUrl"`
+		ContentType    string `json:"contentType"`
+		ThumbUploadURL string `json:"thumbUploadUrl"`
 	}
 	if err := s.authenticatedDo(context.Background(), http.MethodPost, "/v1/uploads/init", map[string]any{"filename": filepath.Base(path) + ".m4a", "bytes": stat.Size()}, &initialized); err != nil {
 		return nil, err
@@ -223,6 +246,11 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 		s.abortUpload(initialized.ObjectID)
 		return nil, err
 	}
+	// Best-effort, unlike the audio: a cover is decoration, and a source with
+	// no video stream or a missing ffmpeg legitimately has none. The declared
+	// flag below is what stops the library from later asking the backend for a
+	// frame that was never uploaded.
+	thumbnailUploaded := s.putThumbnail(context.Background(), initialized.ThumbUploadURL, localID) == nil
 	target := "final-srt"
 	if value, ok := options["target"].(string); ok && value == "raw-srt" {
 		target = value
@@ -230,7 +258,7 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 	request := map[string]any{
 		"schema":               1,
 		"provider":             "cloud",
-		"source":               map[string]any{"kind": "uploaded_audio", "object_id": initialized.ObjectID, "title": title, "fingerprint": fingerprint, "duration": duration},
+		"source":               map[string]any{"kind": "uploaded_audio", "object_id": initialized.ObjectID, "title": title, "fingerprint": fingerprint, "duration": duration, "thumbnail": thumbnailUploaded},
 		"target":               target,
 		"language":             stringOption(options, "language", "ja"),
 		"device":               "cuda",
@@ -332,13 +360,122 @@ func (s *Service) TaskArtifacts(taskID string) (map[string]any, error) {
 	s.mu.RLock()
 	link, exists := s.links[taskID]
 	s.mu.RUnlock()
-	if !exists || s.media == nil {
+	if !exists {
 		return nil, errors.New("cloud task has no local media link")
 	}
-	path, title, fingerprint, duration, err := s.media.ResolveMedia(link.LocalID)
+	target, err := s.resolveTarget(link.LocalID)
 	if err != nil {
 		return nil, err
 	}
+	return s.projectRemoteArtifacts(taskID, target)
+}
+
+func (s *Service) resolveTarget(localID string) (mediaTarget, error) {
+	if s.media == nil {
+		return mediaTarget{}, errors.New("media library is unavailable")
+	}
+	path, title, fingerprint, duration, err := s.media.ResolveMedia(localID)
+	if err != nil {
+		return mediaTarget{}, err
+	}
+	return mediaTarget{localID: localID, path: path, title: title, fingerprint: fingerprint, duration: duration}, nil
+}
+
+// AdoptLibraryEntry projects a finished cloud entry onto local media that this
+// installation never ran the task for -- the subtitles were produced on another
+// machine, or before a reinstall, and the video has only just been imported or
+// relinked here. Without it the card correctly reports the cloud copy while
+// still offering to transcribe the media all over again.
+func (s *Service) AdoptLibraryEntry(videoID, localID string) error {
+	if !validCloudTaskID.MatchString(videoID) {
+		return errors.New("invalid cloud library entry id")
+	}
+	if !validLocalMediaID.MatchString(localID) {
+		return errors.New("invalid media id")
+	}
+	if s.media == nil {
+		return errors.New("media library is unavailable")
+	}
+	target, err := s.resolveTarget(localID)
+	if err != nil {
+		return err
+	}
+	entry, err := s.finishedLibraryEntry(videoID)
+	if err != nil {
+		return err
+	}
+	// The identity check is the whole safety of this call: projecting one
+	// video's subtitles onto another would silently overwrite the local
+	// document with text that belongs to something else.
+	if entry.Fingerprint == "" || entry.Fingerprint != target.fingerprint {
+		return errors.New("cloud entry belongs to different media")
+	}
+	return s.adopt(entry, target)
+}
+
+// AdoptCloudEntry makes a finished cloud entry editable on a machine that does
+// not have the video at all. The subtitles are the deliverable; the media is
+// only needed to play them back, so the library records a placeholder for the
+// fingerprint and the document hangs on that. Importing or relinking the video
+// later fills the same entry in -- the fingerprint has to match, so the pairing
+// cannot drift. Returns the local media id to open.
+func (s *Service) AdoptCloudEntry(videoID string) (string, error) {
+	if !validCloudTaskID.MatchString(videoID) {
+		return "", errors.New("invalid cloud library entry id")
+	}
+	if s.media == nil {
+		return "", errors.New("media library is unavailable")
+	}
+	entry, err := s.finishedLibraryEntry(videoID)
+	if err != nil {
+		return "", err
+	}
+	if entry.Fingerprint == "" {
+		return "", errors.New("cloud entry has no media fingerprint")
+	}
+	placeholder, err := s.media.AddPlaceholder(entry.Title, entry.Fingerprint, entry.Duration)
+	if err != nil {
+		return "", err
+	}
+	target := mediaTarget{localID: placeholder.ID, path: placeholder.SourcePath, title: placeholder.Title, fingerprint: placeholder.Fingerprint, duration: placeholder.Duration}
+	if err := s.adopt(entry, target); err != nil {
+		return "", err
+	}
+	return placeholder.ID, nil
+}
+
+func (s *Service) adopt(entry Entry, target mediaTarget) error {
+	if _, err := s.projectRemoteArtifacts(entry.ID, target); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.links[entry.ID] = taskLink{LocalID: target.localID}
+	err := s.saveLinksLocked()
+	s.mu.Unlock()
+	return err
+}
+
+func (s *Service) finishedLibraryEntry(videoID string) (Entry, error) {
+	remote, err := s.Library()
+	if err != nil {
+		return Entry{}, err
+	}
+	for _, entry := range remote {
+		if entry.ID != videoID {
+			continue
+		}
+		if entry.Status != "completed" {
+			return Entry{}, errors.New("cloud entry has no finished subtitles")
+		}
+		return entry, nil
+	}
+	return Entry{}, errors.New("cloud library has no such entry")
+}
+
+// projectRemoteArtifacts downloads one finished cloud task's subtitles, checks
+// every file against the manifest digest, keeps a verified copy under the task
+// root and hands the set to the local provider as a document for the target.
+func (s *Service) projectRemoteArtifacts(taskID string, target mediaTarget) (map[string]any, error) {
 	var remote remoteArtifactManifest
 	if err := s.authenticatedDo(context.Background(), http.MethodGet, "/v1/tasks/"+taskID+"/artifacts", nil, &remote); err != nil {
 		return nil, err
@@ -395,7 +532,7 @@ func (s *Service) TaskArtifacts(taskID string) (map[string]any, error) {
 	if len(contents) == 0 {
 		return nil, errors.New("cloud task returned no subtitle artifacts")
 	}
-	projection := map[string]any{"video_id": link.LocalID, "task_id": taskID, "engine_commit": remote.EngineCommit, "title": title, "fingerprint": fingerprint, "duration": duration, "source_path": path, "artifacts": contents}
+	projection := map[string]any{"video_id": target.localID, "task_id": taskID, "engine_commit": remote.EngineCommit, "title": target.title, "fingerprint": target.fingerprint, "duration": target.duration, "source_path": target.path, "artifacts": contents}
 	var document map[string]any
 	if err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/documents/project", projection, &document); err != nil {
 		return nil, err
@@ -511,7 +648,11 @@ func (s *Service) DeleteLibraryEntry(identifier string) error {
 	if !validCloudTaskID.MatchString(identifier) {
 		return errors.New("invalid cloud library entry id")
 	}
-	return s.authenticatedDo(context.Background(), http.MethodDelete, "/v1/library/"+identifier, nil, nil)
+	if err := s.authenticatedDo(context.Background(), http.MethodDelete, "/v1/library/"+identifier, nil, nil); err != nil {
+		return err
+	}
+	_ = os.Remove(filepath.Join(s.thumbRoot, identifier+".jpg"))
+	return nil
 }
 
 func (s *Service) AdminKeys() ([]AdminKey, error) {
@@ -710,6 +851,18 @@ func windowsPathFromFileURI(path string) string {
 	return path
 }
 
+func validUploadTarget(uploadURL string) error {
+	parsed, err := url.Parse(uploadURL)
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return errors.New("cloud returned an invalid upload URL")
+	}
+	loopback := parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "localhost" || parsed.Hostname() == "::1"
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && loopback) {
+		return errors.New("upload URL must use HTTPS")
+	}
+	return nil
+}
+
 func (s *Service) authenticatedDo(ctx context.Context, method, path string, body, result any) error {
 	s.mu.RLock()
 	session := s.session
@@ -769,13 +922,8 @@ func (s *Service) do(ctx context.Context, session storedSession, method, path st
 }
 
 func (s *Service) putAudio(ctx context.Context, uploadURL, contentType, path string, size int64) error {
-	parsed, err := url.Parse(uploadURL)
-	if err != nil || parsed.Host == "" || parsed.User != nil {
-		return errors.New("cloud returned an invalid upload URL")
-	}
-	loopback := parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "localhost" || parsed.Hostname() == "::1"
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && loopback) {
-		return errors.New("upload URL must use HTTPS")
+	if err := validUploadTarget(uploadURL); err != nil {
+		return err
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -801,6 +949,116 @@ func (s *Service) putAudio(ctx context.Context, uploadURL, contentType, path str
 		return fmt.Errorf("upload cloud audio: HTTP %d", response.StatusCode)
 	}
 	return nil
+}
+
+// putThumbnail sends the frame the local library already drew for this media
+// to the cover slot beside the freshly uploaded audio. Callers treat every
+// failure as "no cover", so nothing here is worth retrying.
+func (s *Service) putThumbnail(ctx context.Context, uploadURL, localID string) error {
+	if uploadURL == "" || s.media == nil {
+		return errors.New("cloud backend offers no thumbnail slot")
+	}
+	if err := validUploadTarget(uploadURL); err != nil {
+		return err
+	}
+	dataURL, err := s.media.ThumbnailDataURL(localID)
+	if err != nil {
+		return err
+	}
+	image, err := decodeJPEGDataURL(dataURL)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, bytes.NewReader(image))
+	if err != nil {
+		return err
+	}
+	request.ContentLength = int64(len(image))
+	request.Header.Set("Content-Type", "image/jpeg")
+	response, err := s.upload.Do(request)
+	if err != nil {
+		return fmt.Errorf("upload cloud thumbnail: %w", err)
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("upload cloud thumbnail: HTTP %d", response.StatusCode)
+	}
+	return nil
+}
+
+// ThumbnailDataURL returns the cover of a cloud library entry, mirroring the
+// local library accessor of the same name so the renderer treats both alike.
+// The bytes are cached on disk: a cover never changes for a given upload, and
+// the cloud library is re-read on every refresh.
+func (s *Service) ThumbnailDataURL(videoID string) (string, error) {
+	if !validCloudTaskID.MatchString(videoID) {
+		return "", errors.New("invalid cloud library entry id")
+	}
+	cached := filepath.Join(s.thumbRoot, videoID+".jpg")
+	if data, err := os.ReadFile(cached); err == nil && len(data) > 0 && len(data) <= maxThumbnailBytes {
+		return jpegDataURL(data), nil
+	}
+	data, err := s.authenticatedBytes(context.Background(), "/v1/library/"+videoID+"/thumbnail")
+	if err != nil {
+		return "", err
+	}
+	if len(data) == 0 {
+		return "", errors.New("cloud returned an empty thumbnail")
+	}
+	if err := os.MkdirAll(s.thumbRoot, 0o700); err == nil {
+		_ = os.WriteFile(cached, data, 0o600)
+	}
+	return jpegDataURL(data), nil
+}
+
+func (s *Service) authenticatedBytes(ctx context.Context, path string) ([]byte, error) {
+	s.mu.RLock()
+	session := s.session
+	s.mu.RUnlock()
+	if session.Backend == "" || session.Key == "" {
+		return nil, errors.New("cloud login is required")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, session.Backend+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+session.Key)
+	response, err := s.client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("call cloud backend: %w", err)
+	}
+	defer response.Body.Close()
+	payload, err := io.ReadAll(io.LimitReader(response.Body, maxThumbnailBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > maxThumbnailBytes {
+		return nil, errors.New("cloud thumbnail exceeds size limit")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("cloud HTTP %d", response.StatusCode)
+	}
+	return payload, nil
+}
+
+func jpegDataURL(data []byte) string {
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+func decodeJPEGDataURL(value string) ([]byte, error) {
+	encoded, found := strings.CutPrefix(value, "data:image/jpeg;base64,")
+	if !found {
+		return nil, errors.New("local thumbnail is not a JPEG data URL")
+	}
+	image, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, err
+	}
+	if len(image) == 0 || len(image) > maxThumbnailBytes {
+		return nil, errors.New("local thumbnail is empty or too large")
+	}
+	return image, nil
 }
 
 func (s *Service) authenticatedText(ctx context.Context, endpoint string) ([]byte, error) {

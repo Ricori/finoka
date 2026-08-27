@@ -40,6 +40,8 @@
 .task-row-actions button { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--raised); color: var(--mut); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .task-row-actions button:hover { border-color: var(--accent-border); color: var(--text); }
 .task-row-actions button.resume { border-color: var(--accent-line); background: var(--accent-dim); color: var(--accent); }
+.task-row-actions button.task-log-toggle.open { border-color: var(--accent-border); background: var(--accent-dim); color: var(--accent); }
+.task-row > .task-log-panel { grid-column: 1 / -1; }
 .task-history .task-empty { display: grid; justify-items: center; align-content: center; min-height: 360px; padding: 42px; text-align: center; }
 .task-history .task-empty h2 { margin: 20px 0 8px; font-size: 18px; }
 .task-history .task-empty p { max-width: 440px; margin: 0; color: var(--mut); font-size: 12px; line-height: 1.7; }

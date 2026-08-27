@@ -58,8 +58,12 @@ export function taskStateLabel(state: TaskSnapshot["state"]): string {
   }[state];
 }
 
-export function taskStageLabel(stage: string): string {
-  return {
+/** Names the stage a task is in. The state matters because a task can end
+    before any stage event arrives -- a worker that dies during startup leaves
+    the stage empty, and the fallback must not tell the user "处理中" right
+    beside a 失败 badge. */
+export function taskStageLabel(stage: string, state?: TaskSnapshot["state"]): string {
+  const label = {
     queued: "等待调度",
     starting: "准备运行环境",
     "gpu-queued": "等待语音处理",
@@ -76,7 +80,10 @@ export function taskStageLabel(stage: string): string {
     failed: "处理失败",
     cancelled: "已取消",
     interrupted: "已中断",
-  }[stage] ?? "处理中";
+  }[stage];
+  if (label) return label;
+  if (state === undefined || activeStates.has(state)) return stage ? "处理中" : "准备中";
+  return stage ? taskStateLabel(state) : "未进入处理环节";
 }
 
 const INTERNAL_BLOCK_TIMECODE = /^\d{1,2}:\d{2}(?::\d{2})?$/;

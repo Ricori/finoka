@@ -71,6 +71,52 @@ func TestImportPersistsLocalPathDeduplicatesAndCreatesThumbnail(t *testing.T) {
 	}
 }
 
+// Subtitles adopted from the cloud need somewhere to live before the video is
+// anywhere on this machine. The placeholder is an ordinary entry with no source
+// file, and importing that file later has to fill the same entry in rather than
+// bounce off the fingerprint match.
+func TestPlaceholderRecordsMediaWithoutAFileAndImportAttachesIt(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.mp4")
+	if err := os.WriteFile(source, []byte("media-fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools := fixtureTools{metadata: Metadata{Duration: 42.5, Width: 1920, Height: 1080, HasVideo: true, HasAudio: true}}
+	service, err := newServiceWithTools(filepath.Join(root, "data"), tools, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, err := os.Stat(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := fileFingerprint(source, stat.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	placeholder, err := service.AddPlaceholder("demo", fingerprint, 42.5)
+	if err != nil || !validID(placeholder.ID) {
+		t.Fatalf("placeholder = %#v, %v", placeholder, err)
+	}
+	listed := service.List()
+	if len(listed) != 1 || listed[0].Available || listed[0].SourcePath != "" {
+		t.Fatalf("listed placeholder = %#v", listed)
+	}
+	if again, err := service.AddPlaceholder("demo", fingerprint, 42.5); err != nil || again.ID != placeholder.ID {
+		t.Fatalf("second placeholder = %#v, %v", again, err)
+	}
+
+	result := service.Import([]string{source})
+	entries := service.List()
+	if len(entries) != 1 || entries[0].ID != placeholder.ID {
+		t.Fatalf("import created a second entry: %#v (%#v)", entries, result)
+	}
+	if !entries[0].Available || entries[0].SourcePath != source || entries[0].Width != 1920 || !entries[0].ThumbnailAvailable {
+		t.Fatalf("attached entry = %#v", entries[0])
+	}
+}
+
 func TestImportRejectsUnsupportedUnreadableAndOverlongMedia(t *testing.T) {
 	root := t.TempDir()
 	textPath := filepath.Join(root, "notes.txt")

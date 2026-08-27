@@ -6,6 +6,8 @@ import { activeStates, recoverableStates } from "../app/types.ts";
 import { Mark } from "../components/Mark.tsx";
 import "./TasksPage.css";
 import { Notice } from "../components/Notice.tsx";
+import { TaskLogPanel } from "../components/TaskLogPanel.tsx";
+import type { TaskLogSource } from "../components/TaskLogPanel.tsx";
 
 interface TasksPageProps {
   tasks: TaskHistoryEntry[];
@@ -13,6 +15,9 @@ interface TasksPageProps {
   activeCount: number;
   message: string;
   pipelineError?: string;
+  /** Only the local provider keeps per-line engine output, so only local rows
+      offer a log toggle; omitting the source hides it everywhere. */
+  logSource?: TaskLogSource;
   onNavigateLibrary: () => void;
   onOpenEditor: (entry: MediaEntry) => void;
   onClearTasks: () => void;
@@ -78,8 +83,14 @@ function TaskActivityText({ snapshot }: { snapshot: TaskHistoryEntry["snapshot"]
 }
 
 export function TasksPage(props: TasksPageProps) {
-  const { tasks, media, activeCount, message, pipelineError, onNavigateLibrary, onOpenEditor, onClearTasks, onTaskAction, onDismissMessage } = props;
+  const { tasks, media, activeCount, message, pipelineError, logSource, onNavigateLibrary, onOpenEditor, onClearTasks, onTaskAction, onDismissMessage } = props;
   const clearableCount = tasks.filter((item) => !activeStates.has(item.snapshot.state)).length;
+  const [openLogs, setOpenLogs] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleLog = (taskId: string) => setOpenLogs((current) => {
+    const next = new Set(current);
+    if (!next.delete(taskId)) next.add(taskId);
+    return next;
+  });
   return (
     <section className="task-history">
       <header className="task-history-header">
@@ -112,21 +123,36 @@ export function TasksPage(props: TasksPageProps) {
           {tasks.map((item) => {
             const snapshot = item.snapshot;
             const localEntry = media.find((entry) => entry.id === item.mediaId);
+            const logsAvailable = logSource !== undefined && item.provider === "local";
+            const logsOpen = logsAvailable && openLogs.has(item.taskId);
             return (
               <article className={`task-row task-${snapshot.state}`} key={item.taskId}>
                 <div className="task-state-icon" aria-hidden="true">{snapshot.state === "completed" ? "✓" : activeStates.has(snapshot.state) ? "↻" : recoverableStates.has(snapshot.state) ? "!" : "·"}</div>
                 <div className="task-row-copy">
                   <div className="task-row-title"><strong>{item.title}</strong><span className={`task-state task-state-${snapshot.state}`}>{taskStateLabel(snapshot.state)}</span><small>{item.provider === "cloud" ? "☁ 云端" : "本机"}</small></div>
-                  <div className="task-row-meta"><span>{taskStageLabel(snapshot.stage)}</span><code>{item.taskId.slice(0, 12)}</code><time dateTime={snapshot.updated_at}>{formatTaskDate(snapshot.updated_at)}</time></div>
+                  <div className="task-row-meta"><span>{taskStageLabel(snapshot.stage, snapshot.state)}</span><code>{item.taskId.slice(0, 12)}</code><time dateTime={snapshot.updated_at}>{formatTaskDate(snapshot.updated_at)}</time></div>
                   <AnimatedTaskProgress snapshot={snapshot} />
                   <TaskActivityText snapshot={snapshot} />
                 </div>
                 <div className="task-row-actions">
+                  {logsAvailable && (
+                    <button
+                      aria-expanded={logsOpen}
+                      className={logsOpen ? "task-log-toggle open" : "task-log-toggle"}
+                      onClick={() => toggleLog(item.taskId)}
+                      title="查看本机引擎的逐行输出"
+                    >
+                      日志 {logsOpen ? "▴" : "▾"}
+                    </button>
+                  )}
                   {activeStates.has(snapshot.state) && <button onClick={() => void onTaskAction(item, "cancel")}>取消</button>}
                   {recoverableStates.has(snapshot.state) && <button className="resume" onClick={() => void onTaskAction(item, "resume")}>继续</button>}
                   {snapshot.state === "completed" && localEntry?.documentAvailable && <button className="resume" onClick={() => onOpenEditor(localEntry)}>编辑字幕</button>}
                   {snapshot.state === "completed" && !localEntry?.documentAvailable && <button onClick={onNavigateLibrary}>查看媒体</button>}
                 </div>
+                {logsOpen && logSource !== undefined && (
+                  <TaskLogPanel active={activeStates.has(snapshot.state)} source={logSource} taskId={item.taskId} />
+                )}
               </article>
             );
           })}

@@ -13,7 +13,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from finoka.local_provider import LocalProvider, ProviderError, runtime_report
+from finoka.local_provider import (
+    LocalProvider,
+    ProviderError,
+    _clear_legacy_separator_decode_probes,
+    runtime_report,
+)
 from finoka.sidecar import SidecarServer, session_authorized
 
 
@@ -43,20 +48,30 @@ class LocalProviderTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.source = self.root / "video.mp4"
         self.source.write_bytes(b"fixture")
+        self.providers: list[LocalProvider] = []
 
     def tearDown(self) -> None:
+        # A test that fails part way never reaches its own `provider.shutdown()`,
+        # and its worker threads keep writing under the temp root while cleanup
+        # deletes it -- which raised `[WinError 145] directory not empty` from
+        # tearDown and buried the assertion that actually failed. Shutting the
+        # providers down here is idempotent, so tests keep their explicit call.
+        for provider in self.providers:
+            provider.shutdown()
         self.temp.cleanup()
 
     def command(self, _task_id: str, task_dir: Path) -> list[str]:
         return [sys.executable, str(ROOT / "tests/fake_provider_worker.py"), "--task-dir", str(task_dir)]
 
     def provider(self) -> LocalProvider:
-        return LocalProvider(
+        instance = LocalProvider(
             self.root / "tasks",
             ROOT / "third_party/finesub",
             worker_command=self.command,
             issues=[],
         )
+        self.providers.append(instance)
+        return instance
 
     def request(self, mode: str = "success") -> dict:
         return {
@@ -128,6 +143,39 @@ class LocalProviderTests(unittest.TestCase):
         task = provider.start(self.request("fail"))
         failed = wait_state(provider, task["task_id"], {"failed"})
         self.assertEqual(failed["error"]["code"], "missing_llm_key")
+
+    def test_undecodable_worker_output_does_not_fail_the_task(self) -> None:
+        provider = self.provider()
+        task = provider.start(self.request("gbk"))
+        wait_state(provider, task["task_id"], {"completed"})
+        logs = [event for event in provider.events(task["task_id"])["events"] if event["type"] == "log"]
+        self.assertTrue(logs, "the undecodable console line should survive as a log event")
+        provider.shutdown()
+
+    def test_worker_keeps_utf8_protocol_without_forcing_utf8_locale(self) -> None:
+        provider = self.provider()
+        task = provider.start(self.request("encoding-environment"))
+        wait_state(provider, task["task_id"], {"completed"})
+        logs = [event for event in provider.events(task["task_id"])["events"] if event["type"] == "log"]
+        self.assertEqual(logs[0]["payload"]["python_utf8"], "0")
+        self.assertEqual(logs[0]["payload"]["python_io_encoding"], "utf-8")
+        provider.shutdown()
+
+    def test_old_separator_unicode_probe_is_retried_once(self) -> None:
+        accel = self.root / "models" / "audio-separator" / "accel"
+        decode_probe = accel / "decode" / "probe.json"
+        compiler_probe = accel / "compiler" / "probe.json"
+        for probe, reason in (
+            (decode_probe, "InductorError: UnicodeDecodeError: 'utf-8' codec cannot decode byte 0xd3"),
+            (compiler_probe, "CppCompileError: compiler returned exit status 2"),
+        ):
+            probe.parent.mkdir(parents=True)
+            probe.write_text(json.dumps({"aoti": "unavailable", "reason": reason}), encoding="utf-8")
+
+        _clear_legacy_separator_decode_probes({"FINESUB_MODEL_DIR": str(self.root / "models")})
+
+        self.assertFalse(decode_probe.exists())
+        self.assertTrue(compiler_probe.exists())
 
     def test_cancel_and_resume_interrupted_task(self) -> None:
         provider = self.provider()

@@ -73,6 +73,8 @@
 .media-card-actions button:not(:disabled):active { transform: translateY(1px); }
 .media-card-actions .primary-card-action { border: 0; background: var(--grad); color: var(--on-grad); font-weight: 700; box-shadow: 0 5px 14px var(--accent-dim); }
 .media-card-actions .secondary-card-action { border: 1px solid var(--accent-line); background: var(--accent-dim); color: var(--accent); }
+.media-card-actions .cancel-card-action { border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn) 9%, transparent); color: var(--warn); font-weight: 700; }
+.media-card-actions .cancel-card-action:not(:disabled):hover { background: color-mix(in srgb, var(--warn) 16%, transparent); }
 .media-card-actions button:disabled { filter: saturate(.4); opacity: .45; cursor: not-allowed; }
 .missing-media { border-color: color-mix(in srgb, var(--warn) 42%, transparent); }
 .cloud-card { border-color: color-mix(in srgb, var(--info) 28%, var(--line-soft)); }

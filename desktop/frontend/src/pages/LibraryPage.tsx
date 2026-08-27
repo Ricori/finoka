@@ -12,6 +12,7 @@ interface LibraryPageProps {
   items: LibraryItem[];
   visibleItems: LibraryItem[];
   thumbnails: Record<string, string>;
+  cloudThumbnails: Record<string, string>;
   remoteByFingerprint: Map<string, CloudEntry>;
   filter: LibraryFilter;
   filterCounts: Record<LibraryFilter, number>;
@@ -21,6 +22,8 @@ interface LibraryPageProps {
   message: string;
   messageTone: NoticeTone;
   localRunningID?: string;
+  adoptingMedia: ReadonlySet<string>;
+  adoptingCloud: ReadonlySet<string>;
   runningProgress: number;
   taskActive: boolean;
   syncing: boolean;
@@ -31,15 +34,17 @@ interface LibraryPageProps {
   onImport: () => Promise<void>;
   onOpen: (entry: MediaEntry) => void;
   onStart: (entry: MediaEntry) => Promise<void>;
+  onCancel: () => Promise<void>;
   onRename: (entry: MediaEntry) => void;
   onRemove: (entry: MediaEntry) => void;
+  onEditCloud: (entry: CloudEntry) => Promise<void>;
   onDeleteCloud: (entry: CloudEntry) => void;
   onRelink: (entry: MediaEntry) => Promise<void>;
   onDismissMessage: () => void;
 }
 
 export function LibraryPage(props: LibraryPageProps) {
-  const { items, visibleItems, thumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, messageTone, localRunningID, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onRename, onRemove, onDeleteCloud, onRelink, onDismissMessage } = props;
+  const { items, visibleItems, thumbnails, cloudThumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, messageTone, localRunningID, adoptingMedia, adoptingCloud, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onCancel, onRename, onRemove, onEditCloud, onDeleteCloud, onRelink, onDismissMessage } = props;
   return (
     <section className="library-view">
       <div className="library-toolbar">
@@ -69,8 +74,8 @@ export function LibraryPage(props: LibraryPageProps) {
       ) : (
         <div className={`media-grid ${view === "list" ? "list-view" : ""}`}>
           {visibleItems.map((item) => item.kind === "local" ? (
-            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={thumbnails[item.entry.id]} running={item.entry.id === localRunningID} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive} onOpen={onOpen} onStart={onStart} onRename={onRename} onRemove={onRemove} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
-          ) : <CloudMediaCard key={`cloud:${item.entry.id}`} entry={item.entry} onAssociate={onImport} onDelete={onDeleteCloud} />)}
+            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={thumbnails[item.entry.id]} running={item.entry.id === localRunningID} adopting={adoptingMedia.has(item.entry.id)} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive} onOpen={onOpen} onStart={onStart} onCancel={onCancel} onRename={onRename} onRemove={onRemove} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
+          ) : <CloudMediaCard key={`cloud:${item.entry.id}`} entry={item.entry} thumbnail={cloudThumbnails[item.entry.id]} adopting={adoptingCloud.has(item.entry.id)} onEdit={onEditCloud} onAssociate={onImport} onDelete={onDeleteCloud} />)}
         </div>
       )}
     </section>

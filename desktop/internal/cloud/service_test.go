@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -21,7 +22,8 @@ type fakeProvider struct {
 }
 
 type fakeMedia struct {
-	path string
+	path      string
+	thumbnail string
 }
 
 type fakeCatalog struct {
@@ -38,6 +40,17 @@ func (f fakeMedia) ResolveMedia(id string) (string, string, string, float64, err
 		return "", "", "", 0, os.ErrNotExist
 	}
 	return f.path, "demo.mp4", "fingerprint", 60, nil
+}
+
+func (f fakeMedia) AddPlaceholder(title, fingerprint string, duration float64) (library.Entry, error) {
+	return library.Entry{ID: "loc_cccccccccccc", Title: title, Fingerprint: fingerprint, Duration: duration}, nil
+}
+
+func (f fakeMedia) ThumbnailDataURL(id string) (string, error) {
+	if id != "loc_0123456789ab" || f.thumbnail == "" {
+		return "", os.ErrNotExist
+	}
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString([]byte(f.thumbnail)), nil
 }
 
 type projectingProvider struct {
@@ -426,12 +439,23 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 	const taskID = "vid_0123456789abcdef01234567"
 	const uploadID = "upl_0123456789abcdef0123456789abcdef"
 	uploaded := false
+	var cover []byte
+	declaredThumbnail := false
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		if request.Method == http.MethodPut && request.URL.Path == "/upload" {
 			payload, _ := io.ReadAll(request.Body)
 			uploaded = string(payload) == "audio-fixture"
+			writer.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if request.Method == http.MethodPut && request.URL.Path == "/upload-thumb" {
+			cover, _ = io.ReadAll(request.Body)
+			if request.Header.Get("Content-Type") != "image/jpeg" {
+				http.Error(writer, `{"detail":"cover must be jpeg"}`, http.StatusBadRequest)
+				return
+			}
 			writer.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -445,7 +469,10 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 		case request.URL.Path == "/v1/capabilities":
 			_, _ = writer.Write([]byte(`{"provider":"cloud","adapter_schema":1,"artifact_schema":1}`))
 		case request.URL.Path == "/v1/uploads/init":
-			_, _ = writer.Write([]byte(`{"objectId":"` + uploadID + `","uploadUrl":"` + server.URL + `/upload","contentType":"audio/mp4"}`))
+			_, _ = writer.Write([]byte(`{"objectId":"` + uploadID + `","uploadUrl":"` + server.URL + `/upload","contentType":"audio/mp4","thumbUploadUrl":"` + server.URL + `/upload-thumb"}`))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/library/"+taskID+"/thumbnail":
+			writer.Header().Set("Content-Type", "image/jpeg")
+			_, _ = writer.Write(cover)
 		case request.Method == http.MethodPost && request.URL.Path == "/v1/tasks":
 			var body map[string]any
 			_ = json.NewDecoder(request.Body).Decode(&body)
@@ -455,6 +482,7 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 				http.Error(writer, `{"detail":"invalid source"}`, http.StatusBadRequest)
 				return
 			}
+			declaredThumbnail = source["thumbnail"] == true
 			if correction["media"] != "text" || correction["retrieval"] != "none" {
 				http.Error(writer, `{"detail":"cloud correction must be text-only without retrieval"}`, http.StatusBadRequest)
 				return
@@ -478,7 +506,7 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 	defer server.Close()
 
 	projector := &projectingProvider{}
-	service, err := New(root, projector, fakeMedia{path: source})
+	service, err := New(root, projector, fakeMedia{path: source, thumbnail: "cover-fixture"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,6 +523,19 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 	if err != nil || snapshot["task_id"] != taskID || !uploaded {
 		t.Fatalf("start = %#v, uploaded=%v, err=%v", snapshot, uploaded, err)
 	}
+	// The cover goes up beside the audio, and the task declares it: a library
+	// that trusted the flag without the upload would render a broken image on
+	// every cloud-only card.
+	if string(cover) != "cover-fixture" || !declaredThumbnail {
+		t.Fatalf("cover = %q, declared = %v", cover, declaredThumbnail)
+	}
+	thumbnail, err := service.ThumbnailDataURL(taskID)
+	if err != nil || thumbnail != "data:image/jpeg;base64,"+base64.StdEncoding.EncodeToString([]byte("cover-fixture")) {
+		t.Fatalf("thumbnail = %q, %v", thumbnail, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "cloud-thumbnails", taskID+".jpg")); err != nil || string(data) != "cover-fixture" {
+		t.Fatalf("cached cover = %q, %v", data, err)
+	}
 	if status, err := service.TaskStatus(taskID); err != nil || status["state"] != "completed" {
 		t.Fatalf("status = %#v, %v", status, err)
 	}
@@ -510,6 +551,81 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 	}
 	if projector.projected == nil || projector.projected["video_id"] != "loc_0123456789ab" {
 		t.Fatalf("projection = %#v", projector.projected)
+	}
+}
+
+// Media transcribed on another machine reaches this one as a fingerprint match
+// and nothing more: the card merges, reports the cloud copy, and still offers
+// to transcribe the video again because no local document exists. Adoption is
+// what turns that match into an editable document.
+func TestAdoptLibraryEntryProjectsSubtitlesTranscribedElsewhere(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "video.mp4")
+	if err := os.WriteFile(source, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const taskID = "vid_0123456789abcdef01234567"
+	const foreignID = "vid_ffffffffffffffffffffffff"
+	const subtitles = `{"segments":[{"id":1,"start":0,"end":1,"text":"fixture"}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.URL.Path == "/v1/session":
+			_, _ = writer.Write([]byte(`{"authenticated":true,"remaining":2,"running":0}`))
+		case request.URL.Path == "/v1/library":
+			_, _ = writer.Write([]byte(`{"videos":[` +
+				`{"id":"` + taskID + `","title":"demo","fingerprint":"fingerprint","duration":60,"status":"completed","source":"local_sync"},` +
+				`{"id":"` + foreignID + `","title":"other","fingerprint":"other","duration":60,"status":"completed","source":"local_sync"}]}`))
+		case request.URL.Path == "/v1/tasks/"+taskID+"/artifacts":
+			_, _ = writer.Write([]byte(`{"schema":1,"task_id":"` + taskID + `","engine_commit":"commit","artifacts":{"stable_json":{"uri":"/v1/tasks/` + taskID + `/artifacts/stable_json","sha256":"97bfe45dfecd80477bc6cafdd457b5f23045d8715fbdc98f6da175f6f2ec6b4f","bytes":58}}}`))
+		case request.URL.Path == "/v1/tasks/"+taskID+"/artifacts/stable_json":
+			_, _ = writer.Write([]byte(subtitles))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	projector := &projectingProvider{}
+	service, err := New(root, projector, fakeMedia{path: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Login(server.URL, "login-key"); err != nil {
+		t.Fatal(err)
+	}
+	// No StartTask ran here, so there is no task link to resolve the media by.
+	if err := service.AdoptLibraryEntry(taskID, "loc_0123456789ab"); err != nil {
+		t.Fatal(err)
+	}
+	if projector.projected == nil || projector.projected["video_id"] != "loc_0123456789ab" {
+		t.Fatalf("projection = %#v", projector.projected)
+	}
+	if artifacts, ok := projector.projected["artifacts"].(map[string]string); !ok || artifacts["stable_json"] != subtitles {
+		t.Fatalf("projected artifacts = %#v", projector.projected["artifacts"])
+	}
+
+	// Nothing local at all: the subtitles are still the deliverable, so the
+	// library records a placeholder for the fingerprint and the document hangs
+	// on that. The projection carries no source path, which is what leaves the
+	// editor without a player until the video is relinked.
+	projector.projected = nil
+	localID, err := service.AdoptCloudEntry(taskID)
+	if err != nil || localID != "loc_cccccccccccc" {
+		t.Fatalf("adopt cloud-only = %q, %v", localID, err)
+	}
+	if projector.projected["video_id"] != localID || projector.projected["source_path"] != "" {
+		t.Fatalf("cloud-only projection = %#v", projector.projected)
+	}
+	if projector.projected["fingerprint"] != "fingerprint" || projector.projected["title"] != "demo" {
+		t.Fatalf("cloud-only projection metadata = %#v", projector.projected)
+	}
+
+	// A cloud entry for different media must never be projected onto this one:
+	// the local document would silently fill with another video's subtitles.
+	projector.projected = nil
+	if err := service.AdoptLibraryEntry(foreignID, "loc_0123456789ab"); err == nil || projector.projected != nil {
+		t.Fatalf("adopting a foreign fingerprint = %v, projection = %#v", err, projector.projected)
 	}
 }
 

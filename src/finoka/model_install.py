@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 
 EventSink = Callable[[dict[str, Any]], None]
+PIPELINE_MODEL_IDS = ("separator", "whisper", "qwen-referee")
 
 
 def emit_event(event: dict[str, Any]) -> None:
@@ -23,6 +24,67 @@ def emit_event(event: dict[str, Any]) -> None:
     # the parent correctly expects UTF-8, producing replacement characters in
     # an otherwise valid progress event. json.loads restores the Chinese text.
     print(json.dumps(event, ensure_ascii=True, separators=(",", ":")), flush=True)
+
+
+def _cached_manifest_file_present(path: Path, expected) -> bool:
+    """Check a verified Hub cache link without re-hashing gigabytes on every poll."""
+
+    try:
+        if not path.is_file() or path.stat().st_size != expected.size:
+            return False
+        target = path.resolve(strict=True)
+    except OSError:
+        return False
+    # Hugging Face snapshots normally link into a content-addressed blob. If
+    # they do, the blob name gives us the digest check for free. On systems
+    # where symlinks are unavailable the Hub copies files into the snapshot;
+    # those were fully hashed by install_model before this status check.
+    return target.parent.name != "blobs" or target.name == expected.sha256
+
+
+def _fixed_manifest_file_present(path: Path, expected) -> bool:
+    try:
+        return path.is_file() and (not expected.is_verifiable or path.stat().st_size == expected.size)
+    except OSError:
+        return False
+
+
+def missing_managed_models(models_root: Path) -> tuple[str, ...]:
+    """Return missing models using the same managed cache paths Finoka runs.
+
+    The shared FineSub helper may deliberately choose a conventional user HF
+    cache when it finds any repository there. Finoka workers, however, set
+    ``HF_HOME`` to this managed directory explicitly. Looking in a different
+    cache made completed downloads appear missing. We also inspect the pinned
+    snapshot files rather than rejecting a valid model because Xet left an
+    unrelated, uniquely suffixed ``*.incomplete`` file from an older attempt.
+    """
+
+    from finesub_bootstrap.model_manifest import entry_for
+
+    missing: list[str] = []
+    for model_id in PIPELINE_MODEL_IDS:
+        entry = entry_for(model_id)
+        if entry is None:
+            missing.append(model_id)
+            continue
+        if model_id == "separator":
+            directory = models_root / "audio-separator"
+            present = bool(entry.files) and all(
+                _fixed_manifest_file_present(directory / wanted.name, wanted)
+                for wanted in entry.files
+            )
+        else:
+            repository = f"models--{entry.repo.replace('/', '--')}"
+            snapshot = models_root / "huggingface" / "hub" / repository / "snapshots" / entry.revision
+            present = bool(entry.files) and all(
+                _cached_manifest_file_present(snapshot / wanted.name, wanted)
+                for wanted in entry.files
+                if wanted.is_verifiable
+            )
+        if not present:
+            missing.append(model_id)
+    return tuple(missing)
 
 
 class ByteProgressReporter:

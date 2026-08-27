@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -29,6 +30,20 @@ def main() -> int:
     if mode == "fail":
         emit("failed", {"message": "API key is missing"})
         return 1
+    if mode == "gbk":
+        # A native library narrating in the Windows console code page: these
+        # bytes are not valid UTF-8, and the provider must survive them.
+        sys.stdout.flush()
+        sys.stdout.buffer.write("警告：显卡驱动过旧\n".encode("gbk"))
+        sys.stdout.buffer.flush()
+    if mode == "encoding-environment":
+        emit(
+            "log",
+            {
+                "python_utf8": os.environ.get("PYTHONUTF8"),
+                "python_io_encoding": os.environ.get("PYTHONIOENCODING"),
+            },
+        )
     if should_pause:
         time.sleep(30)
     artifact_path = args.task_dir / "fixture-stable.json"
