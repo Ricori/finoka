@@ -11,6 +11,7 @@ import (
 
 	"github.com/Ricori/finoka/desktop/internal/cloud"
 	"github.com/Ricori/finoka/desktop/internal/library"
+	"github.com/Ricori/finoka/desktop/internal/plugins"
 	"github.com/Ricori/finoka/desktop/internal/preferences"
 	"github.com/Ricori/finoka/desktop/internal/provider"
 	"github.com/Ricori/finoka/desktop/internal/selfupdate"
@@ -59,6 +60,10 @@ func Run(assets fs.FS) error {
 	if err != nil {
 		return err
 	}
+	pluginService, err := plugins.New(dataDirectory, libraryService)
+	if err != nil {
+		return err
+	}
 	config, configErr := SidecarConfig()
 	manager := sidecar.New(config)
 	pythonBootstrap := NewPythonBootstrap(dataDirectory, manager)
@@ -92,6 +97,7 @@ func Run(assets fs.FS) error {
 			application.NewService(providerService),
 			application.NewService(libraryService),
 			application.NewService(cloudService),
+			application.NewService(pluginService),
 			application.NewService(preferencesService),
 			application.NewService(windowService),
 			application.NewService(updateService),
@@ -126,6 +132,7 @@ func Run(assets fs.FS) error {
 	homeOptions, deferredState := deferWindowStart(homeOptions)
 	home := applicationInstance.Window.NewWithOptions(homeOptions)
 	windowService.attach(applicationInstance, home)
+	plugins.Attach(pluginService, applicationInstance, home)
 	// A missing or unreachable manifest must not block startup: the shell
 	// simply stays on the current build.
 	if err := selfupdate.Attach(updateService, applicationInstance); err != nil {

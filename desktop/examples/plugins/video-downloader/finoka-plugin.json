@@ -1,0 +1,24 @@
+{
+  "id": "dev.finoka.video-downloader",
+  "name": "YouTube / Twitch 下载器",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "下载公开的 YouTube、Twitch 视频，完成后自动导入 Finoka 媒体库",
+  "publisher": "Finoka Demo",
+  "license": "MIT",
+  "permissions": [
+    "tools.yt-dlp",
+    "media.import"
+  ],
+  "contributes": {
+    "tools": [
+      {
+        "id": "video-download",
+        "title": "视频下载",
+        "icon": "download",
+        "page": "ui/index.html",
+        "order": 100
+      }
+    ]
+  }
+}

@@ -89,6 +89,97 @@ task dev
 
 ---
 
+## 🧩 插件开发
+
+Finoka 插件可以在左侧“工具”菜单中增加独立页面，并通过权限受控的宿主 API 复用媒体库、FFmpeg 和 yt-dlp 等能力。插件可单独安装、启用、停用和卸载。
+
+### 1. 创建最小插件
+
+插件包是一个扩展名为 `.finoka-plugin` 的 ZIP 文件，根目录包含 manifest 和自包含的 HTML 页面：
+
+```text
+hello-tool/
+├── finoka-plugin.json
+└── ui/
+    └── index.html
+```
+
+`finoka-plugin.json`：
+
+```json
+{
+  "id": "com.example.hello-tool",
+  "name": "Hello Tool",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "permissions": ["media.list"],
+  "contributes": {
+    "tools": [
+      {
+        "id": "hello",
+        "title": "示例工具",
+        "page": "ui/index.html",
+        "order": 100
+      }
+    ]
+  }
+}
+```
+
+`ui/index.html` 中通过宿主注入的 `window.finoka.post()` 调用 API：
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+  <body>
+    <button id="load">读取媒体库</button>
+    <pre id="result"></pre>
+    <script>
+      document.querySelector("#load").onclick = () => {
+        window.finoka.post("media.list", {}, "media-1");
+      };
+
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (message?.source !== "finoka-host" || message.method !== "rpc.result") return;
+        if (message.id === "media-1") {
+          document.querySelector("#result").textContent =
+            message.error || JSON.stringify(message.result, null, 2);
+        }
+      });
+    </script>
+  </body>
+</html>
+```
+
+插件页面运行在隔离的 iframe 中，不能直接访问本地文件或 Wails bindings。需要使用的宿主能力必须先在 `permissions` 中声明。
+
+### 2. 打包并安装
+
+在插件目录中执行：
+
+```powershell
+Compress-Archive -Path .\finoka-plugin.json,.\ui -DestinationPath .\hello-tool.zip
+Rename-Item .\hello-tool.zip hello-tool.finoka-plugin
+```
+
+启动 Finoka，在左侧进入“工具 → 插件管理”，选择生成的 `.finoka-plugin` 文件。安装后插件贡献的页面会自动出现在“工具”分组下。
+
+### 3. 完整 Demo：YouTube / Twitch 下载器
+
+[`desktop/examples/plugins/video-downloader`](desktop/examples/plugins/video-downloader) 提供了一个可直接打包安装的完整示例。它演示了：
+
+- 插件自行构造安全的 yt-dlp 参数；
+- 通过 `tools.runYtDLP` 请求 Finoka 执行项目托管的 yt-dlp 与 FFmpeg；
+- 选择视频清晰度、显示下载结果，并在完成后自动导入媒体库；
+- 使用 `tools.yt-dlp` 和 `media.import` 权限隔离高风险能力。
+
+运行 Demo 前，请先在 Finoka“运行环境”页面安装 FFmpeg 和可选工具 yt-dlp。当前示例支持公开的 YouTube 视频、Twitch VOD 和 Twitch Clips，不读取浏览器 Cookie，也不支持需要登录的内容。
+
+更多 manifest 字段、权限、消息协议和生命周期说明请阅读 **[Finoka 插件开发文档](desktop/docs/PLUGINS.md)**。另有 **[最小 Hello Tool 示例](desktop/examples/plugins/hello-tool)** 可用于快速复制修改。
+
+---
+
 ## 📁 项目结构
 
 ```text

@@ -10,6 +10,8 @@ import type { FineSubSettingsState } from "../bridge/settings.ts";
 import { fineSubRuntime } from "../bridge/runtime.ts";
 import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeProvisionState } from "../bridge/runtime.ts";
 import { desktopPreferences } from "../bridge/preferences.ts";
+import { desktopPlugins, mountedTools } from "../bridge/plugins.ts";
+import type { InstalledPlugin, MountedPluginTool } from "../bridge/plugins.ts";
 import { desktopWindows } from "../bridge/windows.ts";
 import { localProviderBridge, sidecarStatus } from "../bridge/wails.ts";
 import { PipelineController } from "../home/pipelineController.ts";
@@ -29,6 +31,8 @@ import { RuntimePage } from "../pages/RuntimePage.tsx";
 import { SettingsPage } from "../pages/SettingsPage.tsx";
 import { TasksPage } from "../pages/TasksPage.tsx";
 import { LibraryPage } from "../pages/LibraryPage.tsx";
+import { PluginManagerPage } from "../plugins/PluginManagerPage.tsx";
+import { PluginPageHost } from "../plugins/PluginPageHost.tsx";
 import { parseTaskHistory } from "./format.ts";
 import { applyTheme, initialTheme } from "./theme.ts";
 import type { DialogState, ExecutionMode, LibraryFilter, LibraryItem, LoadState, NavigationSection, Section, SortMode, TaskHistoryEntry, Theme, ViewMode } from "./types.ts";
@@ -47,6 +51,7 @@ function NavIcon({ kind }: { kind: NavigationSection }) {
   const paths = {
     library: "M4 6.5h16M6 3h12a2 2 0 0 1 2 2v14H4V5a2 2 0 0 1 2-2Zm3 7h6m-6 4h4",
     tasks: "M5 4h14v16H5zM8 8h8m-8 4h8m-8 4h5",
+    plugins: "M8 3v4m8-4v4M6 7h12v4a6 6 0 0 1-5 5.9V21h-2v-4.1A6 6 0 0 1 6 11V7Z",
     runtime: "M4 5h16v14H4zM8 9h3m2 0h3m-8 4h8m-8 3h5",
     adminKeys: "M8.5 14.5 14 9m-1.5-2.5a3.5 3.5 0 1 1 5 5l-1 1-2-2-2 2-2-2-2 2-2.5-2.5 1-1Z",
     settings:
@@ -60,6 +65,10 @@ function NavIcon({ kind }: { kind: NavigationSection }) {
   );
 }
 
+function PluginToolIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v5l3 3-3 3v5H7v-5l-3-3 3-3V4Zm3 4h4m-4 4h4m-4 4h4" /></svg>;
+}
+
 export default function App() {
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("local");
   const localProvider = useMemo(() => new LocalExecutionProvider(localProviderBridge), []);
@@ -68,6 +77,10 @@ export default function App() {
   const cloudController = useMemo(() => new PipelineController(cloudProvider), [cloudProvider]);
   const controller = executionMode === "local" ? localController : cloudController;
   const [section, setSection] = useState<Section>("library");
+  const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
+  const [activePluginTool, setActivePluginTool] = useState<{ pluginId: string; toolId: string } | null>(null);
+  const [pluginBusy, setPluginBusy] = useState("");
+  const [pluginMessage, setPluginMessage] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
@@ -120,6 +133,75 @@ export default function App() {
   const preferencesHydrated = useRef(false);
   const taskHistoryRef = useRef(taskHistory);
   const pythonBootstrapStarted = useRef(false);
+
+  const refreshPlugins = useCallback(async () => {
+    setPlugins(await desktopPlugins.list());
+  }, []);
+
+  useEffect(() => {
+    void refreshPlugins().catch(() => undefined);
+    return Events.On("plugins:changed", () => { void refreshPlugins().catch(() => undefined); });
+  }, [refreshPlugins]);
+
+  const pluginTools = useMemo(() => mountedTools(plugins), [plugins]);
+  const activeMountedPlugin = useMemo<MountedPluginTool | null>(() => {
+    if (!activePluginTool) return null;
+    return pluginTools.find((item) => item.pluginId === activePluginTool.pluginId && item.tool.id === activePluginTool.toolId) ?? null;
+  }, [activePluginTool, pluginTools]);
+
+  useEffect(() => {
+    if (section === "plugin" && !activeMountedPlugin) {
+      setActivePluginTool(null);
+      setSection("plugins");
+    }
+  }, [activeMountedPlugin, section]);
+
+  const openPluginTool = useCallback((pluginId: string, toolId: string) => {
+    setActivePluginTool({ pluginId, toolId });
+    setSection("plugin");
+  }, []);
+
+  const installPlugin = useCallback(async () => {
+    setPluginBusy("install");
+    setPluginMessage("");
+    try {
+      const installed = await desktopPlugins.install();
+      await refreshPlugins();
+      if (installed.id) setPluginMessage(`已安装插件“${installed.name}”`);
+    } catch (value) {
+      setPluginMessage(`安装失败：${value instanceof Error ? value.message : String(value)}`);
+    } finally {
+      setPluginBusy("");
+    }
+  }, [refreshPlugins]);
+
+  const togglePlugin = useCallback(async (plugin: InstalledPlugin) => {
+    setPluginBusy(plugin.id);
+    setPluginMessage("");
+    try {
+      await desktopPlugins.setEnabled(plugin.id, !plugin.enabled);
+      await refreshPlugins();
+      setPluginMessage(`${plugin.enabled ? "已停用" : "已启用"}插件“${plugin.name}”`);
+    } catch (value) {
+      setPluginMessage(`操作失败：${value instanceof Error ? value.message : String(value)}`);
+    } finally {
+      setPluginBusy("");
+    }
+  }, [refreshPlugins]);
+
+  const uninstallPlugin = useCallback(async (plugin: InstalledPlugin, removeData: boolean) => {
+    setPluginBusy(plugin.id);
+    setPluginMessage("");
+    try {
+      await desktopPlugins.uninstall(plugin.id, removeData);
+      await refreshPlugins();
+      setPluginMessage(`已卸载插件“${plugin.name}”${removeData ? "并删除其数据" : "，插件数据已保留"}`);
+    } catch (value) {
+      setPluginMessage(`卸载失败：${value instanceof Error ? value.message : String(value)}`);
+    } finally {
+      setPluginBusy("");
+    }
+  }, [refreshPlugins]);
 
   useEffect(() => {
     taskHistoryRef.current = taskHistory;
@@ -850,6 +932,10 @@ export default function App() {
       ? "处理任务"
       : section === "runtime"
         ? "运行环境"
+        : section === "plugins"
+          ? "插件管理"
+          : section === "plugin"
+            ? activeMountedPlugin?.tool.title ?? "插件工具"
         : section === "account"
           ? "云端账户"
           : section === "adminKeys"
@@ -923,6 +1009,25 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <span className="nav-label tools-label">工具</span>
+        <nav className="plugin-tools-nav" aria-label="插件工具">
+          {pluginTools.map((item) => (
+            <button
+              className={section === "plugin" && activePluginTool?.pluginId === item.pluginId && activePluginTool.toolId === item.tool.id ? "active" : ""}
+              key={`${item.pluginId}:${item.tool.id}`}
+              title={`${item.pluginName} · ${item.tool.title}`}
+              onClick={() => openPluginTool(item.pluginId, item.tool.id)}
+            >
+              <PluginToolIcon />
+              <span className="nav-text">{item.tool.title}</span>
+            </button>
+          ))}
+          <button className={section === "plugins" ? "active" : ""} title="插件管理" onClick={() => setSection("plugins")}>
+            <NavIcon kind="plugins" />
+            <span className="nav-text">插件管理</span>
+            {plugins.length > 0 && <small className="nav-count">{plugins.length}</small>}
+          </button>
+        </nav>
         <span className="nav-label management-label">管理</span>
         <nav aria-label="管理导航">
           <button className={section === "runtime" ? "active" : ""} title="运行环境" onClick={() => setSection("runtime")}>
@@ -970,7 +1075,7 @@ export default function App() {
             non-client drag region — anything interactive placed here would be
             swallowed by the native hit test. */}
         <div className="workspace-titlebar" aria-hidden="true" />
-        <div className="workspace-scroll">
+        <div className={`workspace-scroll${section === "plugin" ? " plugin-workspace-scroll" : ""}`}>
           <header className="topbar">
             <div>
               <h1>{title}</h1>
@@ -1055,6 +1160,29 @@ export default function App() {
               onClearTasks={clearTaskHistory}
               onTaskAction={actOnHistoryTask}
               onDismissMessage={() => setTaskHistoryMessage("")}
+            />
+          )}
+
+          {section === "plugins" && (
+            <PluginManagerPage
+              plugins={plugins}
+              busy={pluginBusy}
+              message={pluginMessage}
+              onInstall={installPlugin}
+              onToggle={togglePlugin}
+              onUninstall={uninstallPlugin}
+              onOpenTool={openPluginTool}
+              onDismissMessage={() => setPluginMessage("")}
+            />
+          )}
+
+          {section === "plugin" && activeMountedPlugin && (
+            <PluginPageHost
+              mounted={activeMountedPlugin}
+              theme={theme}
+              onOpenManager={() => setSection("plugins")}
+              onOpenLibrary={() => setSection("library")}
+              onOpenRuntime={() => setSection("runtime")}
             />
           )}
 

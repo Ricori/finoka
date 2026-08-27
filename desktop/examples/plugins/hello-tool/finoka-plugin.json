@@ -1,0 +1,24 @@
+{
+  "id": "dev.finoka.hello-tool",
+  "name": "Hello Tool",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Finoka UI 插件最小示例",
+  "publisher": "Finoka",
+  "license": "MIT",
+  "permissions": [
+    "media.list",
+    "ffmpeg.extract-audio"
+  ],
+  "contributes": {
+    "tools": [
+      {
+        "id": "hello",
+        "title": "示例工具",
+        "icon": "sparkles",
+        "page": "ui/index.html",
+        "order": 1000
+      }
+    ]
+  }
+}

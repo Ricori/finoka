@@ -1,0 +1,362 @@
+package plugins
+
+import (
+	"archive/zip"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Ricori/finoka/desktop/internal/library"
+)
+
+const testManifest = `{
+  "id": "dev.finoka.hello",
+  "name": "Hello tools",
+  "version": "1.2.3",
+  "apiVersion": 1,
+  "description": "A test plugin",
+  "contributes": {
+    "tools": [{"id":"hello","title":"Hello","page":"ui/index.html","order":10}]
+  }
+}`
+
+type fakeMediaLibrary struct {
+	entries []library.Entry
+}
+
+func (f fakeMediaLibrary) List() []library.Entry { return append([]library.Entry(nil), f.entries...) }
+func (f fakeMediaLibrary) Get(id string) (library.Entry, error) {
+	for _, entry := range f.entries {
+		if entry.ID == id {
+			return entry, nil
+		}
+	}
+	return library.Entry{}, os.ErrNotExist
+}
+func (f fakeMediaLibrary) Import(paths []string) library.ImportResult {
+	return library.ImportResult{Added: []library.Entry{}, Failed: []library.ImportFailure{}}
+}
+
+func TestInstallEnablePageAndUninstall(t *testing.T) {
+	root := t.TempDir()
+	packageRoot := filepath.Join(t.TempDir(), "plugin")
+	mustWrite(t, filepath.Join(packageRoot, manifestName), testManifest)
+	mustWrite(t, filepath.Join(packageRoot, "ui", "index.html"), `<!doctype html><html><head><title>Hello</title></head><body>works</body></html>`)
+	mustWrite(t, filepath.Join(root, "plugin-data", "dev.finoka.hello", "settings.json"), `{}`)
+
+	service, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := service.Install(packageRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installed.ID != "dev.finoka.hello" || !installed.Enabled || len(installed.Contributes.Tools) != 1 {
+		t.Fatalf("unexpected installed plugin: %#v", installed)
+	}
+	listed := service.List()
+	if len(listed) != 1 || listed[0].Version != "1.2.3" {
+		t.Fatalf("unexpected plugin list: %#v", listed)
+	}
+	html, err := service.PageHTML("dev.finoka.hello", "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "Content-Security-Policy") || !strings.Contains(html, "window.finoka") || !strings.Contains(html, "works") {
+		t.Fatalf("page policy was not injected: %s", html)
+	}
+	if _, err := service.SetEnabled("dev.finoka.hello", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PageHTML("dev.finoka.hello", "hello"); err == nil {
+		t.Fatal("disabled plugin page should not load")
+	}
+	if err := service.Uninstall("dev.finoka.hello", false); err != nil {
+		t.Fatal(err)
+	}
+	if len(service.List()) != 0 {
+		t.Fatal("uninstalled plugin is still listed")
+	}
+	if _, err := os.Stat(filepath.Join(root, "plugin-data", "dev.finoka.hello", "settings.json")); err != nil {
+		t.Fatalf("plugin data should be preserved: %v", err)
+	}
+}
+
+func TestInstallZipRejectsTraversal(t *testing.T) {
+	root := t.TempDir()
+	packagePath := filepath.Join(t.TempDir(), "unsafe.finoka-plugin")
+	file, err := os.Create(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := zip.NewWriter(file)
+	item, err := archive.Create("../outside.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := item.Write([]byte("unsafe")); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(packagePath); err == nil {
+		t.Fatal("path traversal package should be rejected")
+	}
+	if _, err := os.Stat(filepath.Join(root, "outside.txt")); !os.IsNotExist(err) {
+		t.Fatalf("unsafe file escaped staging directory: %v", err)
+	}
+}
+
+func TestInstallFinokaPluginArchive(t *testing.T) {
+	packagePath := filepath.Join(t.TempDir(), "hello.finoka-plugin")
+	file, err := os.Create(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := zip.NewWriter(file)
+	for name, content := range map[string]string{
+		manifestName:    testManifest,
+		"ui/index.html": `<p>archive plugin</p>`,
+	} {
+		item, createErr := archive.Create(name)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, writeErr := item.Write([]byte(content)); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := service.Install(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installed.ID != "dev.finoka.hello" || !installed.Enabled {
+		t.Fatalf("unexpected archive install: %#v", installed)
+	}
+}
+
+func TestInstallNewVersionSwitchesCurrent(t *testing.T) {
+	root := t.TempDir()
+	service, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := filepath.Join(t.TempDir(), "first")
+	mustWrite(t, filepath.Join(first, manifestName), testManifest)
+	mustWrite(t, filepath.Join(first, "ui", "index.html"), `<p>version one</p>`)
+	if _, err := service.Install(first); err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(t.TempDir(), "second")
+	mustWrite(t, filepath.Join(second, manifestName), strings.Replace(testManifest, "1.2.3", "2.0.0", 1))
+	mustWrite(t, filepath.Join(second, "ui", "index.html"), `<p>version two</p>`)
+	if _, err := service.Install(second); err != nil {
+		t.Fatal(err)
+	}
+	listed := service.List()
+	if len(listed) != 1 || listed[0].Version != "2.0.0" {
+		t.Fatalf("new version was not activated: %#v", listed)
+	}
+	html, err := service.PageHTML("dev.finoka.hello", "hello")
+	if err != nil || !strings.Contains(html, "version two") {
+		t.Fatalf("active page did not switch versions: %v, %s", err, html)
+	}
+}
+
+func TestManifestRejectsDuplicateTools(t *testing.T) {
+	root := t.TempDir()
+	manifest := strings.Replace(testManifest,
+		`{"id":"hello","title":"Hello","page":"ui/index.html","order":10}`,
+		`{"id":"hello","title":"Hello","page":"ui/index.html"},{"id":"hello","title":"Again","page":"ui/index.html"}`,
+		1,
+	)
+	mustWrite(t, filepath.Join(root, manifestName), manifest)
+	mustWrite(t, filepath.Join(root, "ui", "index.html"), `<p>Hello</p>`)
+	service, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(root); err == nil {
+		t.Fatal("duplicate tool ids should be rejected")
+	}
+}
+
+func TestMediaListRequiresDeclaredPermission(t *testing.T) {
+	root := t.TempDir()
+	packageRoot := filepath.Join(t.TempDir(), "plugin")
+	withPermission := strings.Replace(testManifest, `"apiVersion": 1,`, `"apiVersion": 1, "permissions": ["media.list"],`, 1)
+	mustWrite(t, filepath.Join(packageRoot, manifestName), withPermission)
+	mustWrite(t, filepath.Join(packageRoot, "ui", "index.html"), `<p>Hello</p>`)
+	media := fakeMediaLibrary{entries: []library.Entry{{
+		ID: "media-1", Title: "Example.mp4", SourcePath: `C:\private\Example.mp4`, Duration: 12.5,
+		Width: 1920, Height: 1080, Available: true, DocumentAvailable: true,
+	}}}
+	service, err := New(root, media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(packageRoot); err != nil {
+		t.Fatal(err)
+	}
+	items, err := service.MediaList("dev.finoka.hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "media-1" || items[0].Title != "Example.mp4" {
+		t.Fatalf("unexpected media summaries: %#v", items)
+	}
+	if _, err := service.SetEnabled("dev.finoka.hello", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.MediaList("dev.finoka.hello"); err == nil {
+		t.Fatal("disabled plugin should not use host capabilities")
+	}
+}
+
+func TestManifestRejectsUnknownPermission(t *testing.T) {
+	root := t.TempDir()
+	manifest := strings.Replace(testManifest, `"apiVersion": 1,`, `"apiVersion": 1, "permissions": ["process.execute"],`, 1)
+	mustWrite(t, filepath.Join(root, manifestName), manifest)
+	mustWrite(t, filepath.Join(root, "ui", "index.html"), `<p>Hello</p>`)
+	service, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(root); err == nil {
+		t.Fatal("unknown permission should be rejected")
+	}
+}
+
+func TestManifestRejectsTrailingJSON(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, manifestName), testManifest+` {"unexpected":true}`)
+	mustWrite(t, filepath.Join(root, "ui", "index.html"), `<p>Hello</p>`)
+	service, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(root); err == nil {
+		t.Fatal("trailing JSON should be rejected")
+	}
+}
+
+func TestAudioFormatIsClosedSet(t *testing.T) {
+	for _, format := range []string{"wav", "flac", "mp3", "m4a"} {
+		if _, _, _, err := audioFormat(format); err != nil {
+			t.Fatalf("expected %s to be supported: %v", format, err)
+		}
+	}
+	if _, _, _, err := audioFormat("custom"); err == nil {
+		t.Fatal("custom FFmpeg formats must not be accepted")
+	}
+}
+
+func TestVideoDownloadURLAllowlist(t *testing.T) {
+	tests := []struct {
+		url      string
+		platform string
+	}{
+		{"https://www.youtube.com/watch?v=example", "youtube"},
+		{"https://youtu.be/example", "youtube"},
+		{"https://www.twitch.tv/videos/123", "twitch"},
+		{"https://clips.twitch.tv/Example", "twitch"},
+	}
+	for _, test := range tests {
+		platform, normalized, err := validateVideoURL(test.url)
+		if err != nil || platform != test.platform || normalized == "" {
+			t.Fatalf("expected %s to be accepted as %s: %s, %v", test.url, test.platform, platform, err)
+		}
+	}
+	for _, value := range []string{
+		"http://youtube.com/watch?v=example",
+		"https://youtube.com.evil.example/watch?v=example",
+		"https://user:password@twitch.tv/videos/123",
+		"https://example.com/video",
+	} {
+		if _, _, err := validateVideoURL(value); err == nil {
+			t.Fatalf("unsafe or unsupported URL was accepted: %s", value)
+		}
+	}
+}
+
+func TestTailBufferKeepsBoundedSuffix(t *testing.T) {
+	buffer := newTailBuffer(5)
+	if _, err := buffer.Write([]byte("1234")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buffer.Write([]byte("56789")); err != nil {
+		t.Fatal(err)
+	}
+	if buffer.String() != "56789" {
+		t.Fatalf("unexpected tail: %q", buffer.String())
+	}
+}
+
+func TestYTDLPArgumentsUseClosedSafeSet(t *testing.T) {
+	allowed := []string{
+		"--no-playlist",
+		"-f", "bv*[height<=1080]+ba/b[height<=1080]",
+		"--merge-output-format", "mp4",
+		"--remux-video", "mp4",
+		"-N", "4",
+	}
+	if err := validateYTDLPArguments(allowed); err != nil {
+		t.Fatalf("safe yt-dlp arguments were rejected: %v", err)
+	}
+	blocked := [][]string{
+		{"--exec", "calc.exe"},
+		{"--cookies-from-browser", "firefox"},
+		{"-o", `C:\outside.mp4`},
+		{"--config-locations", `C:\config.txt`},
+		{"-f", "best[protocol*=http]"},
+		{"-N", "64"},
+	}
+	for _, arguments := range blocked {
+		if err := validateYTDLPArguments(arguments); err == nil {
+			t.Fatalf("unsafe yt-dlp arguments were accepted: %#v", arguments)
+		}
+	}
+}
+
+func TestExamplePluginsMatchAPIV1(t *testing.T) {
+	for _, name := range []string{"hello-tool", "video-downloader"} {
+		root := filepath.Join("..", "..", "examples", "plugins", name)
+		manifest, err := readManifest(root)
+		if err != nil {
+			t.Fatalf("read %s example: %v", name, err)
+		}
+		if err := validateManifest(manifest, root); err != nil {
+			t.Fatalf("validate %s example: %v", name, err)
+		}
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}

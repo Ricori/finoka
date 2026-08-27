@@ -1,0 +1,51 @@
+.plugin-manager-layout { display: grid; gap: 16px; }
+.plugin-manager-hero { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 24px; }
+.plugin-manager-hero h2 { margin: 5px 0 7px; font-size: 21px; }
+.plugin-manager-hero p { max-width: 650px; margin: 0; color: var(--mut); font-size: 12px; line-height: 1.7; }
+.plugin-manager-hero .primary-button { flex: 0 0 auto; }
+.plugin-message { margin: 0; border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent); border-radius: 11px; padding: 11px 13px; background: color-mix(in srgb, var(--warn) 8%, var(--panel)); color: var(--warn); font-size: 11px; line-height: 1.5; }
+.plugin-empty { display: grid; justify-items: center; gap: 9px; padding: 52px 24px; text-align: center; }
+.plugin-empty-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; background: var(--accent-dim); color: var(--accent); font-size: 24px; }
+.plugin-empty h3 { margin: 5px 0 0; font-size: 15px; }
+.plugin-empty p { margin: 0 0 7px; color: var(--mut); font-size: 12px; }
+.plugin-empty code { color: var(--accent); }
+.plugin-card-list { display: grid; gap: 10px; }
+.plugin-card { display: grid; grid-template-columns: 43px minmax(0, 1fr) auto; align-items: start; gap: 15px; padding: 18px; transition: opacity .15s ease; }
+.plugin-card.disabled { opacity: .68; }
+.plugin-card-mark { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 13px; background: var(--grad); color: var(--on-grad); font-size: 15px; font-weight: 800; }
+.plugin-card-copy { display: grid; gap: 6px; min-width: 0; }
+.plugin-card-title { display: flex; align-items: center; gap: 8px; }
+.plugin-card-title h3 { margin: 0; font-size: 14px; }
+.plugin-card-title span { color: var(--faint); font-size: 10px; }
+.plugin-card-title i { border-radius: 20px; padding: 3px 7px; background: var(--raised); color: var(--faint); font-size: 9px; font-style: normal; }
+.plugin-card-title i.enabled { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
+.plugin-card-copy p { margin: 0; color: var(--mut); font-size: 11px; line-height: 1.55; }
+.plugin-card-copy small { color: var(--faint); font-size: 10px; }
+.plugin-permissions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.plugin-permissions span { border: 1px solid var(--line-soft); border-radius: 20px; padding: 3px 7px; color: var(--faint); font-size: 9px; }
+.plugin-card-actions { display: flex; align-items: center; gap: 8px; }
+.danger-text-button { border: 0; padding: 8px; background: transparent; color: var(--warn); font-size: 11px; cursor: pointer; }
+.danger-text-button:disabled { opacity: .45; cursor: wait; }
+.plugin-tool-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.plugin-tool-chips button { border: 1px solid var(--line-soft); border-radius: 8px; padding: 6px 9px; background: var(--raised); color: var(--mut); font-size: 10px; cursor: pointer; }
+.plugin-tool-chips button:hover { border-color: var(--accent-line); color: var(--accent); }
+.workspace-scroll.plugin-workspace-scroll { display: grid; grid-template-rows: max-content minmax(0, 1fr); overflow: hidden; }
+.plugin-page-shell { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--panel); }
+.plugin-page-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+.plugin-page-state { display: grid; place-items: center; align-content: center; gap: 11px; min-height: 360px; padding: 30px; text-align: center; }
+.plugin-page-state h2, .plugin-page-state p { margin: 0; }
+.plugin-page-state p { color: var(--mut); font-size: 12px; }
+.plugin-state-symbol { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); font-weight: 800; }
+.plugin-loader { width: 23px; height: 23px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: plugin-spin .8s linear infinite; }
+.plugin-uninstall-dialog { width: min(480px, 100%); }
+.plugin-remove-data { align-items: flex-start; }
+.plugin-remove-data input { margin-top: 2px; }
+.plugin-remove-data span { display: grid; gap: 3px; }
+.plugin-remove-data strong { color: var(--text); font-size: 12px; }
+.plugin-remove-data small { color: var(--faint); font-size: 10px; line-height: 1.45; }
+@keyframes plugin-spin { to { rotate: 360deg; } }
+
+@media (max-width: 1040px) {
+  .plugin-card { grid-template-columns: 43px minmax(0, 1fr); }
+  .plugin-card-actions { grid-column: 2; }
+}

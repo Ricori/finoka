@@ -10,6 +10,9 @@ import type { Events } from "@wailsio/runtime";
 import type * as library$0 from "../../../../Ricori/finoka/desktop/internal/library/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as plugins$0 from "../../../../Ricori/finoka/desktop/internal/plugins/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as selfupdate$0 from "../../../../Ricori/finoka/desktop/internal/selfupdate/models.js";
 
 declare module "@wailsio/runtime" {
@@ -19,6 +22,7 @@ declare module "@wailsio/runtime" {
             "files:dropped": string[] | null;
             "home:refresh": boolean;
             "library:changed": library$0.Entry[] | null;
+            "plugins:changed": plugins$0.Change;
             "update:ready": { [_ in string]?: string } | null;
             "update:status": selfupdate$0.Status;
         }

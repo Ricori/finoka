@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube / Twitch 下载器</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Noto Sans SC", system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 30px; color: #eef1f9; background: #1e2333; }
+    body.light { color: #2f2b27; background: #fffdf8; }
+    main { width: min(760px, 100%); margin: 0 auto; }
+    .eyebrow { color: #8ea6f2; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    body.light .eyebrow { color: #c96442; }
+    h1 { margin: 8px 0 7px; font-size: 24px; letter-spacing: -.02em; }
+    .lead { margin: 0 0 22px; color: #a0aac8; font-size: 12px; line-height: 1.7; }
+    body.light .lead { color: #6d675f; }
+    .card { border: 1px solid #38405c; border-radius: 16px; padding: 22px; background: #202638; box-shadow: 0 16px 45px rgba(0,0,0,.14); }
+    body.light .card { border-color: #e7e2d9; background: #fffdf8; box-shadow: 0 16px 45px rgba(70,45,25,.08); }
+    .platforms { display: flex; gap: 7px; margin-bottom: 18px; }
+    .platforms span { border: 1px solid #38405c; border-radius: 20px; padding: 5px 9px; color: #a0aac8; font-size: 10px; }
+    body.light .platforms span { border-color: #e7e2d9; color: #6d675f; }
+    label { display: grid; gap: 7px; color: #a0aac8; font-size: 11px; }
+    body.light label { color: #6d675f; }
+    input, select { width: 100%; border: 1px solid #38405c; border-radius: 10px; padding: 11px 12px; background: #171b2a; color: inherit; font: inherit; outline: none; }
+    body.light input, body.light select { border-color: #d8d2c7; background: #f7f5ef; }
+    input:focus, select:focus { border-color: #8ea6f2; box-shadow: 0 0 0 3px rgba(142,166,242,.13); }
+    .settings { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 12px; }
+    .actions { display: flex; align-items: center; gap: 9px; margin-top: 18px; }
+    button { border: 0; border-radius: 9px; padding: 10px 14px; background: #8ea6f2; color: #1c2340; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+    body.light button { background: linear-gradient(135deg, #d97757, #c86140); color: #fffaf4; }
+    button.secondary { border: 1px solid #38405c; background: transparent; color: #a0aac8; }
+    body.light button.secondary { border-color: #d8d2c7; background: transparent; color: #6d675f; }
+    button:disabled { opacity: .5; cursor: wait; }
+    .status { display: none; margin-top: 16px; border: 1px solid #38405c; border-radius: 11px; padding: 12px 14px; color: #a0aac8; font-size: 11px; line-height: 1.6; }
+    body.light .status { border-color: #e7e2d9; color: #6d675f; }
+    .status.visible { display: block; }
+    .status.error { border-color: rgba(255,143,163,.38); color: #ff8fa3; background: rgba(255,143,163,.06); }
+    body.light .status.error { border-color: rgba(184,75,66,.38); color: #b84b42; background: rgba(184,75,66,.06); }
+    .status.success { border-color: rgba(127,220,196,.34); color: #7fdcc4; background: rgba(127,220,196,.06); }
+    body.light .status.success { border-color: rgba(57,118,90,.34); color: #39765a; background: rgba(57,118,90,.06); }
+    .spinner { display: inline-block; width: 11px; height: 11px; margin-right: 7px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; vertical-align: -2px; animation: spin .75s linear infinite; }
+    .hint { margin: 14px 2px 0; color: #6b7494; font-size: 10px; line-height: 1.6; }
+    body.light .hint { color: #948d83; }
+    @keyframes spin { to { rotate: 360deg; } }
+    @media (max-width: 620px) { body { padding: 18px; } .settings { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="eyebrow">Finoka plugin demo</span>
+    <h1>YouTube / Twitch 视频下载</h1>
+    <p class="lead">下载公开单个视频，完成后自动导入媒体库。文件保存位置由你选择。</p>
+    <section class="card">
+      <div class="platforms"><span>YouTube</span><span>Twitch VOD</span><span>Twitch Clips</span></div>
+      <div class="settings">
+        <label>视频地址<input id="url" type="url" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=…"></label>
+        <label>最高画质<select id="quality"><option value="best">最佳可用</option><option value="1080">1080p</option><option value="720">720p</option></select></label>
+      </div>
+      <div class="actions">
+        <button id="download">选择位置并下载</button>
+        <button id="runtime" class="secondary">运行环境</button>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <p class="hint">需要在 Finoka“运行环境”中安装 FFmpeg 和可选工具 yt-dlp。Demo 仅支持公开内容，不读取浏览器 Cookie 或账户令牌。</p>
+    </section>
+  </main>
+  <script>
+    const url = document.querySelector("#url");
+    const quality = document.querySelector("#quality");
+    const download = document.querySelector("#download");
+    const status = document.querySelector("#status");
+    let requestId = "";
+
+    function show(message, tone = "") {
+      status.className = `status visible ${tone}`;
+      status.innerHTML = message;
+    }
+
+    download.addEventListener("click", () => {
+      const value = url.value.trim();
+      if (!value) {
+        show("请输入 YouTube 或 Twitch 视频地址。", "error");
+        url.focus();
+        return;
+      }
+      requestId = `download-${Date.now()}`;
+      download.disabled = true;
+      show('<span class="spinner"></span>正在下载并导入媒体库。长视频可能需要较长时间，请保持 Finoka 运行。');
+      const formats = {
+        best: "bv*+ba/b",
+        1080: "bv*[height<=1080]+ba/b[height<=1080]",
+        720: "bv*[height<=720]+ba/b[height<=720]"
+      };
+      const args = [
+        "-f", formats[quality.value],
+        "--merge-output-format", "mp4",
+        "--remux-video", "mp4",
+        "-N", "4"
+      ];
+      window.finoka.post("tools.runYtDLP", { url: value, args }, requestId);
+    });
+
+    document.querySelector("#runtime").addEventListener("click", () => window.finoka.post("ui.openRuntime"));
+
+    window.addEventListener("message", (event) => {
+      const message = event.data;
+      if (message?.source !== "finoka-host") return;
+      if (message.method === "host.info") {
+        document.body.classList.toggle("light", message.result.theme === "light");
+        return;
+      }
+      if (message.method !== "rpc.result" || message.id !== requestId) return;
+      download.disabled = false;
+      if (message.error) {
+        show(escapeHTML(message.error), "error");
+        return;
+      }
+      if (!message.result?.media?.id) {
+        show("已取消下载。", "");
+        return;
+      }
+      show(`下载完成，已导入媒体库：<strong>${escapeHTML(message.result.media.title)}</strong><br><button id="library" class="secondary">前往媒体库</button>`, "success");
+      document.querySelector("#library").addEventListener("click", () => window.finoka.post("ui.openLibrary"));
+    });
+
+    function escapeHTML(value) {
+      const node = document.createElement("span");
+      node.textContent = String(value ?? "");
+      return node.innerHTML;
+    }
+  </script>
+</body>
+</html>

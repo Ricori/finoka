@@ -1,0 +1,121 @@
+import { useState } from "react";
+import type { InstalledPlugin } from "../bridge/plugins.ts";
+import { Notice } from "../components/Notice.tsx";
+import "./plugins.css";
+
+interface PluginManagerPageProps {
+  plugins: InstalledPlugin[];
+  busy: string;
+  message: string;
+  onInstall: () => Promise<void>;
+  onToggle: (plugin: InstalledPlugin) => Promise<void>;
+  onUninstall: (plugin: InstalledPlugin, removeData: boolean) => Promise<void>;
+  onOpenTool: (pluginId: string, toolId: string) => void;
+  onDismissMessage: () => void;
+}
+
+export function PluginManagerPage(props: PluginManagerPageProps) {
+  const { plugins, busy, message, onInstall, onToggle, onUninstall, onOpenTool, onDismissMessage } = props;
+  const [pendingUninstall, setPendingUninstall] = useState<{ plugin: InstalledPlugin; removeData: boolean } | null>(null);
+  const uninstallBusy = pendingUninstall !== null && busy === pendingUninstall.plugin.id;
+
+  const confirmUninstall = async () => {
+    if (!pendingUninstall) return;
+    await onUninstall(pendingUninstall.plugin, pendingUninstall.removeData);
+    setPendingUninstall(null);
+  };
+
+  return (
+    <section className="plugin-manager-layout">
+      <Notice className="plugin-message" message={message} tone={message.includes("失败") ? "warn" : "success"} onDismiss={onDismissMessage} />
+      <article className="panel plugin-manager-hero">
+        <div>
+          <span className="eyebrow">扩展 Finoka</span>
+          <h2>插件管理</h2>
+          <p>安装的插件会挂载在左侧“工具”板块。停用会隐藏入口，但保留插件和数据。</p>
+        </div>
+        <button className="primary-button" disabled={busy !== ""} onClick={() => void onInstall()}>
+          {busy === "install" ? "正在安装…" : "＋ 安装插件"}
+        </button>
+      </article>
+
+      {plugins.length === 0 ? (
+        <article className="panel plugin-empty">
+          <span className="plugin-empty-icon">◇</span>
+          <h3>还没有安装插件</h3>
+          <p>选择一个 <code>.finoka-plugin</code> 文件，安装后工具入口会立即出现在左侧。</p>
+          <button className="quiet-button" disabled={busy !== ""} onClick={() => void onInstall()}>选择插件包</button>
+        </article>
+      ) : (
+        <div className="plugin-card-list">
+          {plugins.map((plugin) => {
+            const working = busy === plugin.id;
+            return (
+              <article className={`panel plugin-card ${plugin.enabled ? "" : "disabled"}`} key={plugin.id}>
+                <div className="plugin-card-mark">{plugin.name.trim().charAt(0).toUpperCase() || "P"}</div>
+                <div className="plugin-card-copy">
+                  <div className="plugin-card-title">
+                    <h3>{plugin.name}</h3>
+                    <span>v{plugin.version}</span>
+                    <i className={plugin.enabled ? "enabled" : ""}>{plugin.enabled ? "已启用" : "已停用"}</i>
+                  </div>
+                  <p>{plugin.description || `${plugin.contributes.tools?.length ?? 0} 个工具`}</p>
+                  <small>{plugin.publisher || plugin.id}{plugin.license ? ` · ${plugin.license}` : ""}</small>
+                  {(plugin.permissions?.length ?? 0) > 0 && (
+                    <div className="plugin-permissions" title="插件申请的宿主能力">
+                      {plugin.permissions?.map((permission) => <span key={permission}>{permissionLabel(permission)}</span>)}
+                    </div>
+                  )}
+                  {plugin.enabled && (plugin.contributes.tools?.length ?? 0) > 0 && (
+                    <div className="plugin-tool-chips">
+                      {plugin.contributes.tools?.map((tool) => (
+                        <button key={tool.id} onClick={() => onOpenTool(plugin.id, tool.id)}>{tool.title} →</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="plugin-card-actions">
+                  <button className="quiet-button" disabled={working} onClick={() => void onToggle(plugin)}>{working ? "请稍候…" : plugin.enabled ? "停用" : "启用"}</button>
+                  <button className="danger-text-button" disabled={working} onClick={() => setPendingUninstall({ plugin, removeData: false })}>卸载</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {pendingUninstall && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !uninstallBusy) setPendingUninstall(null);
+        }}>
+          <section className="dialog plugin-uninstall-dialog" role="alertdialog" aria-modal="true" aria-labelledby="plugin-uninstall-title">
+            <span className="eyebrow">Uninstall plugin</span>
+            <h2 id="plugin-uninstall-title">卸载“{pendingUninstall.plugin.name}”</h2>
+            <p>插件会从左侧工具栏移除并删除已安装的程序文件。你可以选择是否同时删除它保存的设置和数据。</p>
+            <label className="dialog-check plugin-remove-data">
+              <input
+                type="checkbox"
+                checked={pendingUninstall.removeData}
+                disabled={uninstallBusy}
+                onChange={(event) => setPendingUninstall({ ...pendingUninstall, removeData: event.target.checked })}
+              />
+              <span><strong>同时删除插件数据</strong><small>包括该插件保存的设置和工作数据，此操作无法撤销。</small></span>
+            </label>
+            <div className="dialog-actions">
+              <button disabled={uninstallBusy} onClick={() => setPendingUninstall(null)}>取消</button>
+              <button className="danger-button" disabled={uninstallBusy} onClick={() => void confirmUninstall()}>{uninstallBusy ? "正在卸载…" : "确认卸载"}</button>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function permissionLabel(permission: string): string {
+  if (permission === "media.list") return "读取媒体列表";
+  if (permission === "tools.yt-dlp") return "执行受控的 yt-dlp 命令";
+  if (permission === "media.import") return "导入媒体库";
+  if (permission === "ffmpeg.extract-audio") return "使用 FFmpeg 导出音频";
+  return permission;
+}

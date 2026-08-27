@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hello Tool</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Noto Sans SC", system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px; color: #eef1f9; background: #1e2333; }
+    body.light { color: #2f2b27; background: #fffdf8; }
+    main { max-width: 720px; margin: 0 auto; border: 1px solid #38405c; border-radius: 16px; padding: 24px; }
+    body.light main { border-color: #e7e2d9; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    p { color: #a0aac8; line-height: 1.7; }
+    body.light p { color: #6d675f; }
+    button, select { border: 0; border-radius: 9px; padding: 9px 13px; font: inherit; }
+    button { background: #8ea6f2; color: #1c2340; font-weight: 700; cursor: pointer; }
+    select { min-width: 280px; margin: 12px 0; background: #293047; color: inherit; }
+    body.light select { background: #eeeae1; }
+    #result { margin-top: 14px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>插件已经挂载成功</h1>
+    <p>这个页面运行在隔离 iframe 中，只能通过 <code>window.finoka.post()</code> 与宿主通信。</p>
+    <button id="info">读取宿主信息</button>
+    <button id="media">读取媒体库</button>
+    <div><select id="media-list"><option value="">请先读取媒体库</option></select></div>
+    <button id="audio">用 Finoka FFmpeg 导出 WAV</button>
+    <div id="result"></div>
+  </main>
+  <script>
+    const result = document.querySelector("#result");
+    const mediaList = document.querySelector("#media-list");
+    document.querySelector("#info").addEventListener("click", () => {
+      window.finoka.post("host.getInfo", {}, "info-1");
+    });
+    document.querySelector("#media").addEventListener("click", () => {
+      window.finoka.post("media.list", {}, "media-1");
+    });
+    document.querySelector("#audio").addEventListener("click", () => {
+      if (!mediaList.value) return;
+      window.finoka.post("ffmpeg.extractAudio", { mediaId: mediaList.value, format: "wav" }, "audio-1");
+    });
+    window.addEventListener("message", (event) => {
+      if (event.data?.source !== "finoka-host" || event.data?.method !== "host.info") return;
+      document.body.classList.toggle("light", event.data.result.theme === "light");
+      result.textContent = JSON.stringify(event.data.result, null, 2);
+      return;
+    });
+    window.addEventListener("message", (event) => {
+      if (event.data?.source !== "finoka-host" || event.data?.method !== "rpc.result") return;
+      if (event.data.error) {
+        result.textContent = event.data.error;
+        return;
+      }
+      if (event.data.id === "media-1") {
+        mediaList.replaceChildren(...event.data.result.map((item) => new Option(item.title, item.id)));
+      }
+      result.textContent = JSON.stringify(event.data.result, null, 2);
+    });
+  </script>
+</body>
+</html>

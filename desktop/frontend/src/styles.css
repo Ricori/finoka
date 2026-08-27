@@ -1710,6 +1710,17 @@ html.wails-fullscreen #wails-window-controls {
   margin-top: 20px;
 }
 
+.tools-label {
+  margin-top: 20px;
+}
+
+.plugin-tools-nav {
+  max-height: min(240px, 28vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 .sidebar nav {
   gap: 4px;
 }
