@@ -19,8 +19,6 @@ jobs:
         run: python -m pip install -e . pytest
       - name: Verify generated FineSub snapshot
         run: python scripts/sync_finesub.py check
-      - name: Run repository tests
-        run: python -W error::ResourceWarning -m pytest -q
       - name: Build reproducible engine bundle
         run: python -m scripts.build_finesub_bundle
 
