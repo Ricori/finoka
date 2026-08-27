@@ -100,7 +100,7 @@ class WorkerAdapterTests(unittest.TestCase):
             events = [json.loads(line) for line in output.getvalue().splitlines()]
             completed = next(event for event in events if event["type"] == "completed")
             manifest = completed["payload"]["artifacts"]
-            self.assertEqual(manifest["engine_commit"], "2a320ede3f5c29e431a4525aab01d97945f349c2")
+            self.assertEqual(manifest["engine_commit"], "8a33092a40ab4d86872941155143fd91b84eaa56")
             self.assertEqual(set(manifest["artifacts"]), {"stable_json", "raw_srt"})
             self.assertEqual(len(manifest["artifacts"]["stable_json"]["sha256"]), 64)
 

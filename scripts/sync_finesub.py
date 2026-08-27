@@ -24,7 +24,7 @@ from typing import Iterable
 
 
 REPOSITORY = "https://github.com/caca2331/finesub"
-DEFAULT_REF = "v0.4.1"
+DEFAULT_REF = "v0.4.2"
 SYNC_SCHEMA = 1
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VENDOR = REPO_ROOT / "third_party" / "finesub"
@@ -57,7 +57,7 @@ VENDOR_README = """# FineSub vendor directory
 - 本地 runtime 和云端镜像必须使用同一 `engine_bundle_id`。
 
 上游原始说明保存在 `UPSTREAM_README.md`。具体流程见
-[FineSub 引擎同步与云端后端运维](../../docs/engine-and-cloud.md)。
+[FineSub 引擎同步与构建规范](../../docs/engine.md)。
 """
 
 
