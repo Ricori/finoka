@@ -46,7 +46,7 @@ diff --git a/src/finesub/llm/routing/model_routes.py b/src/finesub/llm/routing/m
 index 61f7cc9..b027ffe 100644
 --- a/src/finesub/llm/routing/model_routes.py
 +++ b/src/finesub/llm/routing/model_routes.py
-@@ -1017,6 +1017,75 @@ def load_model_routes(
+@@ -1017,6 +1017,77 @@ def load_model_routes(
              f"known: {sorted(presets)}"
          )
  
@@ -107,6 +107,8 @@ index 61f7cc9..b027ffe 100644
 +            model_groups[group_id] = ModelGroup(
 +                group_id, members, MappingProxyType({})
 +            )
++            for difficulty in DIFFICULTIES:
++                bindings.pop((task_group_id, difficulty), None)
 +            bindings[(task_group_id, "quality")] = group_id
 +        synthetic_id = "finoka-routed"
 +        presets[synthetic_id] = Preset(

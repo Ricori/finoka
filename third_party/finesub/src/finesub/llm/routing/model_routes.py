@@ -1074,6 +1074,8 @@ def load_model_routes(
             model_groups[group_id] = ModelGroup(
                 group_id, members, MappingProxyType({})
             )
+            for difficulty in DIFFICULTIES:
+                bindings.pop((task_group_id, difficulty), None)
             bindings[(task_group_id, "quality")] = group_id
         synthetic_id = "finoka-routed"
         presets[synthetic_id] = Preset(

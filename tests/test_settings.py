@@ -98,10 +98,18 @@ class FineSubSettingsTests(unittest.TestCase):
             correction, _ = routes.resolve_binding(
                 routes.active_preset_id, "correction-text", "quality"
             )
+            correction_mid, _ = routes.resolve_binding(
+                routes.active_preset_id, "correction-text", "intermediate"
+            )
+            correction_eff, _ = routes.resolve_binding(
+                routes.active_preset_id, "correction-text", "efficiency"
+            )
             research, _ = routes.resolve_binding(
                 routes.active_preset_id, "research", "quality"
             )
             self.assertTrue(correction.target_ids[0].startswith("finoka-openai-"))
+            self.assertTrue(correction_mid.target_ids[0].startswith("finoka-openai-"))
+            self.assertTrue(correction_eff.target_ids[0].startswith("finoka-openai-"))
             self.assertEqual(research.target_ids[0], "gemini-free-3_6-flash")
 
 
