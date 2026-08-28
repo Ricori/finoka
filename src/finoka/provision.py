@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -86,6 +87,34 @@ def parse_model_install_event(line: str, model_id: str) -> dict[str, Any] | None
         "bytes_per_second": bytes_per_second,
         "message": message,
     }
+
+
+def _remove_managed_tree(target: Path) -> None:
+    """Delete one managed directory, clearing read-only files as they surface.
+
+    uv and pip leave read-only files inside the runtime and model stores, and
+    Windows refuses to unlink those (WinError 5). FineSub's ``remove_tree``
+    stays the only descent, because it is the one that refuses to follow a
+    junction out of the store; only the exact file it names is made writable
+    before retrying, so nothing outside the tree is ever touched. A file that
+    is genuinely in use blocks twice in a row and is reported.
+    """
+
+    from finesub_bootstrap.fsops import remove_tree
+
+    unblocked: set[str] = set()
+    while True:
+        try:
+            remove_tree(target)
+            return
+        except PermissionError as error:
+            blocked = error.filename
+            if not blocked or blocked in unblocked:
+                raise
+            unblocked.add(blocked)
+            # Keep the other mode bits: on POSIX a bare S_IWRITE would leave a
+            # surviving file unreadable if the removal fails for another reason.
+            os.chmod(blocked, os.stat(blocked).st_mode | stat.S_IWRITE)
 
 
 class RuntimeProvisioner:
@@ -512,10 +541,26 @@ class RuntimeProvisioner:
             resolved = target.resolve()
             if not any(resolved != root and root in resolved.parents for root in allowed_roots):
                 raise RuntimeProvisionError(f"拒绝删除托管目录之外的路径：{resolved}")
-        from finesub_bootstrap.fsops import remove_tree
-
+        failures: list[str] = []
         for target in targets:
-            remove_tree(target)
+            try:
+                _remove_managed_tree(target)
+            except OSError as error:
+                failures.append(f"{target.name}（{error.strerror or error}）")
+        if failures:
+            # Reporting the reason beats the bare HTTP 500 a raw OSError used to
+            # produce: the shell can show what is still on disk and why.
+            detail = "以下目录未能完全删除，可能有文件正在被占用：" + "、".join(failures)
+            self._update(
+                state="failed",
+                target="remove-all",
+                resource="",
+                stage="failed",
+                message=detail,
+                progress=None,
+                error={"code": "remove_failed", "message": detail},
+            )
+            raise RuntimeProvisionError(detail)
         self._update(
             state="completed",
             target="remove-all",

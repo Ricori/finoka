@@ -70,11 +70,16 @@ func Run(assets fs.FS) error {
 	if configErr != nil {
 		log.Printf("sidecar configuration: %v", configErr)
 	}
-	startupContext, cancel := context.WithTimeout(context.Background(), lifecycleTimeout)
-	_, startErr := manager.Start(startupContext)
-	cancel()
-	if startErr != nil {
-		log.Printf("sidecar startup: %v", startErr)
+	// No interpreter carries the bootstrap dependencies yet. Starting nothing
+	// keeps the sidecar reported as down, which is what puts the managed-Python
+	// installer in front of the user instead of a sidecar that cannot provision.
+	if config.Executable != "" {
+		startupContext, cancel := context.WithTimeout(context.Background(), lifecycleTimeout)
+		_, startErr := manager.Start(startupContext)
+		cancel()
+		if startErr != nil {
+			log.Printf("sidecar startup: %v", startErr)
+		}
 	}
 	providerService, err := provider.New(manager, pythonBootstrap)
 	if err != nil {

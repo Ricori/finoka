@@ -435,6 +435,10 @@ class LocalProvider:
             return self._provisioner.remove_all()
         except RuntimeProvisionError as exc:
             raise ProviderError("runtime_remove_unavailable", str(exc), http_status=409) from exc
+        except OSError as exc:
+            # A bare OSError reached the sidecar as an opaque HTTP 500, which the
+            # desktop shell could only report as "Sidecar request failed".
+            raise ProviderError("runtime_remove_failed", f"删除环境失败：{exc}", http_status=409) from exc
 
     def get_settings(self) -> dict[str, Any]:
         if self._settings is None:

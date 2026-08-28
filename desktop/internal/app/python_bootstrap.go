@@ -182,6 +182,17 @@ func (b *PythonBootstrap) install() {
 	config, err := SidecarConfig()
 	if err == nil {
 		err = b.manager.Configure(config)
+		// A sidecar already running on a system interpreter cannot build its
+		// provisioner, and the managed Python only takes effect once that
+		// process is swapped for one started from it.
+		if errors.Is(err, sidecar.ErrAlreadyRunning) && b.manager.Executable() != config.Executable {
+			stopContext, cancelStop := context.WithTimeout(context.Background(), lifecycleTimeout)
+			err = b.manager.Stop(stopContext)
+			cancelStop()
+			if err == nil {
+				err = b.manager.Configure(config)
+			}
+		}
 	}
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), lifecycleTimeout)

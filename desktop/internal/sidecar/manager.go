@@ -140,6 +140,15 @@ func (m *Manager) Configure(config Config) error {
 	return nil
 }
 
+// Executable reports the interpreter the next Start would use. The launcher
+// compares it with a freshly resolved configuration to decide whether a running
+// sidecar has to be swapped for one on the managed Python.
+func (m *Manager) Executable() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.config.Executable
+}
+
 func (m *Manager) Start(ctx context.Context) (Snapshot, error) {
 	m.transition.Lock()
 	defer m.transition.Unlock()

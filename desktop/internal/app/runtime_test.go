@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -31,14 +32,56 @@ func TestSidecarConfigHonoursExplicitPaths(t *testing.T) {
 	}
 }
 
-func TestFirstAvailableExecutablePrefersBundledRuntime(t *testing.T) {
+func TestFirstUsableExecutablePrefersBundledRuntime(t *testing.T) {
 	root := t.TempDir()
 	bundled := filepath.Join(root, "python")
 	if err := os.WriteFile(bundled, []byte("fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if got := firstAvailableExecutable(filepath.Join(root, "missing"), bundled); got != bundled {
+	usable := func(string) bool { return true }
+	if got := firstUsableExecutable(usable, filepath.Join(root, "missing"), bundled); got != bundled {
 		t.Fatalf("expected bundled runtime %q, got %q", bundled, got)
+	}
+}
+
+// An interpreter without httpx/pydantic starts a sidecar that answers requests
+// but cannot build its provisioner, which is how the runtime page ended up with
+// every button disabled and no way to install the managed Python.
+func TestFirstUsableExecutableSkipsInterpretersMissingDependencies(t *testing.T) {
+	root := t.TempDir()
+	bare := filepath.Join(root, "bare-python")
+	equipped := filepath.Join(root, "equipped-python")
+	for _, path := range []string{bare, equipped} {
+		if err := os.WriteFile(path, []byte("fixture"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	usable := func(candidate string) bool { return candidate == equipped }
+	if got := firstUsableExecutable(usable, bare, equipped); got != equipped {
+		t.Fatalf("expected the equipped interpreter %q, got %q", equipped, got)
+	}
+	if got := firstUsableExecutable(func(string) bool { return false }, bare); got != "" {
+		t.Fatalf("expected no interpreter, got %q", got)
+	}
+}
+
+func TestInterpreterProbeRejectsSomethingThatIsNotAnInterpreter(t *testing.T) {
+	fake := filepath.Join(t.TempDir(), "python")
+	if err := os.WriteFile(fake, []byte("not an interpreter"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if interpreterCanRunSidecar(fake) {
+		t.Fatal("a file that cannot be executed was accepted as an interpreter")
+	}
+}
+
+// Only 3.12.x is accepted. Any other interpreter that happens to carry httpx and
+// pydantic — 3.11 as much as 3.13 — must still hand over to the managed Python.
+func TestInterpreterProbeScriptPinsTheExactVersion(t *testing.T) {
+	for _, fragment := range []string{"sys.version_info[:2] == (3, 12)", "import httpx, pydantic"} {
+		if !strings.Contains(interpreterProbeScript, fragment) {
+			t.Fatalf("probe script lost %q: %s", fragment, interpreterProbeScript)
+		}
 	}
 }
 

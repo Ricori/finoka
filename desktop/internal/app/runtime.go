@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Ricori/finoka/desktop/internal/sidecar"
 )
@@ -18,6 +20,16 @@ const (
 	dataEnvironment   = "FINOKA_DATA_DIR"
 	vendorEnvironment = "FINOKA_VENDOR_DIR"
 )
+
+// One probe of a candidate interpreter. Generous: a cold first run on a slow
+// disk still finishes well inside it, and the probe only runs at startup.
+const interpreterProbeTimeout = 10 * time.Second
+
+// 3.12 exactly, not a floor: it is the one version the launcher environment is
+// built and hash-pinned for (bootstrap-requirements.win-py312.txt), and the one
+// the sidecar sources are tested on. Anything else — older or newer — hands over
+// to the managed Python rather than running the sidecar untested.
+const interpreterProbeScript = "import sys; sys.version_info[:2] == (3, 12) or sys.exit(1); import httpx, pydantic"
 
 // SidecarConfig resolves development defaults without baking a checkout path
 // into the application. Packaged builds set the same four environment values
@@ -38,7 +50,12 @@ func SidecarConfig() (sidecar.Config, error) {
 	python := os.Getenv(pythonEnvironment)
 	if python == "" {
 		pythonCandidates := append([]string{managedBootstrapPython(data)}, bundledPythonCandidates(resourceRoot)...)
-		python = firstAvailableExecutable(pythonCandidates...)
+		python = firstUsableExecutable(interpreterCanRunSidecar, pythonCandidates...)
+	}
+	if python == "" {
+		// Refusing here is what surfaces the managed-Python offer: the desktop
+		// shell only shows it while the sidecar is down.
+		return sidecar.Config{}, errors.New("未找到可运行本地服务的 Python（需要 3.12 并带 httpx、pydantic）：将改用内置的 Python 3.12 启动环境")
 	}
 	scriptCandidates := []string{"scripts/run_local_sidecar.py", "../scripts/run_local_sidecar.py"}
 	vendorCandidates := []string{"third_party/finesub", "../third_party/finesub"}
@@ -106,18 +123,43 @@ func bundledPythonCandidates(resourceRoot string) []string {
 	}
 }
 
-func firstAvailableExecutable(candidates ...string) string {
+// firstUsableExecutable returns the first interpreter that both exists and
+// satisfies `usable`. An interpreter of the wrong version, or without FineSub's
+// bootstrap dependencies, is worse than none: it starts a sidecar that answers
+// every request but fails to build its provisioner, and the runtime page then
+// shows permanently disabled buttons with the managed-Python offer hidden,
+// because that offer is gated on the sidecar being down.
+func firstUsableExecutable(usable func(string) bool, candidates ...string) string {
 	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := os.Stat(candidate); err != nil || info.IsDir() {
+			continue
+		}
+		if usable(candidate) {
 			return candidate
 		}
 	}
 	for _, name := range []string{"python3.12", "python3", "python"} {
-		if executable, err := exec.LookPath(name); err == nil {
+		executable, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		if usable(executable) {
 			return executable
 		}
 	}
-	return "python3"
+	return ""
+}
+
+// interpreterCanRunSidecar extends the import check the Python bootstrap uses to
+// accept its own freshly built launcher environment with the exact version the
+// sidecar sources are built for. Failure is the answer for anything that cannot be run
+// at all, so a stale path or a Store alias stub counts as unusable.
+func interpreterCanRunSidecar(python string) bool {
+	probeContext, cancel := context.WithTimeout(context.Background(), interpreterProbeTimeout)
+	defer cancel()
+	command := exec.CommandContext(probeContext, python, "-I", "-c", interpreterProbeScript)
+	configureBootstrapProcess(command)
+	return command.Run() == nil
 }
 
 func DataDirectory() (string, error) {

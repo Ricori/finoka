@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -38,6 +39,36 @@ def test_runtime_provision_status_reports_bootstrap_failure(tmp_path: Path) -> N
     assert status["supported"] is False
     assert status["bootstrap_error"] == "RuntimeError: manifest missing"
     assert "manifest missing" in status["runtime"]["detail"]
+
+
+def test_remove_managed_tree_clears_read_only_files(tmp_path: Path) -> None:
+    """uv and pip leave read-only files behind; Windows refuses to unlink them."""
+    from finoka.provision import _remove_managed_tree
+
+    target = tmp_path / "runtime"
+    (target / "nested").mkdir(parents=True)
+    locked = target / "nested" / "python.exe"
+    locked.write_bytes(b"binary")
+    locked.chmod(stat.S_IREAD)
+    _remove_managed_tree(target)
+    assert not target.exists()
+
+
+def test_remove_all_reports_failures_instead_of_raising_oserror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A partial removal has to reach the desktop shell as a stated reason, and
+    leave the job in a state the panel can render after it re-reads status."""
+    provisioner = RuntimeProvisioner(tmp_path, VENDOR)
+
+    def refuse(target: Path) -> None:
+        raise PermissionError(13, "被占用", str(target))
+
+    monkeypatch.setattr("finoka.provision._remove_managed_tree", refuse)
+    with pytest.raises(RuntimeProvisionError, match="未能完全删除"):
+        provisioner.remove_all()
+    job = provisioner.status()["job"]
+    assert job["state"] == "failed"
+    assert job["error"]["code"] == "remove_failed"
+    assert "未能完全删除" in job["message"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="non-Windows platform gate")

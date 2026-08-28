@@ -9,6 +9,10 @@ import { Notice } from "../components/Notice.tsx";
 interface RuntimePageProps {
   capabilities: Capabilities | null;
   message: string;
+  /** Failure of the last install/cancel/remove action, shown next to the
+      controls that triggered it. */
+  provisionMessage: string;
+  onDismissProvisionMessage: () => void;
   provision: RuntimeProvisionState | null;
   pythonBootstrap: PythonBootstrapState | null;
   ready: boolean;
@@ -129,7 +133,7 @@ function AssetTile({ item, optional = false, busy = false, installing = false, o
   );
 }
 
-export function RuntimePage({ capabilities, message, provision, pythonBootstrap, ready, sidecar, onCancelInstall, onInstall, onInstallPython, onRemoveAll }: RuntimePageProps) {
+export function RuntimePage({ capabilities, message, provisionMessage, provision, pythonBootstrap, ready, sidecar, onCancelInstall, onDismissProvisionMessage, onInstall, onInstallPython, onRemoveAll }: RuntimePageProps) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const issues = capabilities?.runtime?.issues ?? [];
   const stages = capabilities?.runtime?.stages ?? [];
@@ -139,7 +143,11 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
   const ffmpegReady = provision?.media_ready === true || (mediaStage !== undefined && !mediaStage.issues.some((issue) => issue.code === "missing_ffmpeg"));
   const mediaState = mediaInstalling ? "downloading" : ffmpegReady ? "ready" : "missing";
   const pythonInstalling = pythonBootstrap?.state === "running";
-  const showPythonCard = !sidecar?.running || pythonInstalling || pythonBootstrap?.state === "failed";
+  // A sidecar started on an interpreter without FineSub's bootstrap dependencies
+  // answers requests but cannot build its provisioner. The card is the way out
+  // of that state, so a running sidecar must not hide it.
+  const bootstrapBroken = (provision?.bootstrap_error ?? "") !== "";
+  const showPythonCard = !sidecar?.running || pythonInstalling || bootstrapBroken || pythonBootstrap?.state === "failed";
   const assets = [provision?.runtime, ...(provision?.resources ?? []), ...(provision?.models ?? [])]
     .filter((item): item is RuntimeItem => item !== undefined && item.id !== "ffmpeg" && item.id !== "ffprobe");
   const optionalTools = assets.filter((item) => optionalToolIds.has(item.id));
@@ -155,7 +163,7 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
       ? "正在准备 Python 启动环境，完成后即可安装运行时与模型。"
       : "本地执行服务尚未连接，无法读取运行时状态。等待服务启动，或点击右上角「重新检查」。"
     : provision.bootstrap_error
-      ? `FineSub bootstrap 不可用，暂时无法安装运行时或模型：${provision.bootstrap_error}`
+      ? `FineSub bootstrap 不可用，暂时无法安装运行时或模型：${provision.bootstrap_error}。可用下方「Python 3.12」卡片安装隔离的启动环境后重试。`
       : !provision.supported
         ? `当前 ${provision.platform} ${provision.media_supported ? "支持上方媒体必备工具；" : ""}本地 GPU 流水线仍仅面向 Windows x64/NVIDIA，也可继续使用云端容器。`
         : "";
@@ -210,6 +218,7 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
           </div>
         </div>
         <p className="provision-hint">「一键准备全部」= 先执行「仅装运行时」，再执行「仅补缺失模型」。已就绪的部分会自动跳过，重复执行只补缺失或损坏的内容。</p>
+        <Notice className="provision-message failed" message={provisionMessage} autoDismissMs={0} onDismiss={onDismissProvisionMessage} />
         {provisionBlocked !== "" && (
           <p className={provision?.bootstrap_error ? "provision-blocked failed" : "provision-blocked"} role="status">{provisionBlocked}</p>
         )}
@@ -219,7 +228,9 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
             <div className="required-dependency-copy">
               <span>启动依赖 · AUTOMATIC</span>
               <h3>Python 3.12</h3>
-              <p>{pythonBootstrap?.message || "Finoka 将自动下载隔离的 Python，不会修改系统 Python。"}</p>
+              <p>{bootstrapBroken && !pythonInstalling
+                ? "当前本地服务运行在版本不符或缺少依赖的系统 Python 上。安装隔离的 Python 3.12 后会自动重启服务。"
+                : pythonBootstrap?.message || "Finoka 将自动下载隔离的 Python，不会修改系统 Python。"}</p>
             </div>
             <div className="required-dependency-action">
               <small>{pythonInstalling ? "↓ 正在安装" : pythonBootstrap?.state === "failed" ? "! 安装失败" : pythonBootstrap?.state === "ready" ? "✓ 已安装" : "! 尚未安装"}</small>

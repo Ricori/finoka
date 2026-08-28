@@ -109,6 +109,10 @@ export default function App() {
   const [taskHistoryMessage, setTaskHistoryMessage] = useState("");
   const [settings, setSettings] = useState<FineSubSettingsState | null>(null);
   const [runtimeProvision, setRuntimeProvision] = useState<RuntimeProvisionState | null>(null);
+  // Failures of the install/cancel/remove actions used to land in `message`,
+  // which the runtime page only renders while capabilities are missing — so a
+  // refused removal looked like a page that simply did not react.
+  const [provisionMessage, setProvisionMessage] = useState("");
   const [pythonBootstrap, setPythonBootstrap] = useState<PythonBootstrapState | null>(null);
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [keysBusy, setKeysBusy] = useState(false);
@@ -880,29 +884,37 @@ export default function App() {
   }, [refresh]);
 
   const installRuntime = useCallback(async (target: RuntimeInstallTarget) => {
+    setProvisionMessage("");
     try {
       setRuntimeProvision(await fineSubRuntime.install(target));
     } catch (value) {
-      setMessage(value instanceof Error ? value.message : String(value));
+      setProvisionMessage(value instanceof Error ? value.message : String(value));
+      await refresh({ silent: true });
     }
-  }, []);
+  }, [refresh]);
 
   const removeRuntime = useCallback(async () => {
+    setProvisionMessage("");
     try {
       setRuntimeProvision(await fineSubRuntime.removeAll());
       await refresh();
     } catch (value) {
-      setMessage(value instanceof Error ? value.message : String(value));
+      setProvisionMessage(value instanceof Error ? value.message : String(value));
+      // A refused or partial removal still changed what is on disk, so the
+      // panel is reconciled with the sidecar rather than left as it was.
+      await refresh({ silent: true });
     }
   }, [refresh]);
 
   const cancelRuntimeInstall = useCallback(async () => {
+    setProvisionMessage("");
     try {
       setRuntimeProvision(await fineSubRuntime.cancel());
     } catch (value) {
-      setMessage(value instanceof Error ? value.message : String(value));
+      setProvisionMessage(value instanceof Error ? value.message : String(value));
+      await refresh({ silent: true });
     }
-  }, []);
+  }, [refresh]);
 
   const installPython = useCallback(async () => {
     setSection("runtime");
@@ -1211,7 +1223,7 @@ export default function App() {
           )}
 
           {section === "runtime" && (
-            <RuntimePage capabilities={capabilities} message={message} provision={runtimeProvision} pythonBootstrap={pythonBootstrap} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} onInstallPython={installPython} onRemoveAll={removeRuntime} />
+            <RuntimePage capabilities={capabilities} message={message} provisionMessage={provisionMessage} onDismissProvisionMessage={() => setProvisionMessage("")} provision={runtimeProvision} pythonBootstrap={pythonBootstrap} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} onInstallPython={installPython} onRemoveAll={removeRuntime} />
           )}
 
           {section === "keys" && (
