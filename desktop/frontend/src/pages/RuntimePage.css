@@ -8,6 +8,10 @@
 .runtime-diagnostics .stage-list { grid-template-columns: 1fr; margin-top: 12px; }
 .runtime-diagnostics .stage-list > div { padding: 10px 11px; }
 .runtime-layout .provision-panel { align-content: start; }
+.provision-blocked { display: flex; gap: 8px; margin: 0; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--warn) 34%, var(--line-soft)); border-radius: 10px; background: color-mix(in srgb, var(--warn) 9%, transparent); color: var(--mut); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.provision-blocked::before { flex: 0 0 auto; color: var(--warn); font-weight: 700; content: "!"; }
+.provision-blocked.failed { color: var(--warn); }
+.required-dependency-copy .required-dependency-blocked { margin: 4px 0 0; color: var(--warn); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .required-dependency-card { position: relative; display: grid; gap: 14px; padding: 17px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--warn) 52%, var(--line-soft)); border-radius: 14px; background: linear-gradient(135deg, color-mix(in srgb, var(--warn) 12%, var(--panel)), var(--panel) 58%); box-shadow: 0 8px 24px color-mix(in srgb, black 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 5%, transparent); }
 .required-dependency-card::before { position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--warn); content: ""; }
 .required-dependency-card.ready { border-color: color-mix(in srgb, var(--ok) 42%, var(--line-soft)); background: linear-gradient(135deg, color-mix(in srgb, var(--ok) 9%, var(--panel)), var(--panel) 58%); }

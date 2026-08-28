@@ -39,6 +39,8 @@ import type { DialogState, ExecutionMode, LibraryFilter, LibraryItem, LoadState,
 import { activeStates, taskHistoryLimit } from "./types.ts";
 
 const taskPollIntervalMs = 10_000;
+// Reconnect attempts while the local sidecar is not answering.
+const sidecarRetryIntervalMs = 4_000;
 
 /** Library notices carry their own tone so a completed action does not read as a
     warning. The helpers are module level, keeping setState callers dependency free. */
@@ -232,15 +234,22 @@ export default function App() {
     if (preferencesHydrated.current) void desktopPreferences.save({ libraryView: viewMode }).catch(() => undefined);
   }, [viewMode]);
 
-  const refresh = useCallback(async () => {
-    setLoadState("loading");
-    setMessage("");
+  // `silent` keeps the automatic reconnect polling from flashing the loading
+  // state on every tick; explicit user refreshes still show their progress.
+  const refresh = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoadState("loading");
+      setMessage("");
+    }
     try {
       const [status, bootstrap] = await Promise.all([sidecarStatus(), fineSubRuntime.pythonStatus()]);
       setSidecar(status);
       setPythonBootstrap(bootstrap);
       if (!status.running) {
         setCapabilities(null);
+        // Without this the panel keeps offering install buttons against a
+        // sidecar that is no longer answering.
+        setRuntimeProvision(null);
         setMessage(bootstrap.state === "running" ? bootstrap.message : status.error || bootstrap.message || "本地执行服务尚未启动");
         setLoadState("error");
         return;
@@ -911,6 +920,21 @@ export default function App() {
     pythonBootstrapStarted.current = true;
     void installPython();
   }, [installPython, pythonBootstrap, sidecar?.running]);
+
+  const runtimeProvisionMissing = runtimeProvision === null;
+
+  // The sidecar is started before the window opens, so the first refresh can
+  // land while it is still handshaking, and a start that failed outright never
+  // recovers on its own. A transient failure on the follow-up reads leaves the
+  // same hole with the sidecar up but the provision state unknown. All of them
+  // used to strand the runtime page on permanently disabled buttons until the
+  // user found 「重新检查」. Python installation drives its own polling.
+  useEffect(() => {
+    if (pythonBootstrap?.state === "running") return;
+    if (sidecar?.running && !runtimeProvisionMissing) return;
+    const timer = window.setInterval(() => void refresh({ silent: true }), sidecarRetryIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [pythonBootstrap?.state, refresh, runtimeProvisionMissing, sidecar?.running]);
 
   useEffect(() => {
     if (pythonBootstrap?.state !== "running") return;

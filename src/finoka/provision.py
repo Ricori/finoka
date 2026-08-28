@@ -191,6 +191,10 @@ class RuntimeProvisioner:
                 "runtime_supported": False,
                 "media_supported": False,
                 "media_ready": False,
+                # The desktop shell disables every install control while the
+                # bootstrap is broken, so the reason travels with the payload
+                # instead of hiding inside a single asset tooltip.
+                "bootstrap_error": self._bootstrap_error,
                 "root": str(self.data_dir / "finesub"),
                 "runtime": {"id": "python", "version": "3.12", "state": "missing", "detail": f"FineSub bootstrap 依赖缺失：{self._bootstrap_error}"},
                 "resources": [],
@@ -230,6 +234,7 @@ class RuntimeProvisioner:
             "supported": self._runtime_supported,
             "runtime_supported": self._runtime_supported,
             "media_supported": self._media_supported,
+            "bootstrap_error": "",
             "media_ready": self.tool_path("ffmpeg") is not None and self.tool_path("ffprobe") is not None,
             "root": str(self.paths.root),
             "runtime": runtime_status,

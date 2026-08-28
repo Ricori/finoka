@@ -121,7 +121,7 @@ function AssetTile({ item, optional = false, busy = false, installing = false, o
       <span className={ready ? "asset-ready" : optional ? "asset-optional" : "asset-missing"}>{ready ? "✓" : optional ? "○" : "↓"}</span>
       <div><strong>{item.id}</strong><small>{item.version ? `${item.version} · ` : ""}{stateLabel}</small></div>
       {optional && !ready && onInstall && (
-        <button className="optional-install-button" disabled={busy} onClick={() => void onInstall()} type="button">
+        <button className="optional-install-button" disabled={busy} title={busy ? "已有安装任务正在进行，请等待其结束。" : undefined} onClick={() => void onInstall()} type="button">
           {installing ? "安装中…" : item.state === "outdated" ? "更新" : "下载"}
         </button>
       )}
@@ -146,6 +146,34 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
   const requiredAssets = assets.filter((item) => !optionalToolIds.has(item.id));
   const readyAssets = requiredAssets.filter((item) => item.state === "ready");
   const pendingAssets = requiredAssets.filter((item) => item.state !== "ready");
+  // Every control below is gated on provision state. Without a reason attached
+  // the panel greys out silently — on a first launch, or whenever the sidecar
+  // cannot build its provisioner, that reads as a dead page.
+  const jobRunning = job?.state === "running";
+  const provisionBlocked = !provision
+    ? pythonInstalling
+      ? "正在准备 Python 启动环境，完成后即可安装运行时与模型。"
+      : "本地执行服务尚未连接，无法读取运行时状态。等待服务启动，或点击右上角「重新检查」。"
+    : provision.bootstrap_error
+      ? `FineSub bootstrap 不可用，暂时无法安装运行时或模型：${provision.bootstrap_error}`
+      : !provision.supported
+        ? `当前 ${provision.platform} ${provision.media_supported ? "支持上方媒体必备工具；" : ""}本地 GPU 流水线仍仅面向 Windows x64/NVIDIA，也可继续使用云端容器。`
+        : "";
+  const runtimeBlocked = provisionBlocked || (jobRunning ? "已有安装任务正在进行，请等待其结束。" : "");
+  const modelsBlocked = runtimeBlocked || (provision && provision.runtime.state !== "ready" ? "需要先完成「仅装运行时」。" : "");
+  const mediaUnavailable = !provision
+    ? "本地执行服务尚未连接，无法下载 FFmpeg。等待服务启动，或点击右上角「重新检查」。"
+    : provision.bootstrap_error
+      ? `FineSub bootstrap 不可用：${provision.bootstrap_error}`
+      : !provision.media_supported
+        ? `托管 FFmpeg 暂不支持 ${provision.platform}，请自行安装并加入 PATH。`
+        : "";
+  const mediaBlocked = mediaUnavailable || (jobRunning ? "已有安装任务正在进行，请等待其结束。" : "");
+  const pythonBlocked = !pythonBootstrap
+    ? ""
+    : !pythonBootstrap.supported
+      ? pythonBootstrap.message || "自动安装 Python 当前仅支持 Windows x64。"
+      : pythonInstalling ? "Python 正在安装中。" : "";
   return (
     <section className="runtime-layout">
       <article className="panel runtime-diagnostics">
@@ -176,12 +204,15 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
         <div className="panel-heading">
           <div><span className="eyebrow">Managed assets</span><h2>运行时与模型</h2></div>
           <div className="provision-actions">
-            <button className="step-button" disabled={!provision?.supported || provision.job.state === "running"} onClick={() => void onInstall("runtime")} title="第 1 步：只安装 Python/CUDA 运行环境与 uv、FFmpeg 基础资源，不下载任何模型">仅装运行时</button>
-            <button className="step-button" disabled={!provision?.supported || provision.runtime.state !== "ready" || provision.job.state === "running"} onClick={() => void onInstall("models")} title="第 2 步：只补齐缺失的模型，需要运行时已就绪">仅补缺失模型</button>
-            <button className="primary-button" disabled={!provision?.supported || provision.job.state === "running"} onClick={() => void onInstall("all")} title="依次执行上面两步：先装运行时，再下载缺失的模型">一键准备全部</button>
+            <button className="step-button" disabled={runtimeBlocked !== ""} onClick={() => void onInstall("runtime")} title={runtimeBlocked || "第 1 步：只安装 Python/CUDA 运行环境与 uv、FFmpeg 基础资源，不下载任何模型"}>仅装运行时</button>
+            <button className="step-button" disabled={modelsBlocked !== ""} onClick={() => void onInstall("models")} title={modelsBlocked || "第 2 步：只补齐缺失的模型，需要运行时已就绪"}>仅补缺失模型</button>
+            <button className="primary-button" disabled={runtimeBlocked !== ""} onClick={() => void onInstall("all")} title={runtimeBlocked || "依次执行上面两步：先装运行时，再下载缺失的模型"}>一键准备全部</button>
           </div>
         </div>
         <p className="provision-hint">「一键准备全部」= 先执行「仅装运行时」，再执行「仅补缺失模型」。已就绪的部分会自动跳过，重复执行只补缺失或损坏的内容。</p>
+        {provisionBlocked !== "" && (
+          <p className={provision?.bootstrap_error ? "provision-blocked failed" : "provision-blocked"} role="status">{provisionBlocked}</p>
+        )}
         {showPythonCard && <section className={`required-dependency-card ${pythonBootstrap?.state ?? "missing"}`}>
           <div className="required-dependency-main">
             <div className="required-dependency-icon" aria-hidden="true">PY</div>
@@ -192,7 +223,7 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
             </div>
             <div className="required-dependency-action">
               <small>{pythonInstalling ? "↓ 正在安装" : pythonBootstrap?.state === "failed" ? "! 安装失败" : pythonBootstrap?.state === "ready" ? "✓ 已安装" : "! 尚未安装"}</small>
-              <button className="primary-button" disabled={!pythonBootstrap?.supported || pythonInstalling} onClick={() => void onInstallPython()}>
+              <button className="primary-button" disabled={pythonBlocked !== ""} title={pythonBlocked || undefined} onClick={() => void onInstallPython()}>
                 {pythonInstalling ? "正在启用…" : pythonBootstrap?.state === "failed" ? "重试安装" : pythonBootstrap?.state === "ready" ? "重新启用" : "立即安装"}
               </button>
             </div>
@@ -211,17 +242,17 @@ export function RuntimePage({ capabilities, message, provision, pythonBootstrap,
               <span>必备依赖 · REQUIRED</span>
               <h3>FFmpeg</h3>
               <p>用于视频探测、缩略图、波形、音频提取和视频导出；缺失时无法导入视频。</p>
+              {mediaUnavailable !== "" && <p className="required-dependency-blocked">{mediaUnavailable}</p>}
             </div>
             <div className="required-dependency-action">
               <small>{mediaState === "downloading" ? "↓ 下载中" : "! 尚未安装"}</small>
-              <button className="primary-button" disabled={!provision?.media_supported || job?.state === "running"} onClick={() => void onInstall("media")}>
+              <button className="primary-button" disabled={mediaBlocked !== ""} title={mediaBlocked || undefined} onClick={() => void onInstall("media")}>
                 {mediaState === "downloading" ? "正在安装…" : "立即下载"}
               </button>
             </div>
           </div>
           {mediaInstalling && job && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
         </section>}
-        {!provision?.supported && <p className="success-copy">当前 {provision?.platform ?? "平台"} 支持上方媒体必备工具；本地 GPU 流水线仍仅面向 Windows x64/NVIDIA，也可继续使用云端容器。</p>}
         {job?.state === "running" && !mediaInstalling && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
         {job?.state !== "running" && <Notice className={`provision-message ${job?.state ?? ""}`} message={job?.message ?? ""} />}
         {pendingAssets.length > 0 && (

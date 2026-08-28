@@ -28,6 +28,18 @@ def test_runtime_provision_status_uses_finesub_manifests(tmp_path: Path) -> None
     assert {item["id"] for item in status["models"]} == {"separator", "whisper", "qwen-referee"}
 
 
+def test_runtime_provision_status_reports_bootstrap_failure(tmp_path: Path) -> None:
+    """A broken bootstrap disables every install control in the desktop shell,
+    so the payload has to carry the reason rather than only a tile tooltip."""
+    provisioner = RuntimeProvisioner(tmp_path, VENDOR)
+    assert provisioner.status()["bootstrap_error"] == ""
+    provisioner._bootstrap_error = "RuntimeError: manifest missing"
+    status = provisioner.status()
+    assert status["supported"] is False
+    assert status["bootstrap_error"] == "RuntimeError: manifest missing"
+    assert "manifest missing" in status["runtime"]["detail"]
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="non-Windows platform gate")
 def test_runtime_install_refuses_unsupported_platform(tmp_path: Path) -> None:
     provisioner = RuntimeProvisioner(tmp_path, VENDOR)

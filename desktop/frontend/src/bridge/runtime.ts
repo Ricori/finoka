@@ -17,6 +17,9 @@ export interface RuntimeProvisionState {
   runtime_supported: boolean;
   media_supported: boolean;
   media_ready: boolean;
+  /** Non-empty when the sidecar could not construct its provisioner: every
+      install target is unavailable until it is resolved. */
+  bootstrap_error?: string;
   root: string;
   runtime: RuntimeItem;
   resources: RuntimeItem[];
