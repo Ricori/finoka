@@ -1,16 +1,17 @@
-import { DEFAULT_ASS_TEMPLATE, ROW_H0, ROW_MAX, ROW_MIN } from "../constants";
-import { parseAssTemplate } from "../ass";
+import { ROW_H0, ROW_MAX, ROW_MIN } from "../constants";
 import { documents } from "../../bridge/documents.ts";
 import { mediaLibrary } from "../../bridge/library.ts";
 import { backHome, getVid, setLoadedDocument } from "../session";
 import { bumpDoc, docStore } from "../store/docStore";
 import { setLoadedState, saveStore } from "../store/saveStore";
+import { loadStyleSheet } from "../store/styleStore";
 import { select, selStore } from "../store/selectionStore";
 import { askStore, ctxStore, modalStore, toast, toastStore } from "../store/uiStore";
 import { videoStore } from "../store/videoStore";
 import { ensureBlkWin, relayout, setDuration, syncZoomRange, viewStore } from "../store/viewStore";
 import { playStore } from "../store/playStore";
 import { clampN, errText } from "../utils";
+import { unknownStyles } from "./assBuild";
 import { initSubtitles, preloadSubtitles } from "./subtitles";
 import { setupVideo, showVideoFallback } from "./videoSource";
 import { resetAutoGain } from "./wave";
@@ -63,9 +64,11 @@ export async function runBootSequence() {
   try {
     setupVideo().catch((error) => showVideoFallback(false, "视频加载失败：" + errText(error)));
     preloadSubtitles().catch(() => undefined);
+    // 样式表存在本机，和文档一起装载：轨道绑定要靠它判断有没有落空
     const [data, peaks] = await Promise.all([
       documents.read(videoID),
       documents.peaks(videoID),
+      loadStyleSheet(),
     ]);
     setLoadedDocument(data);
 
@@ -90,7 +93,6 @@ export async function runBootSequence() {
       zh: { hidden: !!sourceMeta.zh?.hidden, style: sourceMeta.zh?.style || "CN" },
     };
 
-    const assTemplate = data.ass_template?.trim() || DEFAULT_ASS_TEMPLATE;
     docStore.set({
       rev: data.rev || 0,
       title: data.title || videoID,
@@ -98,14 +100,11 @@ export async function runBootSequence() {
       segs,
       tracks,
       trackMeta,
-      assTemplate,
-      isAdmin: false,
       knowledgeBase: "",
       canLearnKnowledge: false,
       knowledgeLearning: { status: "idle" },
       peaks,
     });
-    parseAssTemplate(assTemplate);
     resetAutoGain();
     setDuration(peaks?.duration || (segs.length ? segs[segs.length - 1].t1 + 2 : 60));
 
@@ -122,6 +121,12 @@ export async function runBootSequence() {
     ensureBlkWin(true);
     if (segs.length) select(0);
     setLoadedState();
+    // 云端同步下来的文档常绑着本机没有的样式：照常出图（回退 JP/CN），但得说一声
+    const unknown = unknownStyles();
+    if (unknown.length) {
+      toast("本机样式表里没有 " + unknown.join("、") + "，相关轨道已回退到默认 JP/CN 样式 · 点此编辑样式",
+        true, () => modalStore.set({ tplOpen: true }));
+    }
   } catch (error) {
     toast("打开字幕失败：" + errText(error), true);
     backHome();

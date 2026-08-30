@@ -1,5 +1,5 @@
-import { ASS_EVENTS_HEAD, ASS_SCRIPT_INFO } from '../constants';
-import { fontsMissing, getStyleMap } from '../ass';
+import { ASS_EVENTS_HEAD } from '../constants';
+import { assHead, fontsMissing, getStyleMap, resolveStyle } from '../ass';
 import { docStore, trackName } from '../store/docStore';
 import { assNm, assSec, assTs, assTx } from '../utils';
 import type { Lang, Seg } from '../types';
@@ -13,14 +13,13 @@ interface OutLine { arr: Seg[]; lang: Lang; style: string; name: string }
 
 /**
  * 输出线 = 堆叠优先级：默认轨 译文→原文 最贴边，再各自定义轨 译文→原文 依次向外。
- * 未绑定或样式在模板里不存在的线不出现（与导出一致）。
+ * 没绑样式的线不出现；绑了本机没有的样式则回退 JP/CN，不再整条线消失。
  */
 export function outputLines(): OutLine[] {
   const { segs, tracks, trackMeta } = docStore.get();
-  const styleMap = getStyleMap();
   const out: OutLine[] = [];
   const add = (arr: Seg[], lang: Lang, style: string | null, name: string) => {
-    if (style && styleMap[style]) out.push({ arr, lang, style, name });
+    if (style) out.push({ arr, lang, style: resolveStyle(style, lang), name });
   };
   if (trackMeta) {
     if (!trackMeta.zh.hidden) add(segs, "zh", trackMeta.zh.style, trackName(-1));
@@ -34,15 +33,15 @@ export function outputLines(): OutLine[] {
 }
 
 /**
- * 有绑定、未隐藏、但模板里查不到的样式名。outputLines 会把这些线**悄悄丢掉**，
- * 出来的字幕少一条谁都不会发现，所以导出前要拿它拦一道——服务端那份是直接报 400。
+ * 有绑定、但本机样式表里查不到的样式名。这些线会回退到 JP/CN 照常出图（见 outputLines），
+ * 换了副样子却一声不响，所以打开文档时得拿它提一句。
  */
-export function missingStyles(): string[] {
+export function unknownStyles(): string[] {
   const { tracks, trackMeta } = docStore.get();
   const styleMap = getStyleMap();
   const miss = new Set<string>();
   const chk = (lane: { hidden: boolean; style: string | null } | undefined) => {
-    if (lane && !lane.hidden && lane.style && !styleMap[lane.style]) miss.add(lane.style);
+    if (lane && lane.style && !styleMap[lane.style]) miss.add(lane.style);
   };
   if (trackMeta) { chk(trackMeta.zh); chk(trackMeta.ja); }
   for (const tr of tracks) { chk(tr.zh); chk(tr.ja); }
@@ -63,12 +62,7 @@ export function buildAss(): string {
     for (const e of g)
       evs.push(`Dialogue: 0,${assTs(e.t0)},${assTs(e.t1)},${L.style},${assNm(L.name)},0,0,0,,${e.text}`);
   }
-  // 模板自带 [Script Info] 就原样用，否则套标准头；粘了 [Events] 段则截掉
-  let tpl = (docStore.get().assTemplate || "").trim();
-  const i = tpl.toLowerCase().indexOf("[events]");
-  if (i >= 0) tpl = tpl.slice(0, i).trimEnd();
-  const head = tpl.toLowerCase().includes("[script info]") ? tpl : ASS_SCRIPT_INFO + tpl;
-  return head + ASS_EVENTS_HEAD + evs.join("\n") + "\n";
+  return assHead() + ASS_EVENTS_HEAD + evs.join("\n") + "\n";
 }
 
 /**

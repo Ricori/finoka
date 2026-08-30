@@ -3,7 +3,7 @@ import { docStore } from '../store/docStore';
 import { toast } from '../store/uiStore';
 import { viewStore } from '../store/viewStore';
 import { errText } from '../utils';
-import { buildAss, buildClipAss, missingStyles } from './assBuild';
+import { buildAss, buildClipAss } from './assBuild';
 import { mediaLibrary } from '../../bridge/library.ts';
 
 /**
@@ -15,13 +15,6 @@ export async function exportAss() {
   try {
     const { title } = docStore.get();
     const v = viewStore.get();
-    // 服务端那份遇到模板里没有的样式名直接 400；本地 outputLines 只会悄悄少一条线，
-    // 所以在这里补上同一道闸，别出坏文件
-    const miss = missingStyles();
-    if (miss.length) {
-      toast("导出失败：样式模板里不存在 " + miss.join("、") + "，请在轨道设置里改绑");
-      return;
-    }
     let name = (title || getVid()).replace(/\.[a-z0-9]{2,4}$/i, "") || getVid();
     let content: string;
     if (v.curClip) {

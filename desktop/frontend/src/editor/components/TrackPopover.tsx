@@ -1,25 +1,39 @@
 import { useEffect } from 'react';
-import { getStyleNames } from '../ass';
+import { getStyleNames, resolveStyle } from '../ass';
 import { bindStyle, deleteTrack, renameTarget } from '../lib/edits';
 import { docStore } from '../store/docStore';
 import { closeTrackPop, modalStore } from '../store/uiStore';
+import type { Lang } from '../types';
 
-/** 样式下拉：模板里没有的绑定值回落到「不导出」或首个样式，与旧版 fillStyleSelect 一致 */
-function effStyle(value: string | null | undefined, allowNone: boolean) {
-  const names = getStyleNames();
+/**
+ * 样式下拉。本机样式表里没有的绑定值一律显示成回退后的 JP/CN——预览和导出就是这么出的
+ * （见 ass.ts::resolveStyle），下拉再显示那个查无此人的名字只会让两边对不上。
+ */
+function effStyle(value: string | null | undefined, allowNone: boolean, lang: Lang) {
   const v = value || "";
-  if (v && names.includes(v)) return v;
+  if (v && getStyleNames().includes(v)) return v;
   if (!v && allowNone) return "";
-  return allowNone ? "" : (names[0] || "");
+  return resolveStyle(v, lang);
 }
 
-function StyleSelect({ id, value, allowNone, onPick }: {
-  id: string; value: string | null; allowNone: boolean; onPick(v: string): void;
+/**
+ * 下拉最后那一项的值。样式名是从 Style 行里逐行解析出来的，不可能含换行，
+ * 拿它开头就不会跟任何真样式撞名——选中它只开样式模板，绝不落到绑定上。
+ */
+const NEW_STYLE = "\n新增样式";
+
+function StyleSelect({ id, value, allowNone, lang, onPick }: {
+  id: string; value: string | null; allowNone: boolean; lang: Lang; onPick(v: string): void;
 }) {
   return (
-    <select id={id} value={effStyle(value, allowNone)} onChange={e => onPick(e.target.value)}>
+    <select id={id} value={effStyle(value, allowNone, lang)} onChange={e => {
+      // 样式模板是全屏弹窗，弹层留在后面也会被第一次点击关掉，不如自己先收干净
+      if (e.target.value === NEW_STYLE) { closeTrackPop(); modalStore.set({ tplOpen: true }); return; }
+      onPick(e.target.value);
+    }}>
       {allowNone && <option value="">（不导出）</option>}
       {getStyleNames().map(n => <option key={n} value={n}>{n}</option>)}
+      <option value={NEW_STYLE}>＋ 新增样式</option>
     </select>
   );
 }
@@ -68,14 +82,14 @@ export function TrackPopover() {
       </div>
       {/* 默认轨 lane：只绑当前语言的样式 */}
       <div style={{ display: isTrack || isJa ? undefined : "none" }}>
-        <label>原文样式</label>
-        <StyleSelect id="tp-style-ja" allowNone={isTrack}
+        <label>字幕样式</label>
+        <StyleSelect id="tp-style-ja" allowNone={isTrack} lang="ja"
           value={isTrack ? tr!.ja.style : (trackMeta?.ja.style ?? null)}
           onPick={v => bindStyle("ja", v, styleTarget)} />
       </div>
       <div style={{ display: isTrack || !isJa ? undefined : "none" }}>
-        <label>译文样式</label>
-        <StyleSelect id="tp-style-zh" allowNone={isTrack}
+        <label>字幕样式</label>
+        <StyleSelect id="tp-style-zh" allowNone={isTrack} lang="zh"
           value={isTrack ? tr!.zh.style : (trackMeta?.zh.style ?? null)}
           onPick={v => bindStyle("zh", v, styleTarget)} />
       </div>

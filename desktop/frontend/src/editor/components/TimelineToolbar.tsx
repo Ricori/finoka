@@ -11,7 +11,6 @@ import type { CtxItem } from '../types';
 
 export function TimelineToolbar() {
   docStore.use(s => s.version);
-  const isAdmin = docStore.use(s => s.isAdmin);
   const { snap, scrubAudio } = layoutStore.use(s => ({ snap: s.snap, scrubAudio: s.scrubAudio }), shallowEqual);
   const { curClip, clips, pps } = viewStore.use(
     s => ({ curClip: s.curClip, clips: s.clips, pps: s.pps }), shallowEqual);
@@ -88,12 +87,12 @@ export function TimelineToolbar() {
       </button>
       <div className="sep"></div>
       <button className="tool icon-only" id="btn-ass-style"
-        title={isAdmin
-          ? "编辑全局 ASS 样式模板（预览与导出都用它）"
-          : "查看全局 ASS 样式模板（预览与导出都用它，仅管理员可改）"}
+        title="编辑样式模板"
         onClick={() => modalStore.set({ tplOpen: true })}>
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.4">
-          <path d="M2 11.5 8.5 5M6.8 2.6l3.6 3.6M9.5 1.5l2 2-1.5 1.5-2-2z" />
+          <path d="M3.1 9.2 6.5 2.2l3.4 7" strokeLinejoin="round" />
+          <path d="M4.6 7.2h3.8" />
+          <path d="M2.4 11.4h8.2" strokeWidth="1.9" strokeLinecap="round" />
         </svg>
       </button>
       <div className="sep"></div>

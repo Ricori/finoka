@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/Ricori/finoka/desktop/internal/assstyles"
 	"github.com/Ricori/finoka/desktop/internal/cloud"
 	"github.com/Ricori/finoka/desktop/internal/library"
 	"github.com/Ricori/finoka/desktop/internal/plugins"
@@ -58,6 +59,10 @@ func Run(assets fs.FS) error {
 	}
 	library.SetBundledFonts(libraryService, fonts)
 	preferencesService, err := preferences.New(dataDirectory)
+	if err != nil {
+		return err
+	}
+	assStyleService, err := assstyles.New(dataDirectory)
 	if err != nil {
 		return err
 	}
@@ -111,6 +116,7 @@ func Run(assets fs.FS) error {
 			application.NewService(cloudService),
 			application.NewService(pluginService),
 			application.NewService(preferencesService),
+			application.NewService(assStyleService),
 			application.NewService(taskHistoryService),
 			application.NewService(windowService),
 			application.NewService(updateService),
