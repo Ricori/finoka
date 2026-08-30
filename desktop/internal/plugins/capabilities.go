@@ -199,7 +199,7 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 		return DownloadedMedia{}, err
 	}
 
-	ytDLP, ytDLPPrefix, err := managedtools.FindYTDLP(s.dataDirectory)
+	ytDLP, err := managedtools.FindYTDLP(s.dataDirectory)
 	if err != nil {
 		return DownloadedMedia{}, err
 	}
@@ -207,9 +207,8 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 	if err != nil {
 		return DownloadedMedia{}, errors.New("Finoka FFmpeg is not installed; install it from 运行环境 first")
 	}
-	args := append([]string(nil), ytDLPPrefix...)
+	args := append([]string(nil), ytDLP.Prefix...)
 	args = append(args, pluginArgs...)
-
 	args = append(args,
 		"--no-playlist",
 		"--newline",
@@ -219,7 +218,10 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 		"--remux-video", "mp4",
 	)
 	args = append(args, "-o", output, normalizedURL)
-	command := exec.Command(ytDLP, args...)
+	command := exec.Command(ytDLP.Executable, args...)
+	if len(ytDLP.Environment) > 0 {
+		command.Env = append(os.Environ(), ytDLP.Environment...)
+	}
 	configurePluginCommand(command)
 	outputLog := newTailBuffer(8_000)
 	command.Stdout = &outputLog

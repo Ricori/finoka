@@ -52,22 +52,28 @@ func TestFindManagedRejectsUnsafeVersionPointer(t *testing.T) {
 const fixtureVersion = "1.2.3"
 
 // writeYTDLPWheel lays out the wheel exactly as the provisioner does: an
-// unpacked package directory plus the version pointer beside it.
+// unpacked package directory plus the version pointer beside it. It returns the
+// directory PYTHONPATH has to name for "import yt_dlp" to resolve.
 func writeYTDLPWheel(t *testing.T, root, version string) string {
 	t.Helper()
 	resource := filepath.Join(root, "finesub", "runtime", "yt-dlp")
-	entrypoint := filepath.Join(resource, version, "yt_dlp", "__main__.py")
-	if err := os.MkdirAll(filepath.Dir(entrypoint), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(entrypoint, []byte("# fixture"), 0o600); err != nil {
-		t.Fatal(err)
+	packageRoot := filepath.Join(resource, version)
+	// __init__.py is the file the runtime manifest marks as required; __main__.py
+	// is what -m runs. A real wheel carries both.
+	for _, name := range []string{"__init__.py", "__main__.py"} {
+		module := filepath.Join(packageRoot, "yt_dlp", name)
+		if err := os.MkdirAll(filepath.Dir(module), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(module, []byte("# fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	pointer := filepath.Join(resource, "current.json")
 	if err := os.WriteFile(pointer, []byte(`{"current":"`+version+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return entrypoint
+	return packageRoot
 }
 
 // writeBootstrapPython asks BootstrapPython for the path rather than repeating
@@ -84,24 +90,48 @@ func writeBootstrapPython(t *testing.T, root string) string {
 	return python
 }
 
-// A wheel with no executable resolves to the managed interpreter running the
-// package's own __main__.py -- the case that was silently broken.
+// A wheel with no executable resolves to the managed interpreter importing the
+// package off PYTHONPATH -- the case that was silently broken.
 func TestFindYTDLPRunsWheelThroughManagedPython(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("PATH", "")
 	t.Setenv(PythonEnvironment, "")
-	entrypoint := writeYTDLPWheel(t, root, fixtureVersion)
+	t.Setenv("PYTHONPATH", "")
+	packageRoot := writeYTDLPWheel(t, root, fixtureVersion)
 	python := writeBootstrapPython(t, root)
 
-	executable, prefix, err := FindYTDLP(root)
+	ytDLP, err := FindYTDLP(root)
 	if err != nil {
 		t.Fatalf("FindYTDLP returned %v", err)
 	}
-	if executable != python {
-		t.Fatalf("executable = %q, want the managed interpreter %q", executable, python)
+	if ytDLP.Executable != python {
+		t.Fatalf("executable = %q, want the managed interpreter %q", ytDLP.Executable, python)
 	}
-	if want := []string{"-s", entrypoint}; !slices.Equal(prefix, want) {
-		t.Fatalf("prefix = %q, want %q", prefix, want)
+	if want := []string{"-s", "-m", "yt_dlp"}; !slices.Equal(ytDLP.Prefix, want) {
+		t.Fatalf("prefix = %q, want %q", ytDLP.Prefix, want)
+	}
+	if want := []string{"PYTHONPATH=" + packageRoot}; !slices.Equal(ytDLP.Environment, want) {
+		t.Fatalf("environment = %q, want %q", ytDLP.Environment, want)
+	}
+}
+
+// An inherited PYTHONPATH is kept behind the wheel instead of being dropped,
+// so a developer pointing at a checkout keeps whatever else they had on it.
+func TestFindYTDLPKeepsInheritedPythonPath(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PATH", "")
+	t.Setenv(PythonEnvironment, "")
+	t.Setenv("PYTHONPATH", "inherited")
+	packageRoot := writeYTDLPWheel(t, root, fixtureVersion)
+	writeBootstrapPython(t, root)
+
+	ytDLP, err := FindYTDLP(root)
+	if err != nil {
+		t.Fatalf("FindYTDLP returned %v", err)
+	}
+	want := []string{"PYTHONPATH=" + packageRoot + string(os.PathListSeparator) + "inherited"}
+	if !slices.Equal(ytDLP.Environment, want) {
+		t.Fatalf("environment = %q, want %q", ytDLP.Environment, want)
 	}
 }
 
@@ -111,26 +141,26 @@ func TestFindYTDLPPrefersNativeExecutable(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("PATH", "")
 	t.Setenv(PythonEnvironment, "")
-	writeYTDLPWheel(t, root, fixtureVersion)
+	packageRoot := writeYTDLPWheel(t, root, fixtureVersion)
 	writeBootstrapPython(t, root)
 	filename := "yt-dlp"
 	if runtime.GOOS == "windows" {
 		filename += ".exe"
 	}
-	native := filepath.Join(root, "finesub", "runtime", "yt-dlp", fixtureVersion, filename)
+	native := filepath.Join(packageRoot, filename)
 	if err := os.WriteFile(native, []byte("fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
-	executable, prefix, err := FindYTDLP(root)
+	ytDLP, err := FindYTDLP(root)
 	if err != nil {
 		t.Fatalf("FindYTDLP returned %v", err)
 	}
-	if executable != native {
-		t.Fatalf("executable = %q, want the native binary %q", executable, native)
+	if ytDLP.Executable != native {
+		t.Fatalf("executable = %q, want the native binary %q", ytDLP.Executable, native)
 	}
-	if len(prefix) != 0 {
-		t.Fatalf("a native binary needs no interpreter prefix, got %q", prefix)
+	if len(ytDLP.Prefix) != 0 || len(ytDLP.Environment) != 0 {
+		t.Fatalf("a native binary needs no interpreter wiring, got prefix %q env %q", ytDLP.Prefix, ytDLP.Environment)
 	}
 }
 
@@ -147,12 +177,41 @@ func TestFindYTDLPHonoursPythonOverride(t *testing.T) {
 	}
 	t.Setenv(PythonEnvironment, override)
 
-	executable, _, err := FindYTDLP(root)
+	ytDLP, err := FindYTDLP(root)
 	if err != nil {
 		t.Fatalf("FindYTDLP returned %v", err)
 	}
-	if executable != override {
-		t.Fatalf("executable = %q, want the %s override %q", executable, PythonEnvironment, override)
+	if ytDLP.Executable != override {
+		t.Fatalf("executable = %q, want the %s override %q", ytDLP.Executable, PythonEnvironment, override)
+	}
+}
+
+// SidecarConfig accepts a bare command name in FINOKA_PYTHON, so this resolver
+// has to as well: silently falling through to a different interpreter than the
+// sidecar runs is worse than either honouring or rejecting the value.
+func TestFindYTDLPResolvesPythonOverrideOnPath(t *testing.T) {
+	root := t.TempDir()
+	writeYTDLPWheel(t, root, fixtureVersion)
+	writeBootstrapPython(t, root)
+	directory := t.TempDir()
+	name := "finoka-fixture-python"
+	if runtime.GOOS == "windows" {
+		name += ".bat"
+		t.Setenv("PATHEXT", ".BAT")
+	}
+	onPath := filepath.Join(directory, name)
+	if err := os.WriteFile(onPath, []byte("fixture"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	t.Setenv(PythonEnvironment, name)
+
+	ytDLP, err := FindYTDLP(root)
+	if err != nil {
+		t.Fatalf("FindYTDLP returned %v", err)
+	}
+	if ytDLP.Executable != onPath {
+		t.Fatalf("executable = %q, want the interpreter found on PATH %q", ytDLP.Executable, onPath)
 	}
 }
 
@@ -167,7 +226,7 @@ func TestFindYTDLPSeparatesMissingInterpreterFromMissingWheel(t *testing.T) {
 		t.Setenv(PythonEnvironment, "")
 		writeYTDLPWheel(t, root, fixtureVersion)
 
-		if _, _, err := FindYTDLP(root); err == nil {
+		if _, err := FindYTDLP(root); err == nil {
 			t.Fatal("FindYTDLP succeeded without an interpreter")
 		} else if !strings.Contains(err.Error(), "Python") {
 			t.Fatalf("error should name the missing interpreter, got %v", err)
@@ -180,7 +239,7 @@ func TestFindYTDLPSeparatesMissingInterpreterFromMissingWheel(t *testing.T) {
 		t.Setenv(PythonEnvironment, "")
 		writeBootstrapPython(t, root)
 
-		if _, _, err := FindYTDLP(root); err == nil {
+		if _, err := FindYTDLP(root); err == nil {
 			t.Fatal("FindYTDLP succeeded without yt-dlp")
 		} else if !strings.Contains(err.Error(), "yt-dlp") {
 			t.Fatalf("error should name the missing tool, got %v", err)
