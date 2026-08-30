@@ -3,6 +3,7 @@ package library
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -140,7 +141,21 @@ func (s *Service) ExportVideoRange(id, defaultName, ass string, t0, t1 float64, 
 		"-vf", filter, "-c:v", "libx264", "-preset", preset, "-crf", strconv.Itoa(crf),
 		"-c:a", "aac", "-b:a", abr, "-progress", "pipe:1", "-nostats", partial,
 	}
-	command := exec.Command(ffmpeg, args...)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	if s.exportCancels == nil {
+		s.exportCancels = make(map[string]context.CancelFunc)
+	}
+	s.exportCancels[id] = cancel
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.exportCancels, id)
+		s.mu.Unlock()
+		cancel()
+	}()
+
+	command := exec.CommandContext(ctx, ffmpeg, args...)
 	command.Dir = work
 	configureMediaCommand(command)
 	stdout, err := command.StdoutPipe()
@@ -168,6 +183,9 @@ func (s *Service) ExportVideoRange(id, defaultName, ass string, t0, t1 float64, 
 	runErr := command.Wait()
 	if runErr != nil {
 		_ = os.Remove(partial)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return ExportResult{}, errors.New("已取消")
+		}
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = runErr.Error()
@@ -176,6 +194,9 @@ func (s *Service) ExportVideoRange(id, defaultName, ass string, t0, t1 float64, 
 	}
 	if scanErr != nil {
 		_ = os.Remove(partial)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return ExportResult{}, errors.New("已取消")
+		}
 		return ExportResult{}, fmt.Errorf("read export progress: %w", scanErr)
 	}
 	s.emitMediaProgress(MediaProgress{ID: jobID, Stage: "export", Done: duration, Total: duration})
@@ -188,6 +209,19 @@ func (s *Service) ExportVideoRange(id, defaultName, ass string, t0, t1 float64, 
 		return ExportResult{}, err
 	}
 	return ExportResult{Path: output, Size: stat.Size()}, nil
+}
+
+func (s *Service) CancelExport(id string) error {
+	if !validID(id) {
+		return errors.New("invalid media id")
+	}
+	s.mu.Lock()
+	cancel, ok := s.exportCancels[id]
+	s.mu.Unlock()
+	if ok && cancel != nil {
+		cancel()
+	}
+	return nil
 }
 
 func parseExportProgress(line string, duration float64) (float64, bool) {

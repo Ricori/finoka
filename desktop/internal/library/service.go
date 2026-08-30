@@ -105,8 +105,9 @@ type Service struct {
 	bundledFonts map[string][]byte
 	legacyRoot   string
 	cacheMu      sync.Mutex
-	cacheConfig  CacheConfig
-	activeMedia  string
+	cacheConfig   CacheConfig
+	activeMedia   string
+	exportCancels map[string]context.CancelFunc
 }
 
 func New(dataDirectory string) (*Service, error) {
@@ -126,9 +127,10 @@ func newService(dataDirectory string, tools commandMediaTools) (*Service, error)
 		cachePath:    filepath.Join(root, "cache.json"),
 		prober:       tools,
 		thumbnailer:  tools,
-		entries:      []Entry{},
-		legacyRoot:   defaultLegacyRoot(),
-		cacheConfig:  defaultCacheConfig(),
+		entries:       []Entry{},
+		legacyRoot:    defaultLegacyRoot(),
+		cacheConfig:   defaultCacheConfig(),
+		exportCancels: map[string]context.CancelFunc{},
 	}
 	if err := os.MkdirAll(service.thumbnailDir, 0o755); err != nil {
 		return nil, err

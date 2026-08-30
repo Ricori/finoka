@@ -33,6 +33,7 @@ export const mediaLibrary = {
   saveSubtitle: LibraryService.SaveSubtitle,
   exportVideo: LibraryService.ExportVideo,
   exportVideoRange: LibraryService.ExportVideoRange,
+  cancelExport: LibraryService.CancelExport,
   spectrogramTile: LibraryService.SpectrogramTile,
   revealInFolder: LibraryService.RevealInFolder,
   legacyMigrationStatus: LibraryService.LegacyMigrationStatus,

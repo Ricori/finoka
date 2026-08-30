@@ -31,6 +31,10 @@ export function CacheStatus(): $CancellablePromise<$models.CacheStatus> {
     return $Call.ByID(396032083);
 }
 
+export function CancelExport(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2000436365, id);
+}
+
 export function ClearVideoCache(): $CancellablePromise<$models.CacheStatus> {
     return $Call.ByID(1254380933);
 }

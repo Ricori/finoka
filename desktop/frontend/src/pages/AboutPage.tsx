@@ -8,7 +8,6 @@ import "./AboutPage.css";
 
 const projectUrl = "https://github.com/Ricori/finoka";
 const acknowledgementUrl = "https://github.com/caca2331/finesub";
-const licenseUrl = "https://www.gnu.org/licenses/gpl-3.0.html";
 
 function ExternalLink({ href, children }: { href: string; children: string }) {
   const open = (event: MouseEvent<HTMLAnchorElement>) => {
