@@ -1250,7 +1250,7 @@ export default function App() {
             <AccountPage session={cloudSession} media={cloudMedia} loginKey={loginKey} busy={accountBusy} message={accountMessage} onLoginKeyChange={setLoginKey} onLogin={login} onLogout={logout} onDismissMessage={() => setAccountMessage("")} />
           )}
 
-          {section === "about" && <AboutPage />}
+          {section === "about" && <AboutPage update={selfUpdate} />}
         </div>
       </main>
 

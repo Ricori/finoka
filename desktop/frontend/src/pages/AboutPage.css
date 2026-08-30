@@ -71,7 +71,7 @@
 }
 
 .about-row {
-  padding: 20px 4px;
+  padding: 16px 4px;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -130,6 +130,64 @@
 
 .about-row p {
   margin-top: 8px;
+}
+
+.about-chips {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.about-chip {
+  padding: 5px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--raised) 55%, transparent);
+  color: var(--mut);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.about-chip-accent {
+  border-color: var(--accent-line);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.about-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.about-version strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.about-update {
+  padding: 5px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.about-update:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.about-update-note {
+  color: var(--faint);
+  font-size: 11px;
 }
 
 @media (max-width: 820px) {

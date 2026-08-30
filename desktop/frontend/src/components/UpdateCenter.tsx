@@ -3,7 +3,7 @@ import { desktopUpdate } from "../bridge/update.ts";
 import type { ReleaseNotes, UpdateStatus } from "../bridge/update.ts";
 import "./UpdateCenter.css";
 
-const stageLabels: Record<string, string> = {
+export const stageLabels: Record<string, string> = {
   checking: "正在检查更新…",
   download: "正在下载新版本…",
   verify: "正在校验安装包…",
