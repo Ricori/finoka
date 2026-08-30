@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Ricori/finoka/desktop/internal/managedtools"
 )
 
 func TestSidecarConfigHonoursExplicitPaths(t *testing.T) {
@@ -18,7 +20,7 @@ func TestSidecarConfigHonoursExplicitPaths(t *testing.T) {
 	if err := os.Mkdir(vendor, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(pythonEnvironment, "fixture-python")
+	t.Setenv(managedtools.PythonEnvironment, "fixture-python")
 	t.Setenv(scriptEnvironment, script)
 	t.Setenv(vendorEnvironment, vendor)
 	t.Setenv(dataEnvironment, data)

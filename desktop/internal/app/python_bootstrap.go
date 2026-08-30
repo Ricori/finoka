@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ricori/finoka/desktop/internal/managedtools"
 	"github.com/Ricori/finoka/desktop/internal/sidecar"
 )
 
@@ -67,7 +68,7 @@ func NewPythonBootstrap(dataDirectory string, manager *sidecar.Manager) *PythonB
 		Stage:     "waiting",
 		Message:   "需要下载 Python 以启用本地服务",
 	}
-	python := managedBootstrapPython(dataDirectory)
+	python := managedtools.BootstrapPython(dataDirectory)
 	if info, err := os.Stat(python); err == nil && !info.IsDir() {
 		state.State = "ready"
 		state.Stage = "completed"
@@ -171,7 +172,7 @@ func (b *PythonBootstrap) fail(err error) {
 }
 
 func (b *PythonBootstrap) install() {
-	python := managedBootstrapPython(b.dataDir)
+	python := managedtools.BootstrapPython(b.dataDir)
 	if info, err := os.Stat(python); err != nil || info.IsDir() {
 		if err := b.installPython(); err != nil {
 			b.fail(err)

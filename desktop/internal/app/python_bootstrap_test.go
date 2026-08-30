@@ -9,12 +9,13 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/Ricori/finoka/desktop/internal/managedtools"
 	"github.com/Ricori/finoka/desktop/internal/sidecar"
 )
 
 func TestPythonBootstrapDetectsInstalledLauncher(t *testing.T) {
 	data := t.TempDir()
-	python := managedBootstrapPython(data)
+	python := managedtools.BootstrapPython(data)
 	if err := os.MkdirAll(filepath.Dir(python), 0o700); err != nil {
 		t.Fatal(err)
 	}
