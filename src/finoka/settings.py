@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import hashlib
 import os
 from pathlib import Path
+import shutil
 import tomllib
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -40,7 +42,29 @@ BASE_URL_SPECS: tuple[dict[str, str], ...] = (
 BASE_URL_NAMES = frozenset(spec["name"] for spec in BASE_URL_SPECS)
 SETTING_NAMES = KEY_NAMES | BASE_URL_NAMES
 
-MODEL_PROVIDERS = frozenset({"gemini-free", "gemini-paid", "openai", "anthropic"})
+# Providers whose models run on a local agent CLI instead of an API key: the
+# tier picks the packaged targets, the command is what has to be on PATH. The
+# engine ships Claude Code, agy and dsh tiers as well; only the ones listed
+# here are offered as a desktop route.
+LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, str]] = {
+    "local-codex": {
+        "tier": "LOCAL_CODEX",
+        "label": "本地 Codex",
+        "command": "codex",
+        # Which of the tier's packaged models the desktop offers, in display
+        # order — the first is what selecting the provider fills in. Codex
+        # serves luna as well; the roster here is the owner's choice, not the
+        # catalog's.
+        "models": ("gpt-5.6-sol", "gpt-5.6-terra"),
+        # The Codex app keeps its CLI in a content-hashed directory under
+        # %LOCALAPPDATA% and never puts it on PATH, so `codex` is a name
+        # nothing can resolve on a machine that has it installed. Windows only
+        # on purpose: the npm and Homebrew installs land on PATH by themselves.
+        "windows_app_glob": "OpenAI/Codex/bin/*/codex.exe",
+    },
+}
+
+MODEL_PROVIDERS = frozenset({"gemini-free", "gemini-paid", "openai", "anthropic"} | set(LOCAL_AGENT_PROVIDERS))
 MODEL_ROUTE_SPECS: tuple[dict[str, str], ...] = (
     {"id": "correction", "label": "纠错与翻译"},
     {"id": "planning", "label": "窗口规划"},
@@ -111,6 +135,106 @@ def _read_toml(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+@lru_cache(maxsize=4)
+def _local_agent_targets(provider: str) -> tuple[tuple[Any, str], ...]:
+    """(fact, target id) for the models a local-agent provider offers.
+
+    Two filters, for two different reasons. The provider's own roster decides
+    *which* models are offered, in the order it lists them. The execution
+    profile decides which of a model's two packaged targets is pinnable: the
+    search-entitled twin stays out, because a pinned target is prepended to
+    the bound group and a `retrieval=native` call has to stay free to fall
+    through to a target that declares a search tool.
+    """
+
+    from finesub.llm.routing.model_routes import load_model_routes
+
+    spec = LOCAL_AGENT_PROVIDERS[provider]
+    # No user overlay: the packaged declaration is the only source of these
+    # targets, and reading it this way keeps a broken user route out of the
+    # settings snapshot.
+    routes = load_model_routes(user_config={})
+    by_model: dict[str, tuple[Any, str]] = {}
+    for target in routes.targets.values():
+        if target.backend != "local_agent":
+            continue
+        fact = routes.facts.get(target.fact_id)
+        if fact is None or fact.provider_tier != spec["tier"]:
+            continue
+        profile = routes.execution_profiles.get(target.execution_profile)
+        if profile is None or profile.native_search_tool:
+            continue
+        by_model[fact.api_model_id] = (fact, target.id)
+    missing = [model for model in spec["models"] if model not in by_model]
+    if missing:
+        raise ValueError(
+            f"{provider} offers models the engine catalog does not declare: {missing}"
+        )
+    return tuple(by_model[model] for model in spec["models"])
+
+
+def _local_agent_model_map(provider: str) -> dict[str, str]:
+    return {fact.api_model_id: target_id for fact, target_id in _local_agent_targets(provider)}
+
+
+def local_agent_executable(provider: str) -> Path | None:
+    """The CLI a local-agent provider runs on, PATH first.
+
+    Whether the CLI is *usable* is not decided here: the engine probes the
+    executable for the isolation flags a call needs. This only answers where
+    it is — and it has to answer for installs PATH cannot see, because the
+    engine resolves its driver by name (`shutil.which("codex")`). An install
+    found off PATH is therefore put back on the worker's PATH by
+    `local_agent_path_entries`, or the engine would still miss it.
+    """
+
+    spec = LOCAL_AGENT_PROVIDERS[provider]
+    found = shutil.which(spec["command"])
+    if found:
+        return Path(found)
+    pattern = spec.get("windows_app_glob")
+    root = os.environ.get("LOCALAPPDATA", "")
+    if not pattern or os.name != "nt" or not root:
+        return None
+    candidates = [
+        path
+        for path in Path(root).glob(pattern)
+        # A half-written update stages itself next to the live install.
+        if path.is_file() and not path.parent.name.startswith(".staging")
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def local_agent_path_entries() -> list[str]:
+    """Directories the worker needs on PATH to reach the local agent CLIs.
+
+    Only installs that are not on PATH already: everything else is the
+    environment the user's shell would give the CLI anyway.
+    """
+
+    entries: list[str] = []
+    for provider, spec in LOCAL_AGENT_PROVIDERS.items():
+        if shutil.which(spec["command"]):
+            continue
+        executable = local_agent_executable(provider)
+        if executable is None:
+            continue
+        directory = str(executable.parent)
+        if directory not in entries:
+            entries.append(directory)
+    return entries
+
+
+def _first_model(models: list[dict[str, Any]]) -> str:
+    return str(models[0]["id"]) if models else ""
+
+
+def _local_agent_detected(provider: str) -> bool:
+    return local_agent_executable(provider) is not None
+
+
 def _builtin_model_options() -> dict[str, list[dict[str, Any]]]:
     from finesub.llm.routing.model_catalog import default_model_catalog
 
@@ -128,6 +252,16 @@ def _builtin_model_options() -> dict[str, list[dict[str, Any]]]:
                 "supportsVideo": entry.supports_video,
             }
         )
+    for provider in LOCAL_AGENT_PROVIDERS:
+        result[provider] = [
+            {
+                "id": fact.api_model_id,
+                "label": fact.display_name,
+                "supportsAudio": fact.supports_audio,
+                "supportsVideo": fact.supports_video,
+            }
+            for fact, _target_id in _local_agent_targets(provider)
+        ]
     return result
 
 
@@ -200,10 +334,27 @@ class FineSubSettings:
             ],
             "modelRouting": {
                 "providers": [
-                    {"id": "gemini-free", "label": "Gemini", "mode": "select", "models": model_options["gemini-free"]},
-                    {"id": "gemini-paid", "label": "Gemini 付费池", "mode": "select", "models": model_options["gemini-paid"]},
-                    {"id": "openai", "label": "OpenAI", "mode": "input", "models": []},
-                    {"id": "anthropic", "label": "Anthropic", "mode": "input", "models": []},
+                    # `defaultModel` is what selecting a provider fills in. For
+                    # the packaged rosters it is the first entry, which is the
+                    # order the option lists are built in.
+                    {"id": "gemini-free", "label": "Gemini", "mode": "select", "models": model_options["gemini-free"], "defaultModel": _first_model(model_options["gemini-free"]), "requiresKey": True, "available": True},
+                    {"id": "gemini-paid", "label": "Gemini 付费池", "mode": "select", "models": model_options["gemini-paid"], "defaultModel": _first_model(model_options["gemini-paid"]), "requiresKey": True, "available": True},
+                    {"id": "openai", "label": "OpenAI", "mode": "input", "models": [], "defaultModel": "", "requiresKey": True, "available": True},
+                    {"id": "anthropic", "label": "Anthropic", "mode": "input", "models": [], "defaultModel": "", "requiresKey": True, "available": True},
+                    *[
+                        {
+                            "id": provider,
+                            "label": spec["label"],
+                            "mode": "select",
+                            "models": model_options[provider],
+                            "defaultModel": _first_model(model_options[provider]),
+                            # Runs on the user's own CLI subscription, so no key
+                            # is ever asked for; the CLI itself is the gate.
+                            "requiresKey": False,
+                            "available": _local_agent_detected(provider),
+                        }
+                        for provider, spec in LOCAL_AGENT_PROVIDERS.items()
+                    ],
                 ],
                 "defaultRoute": _route_from_config(model_config, "default"),
                 "taskRoutes": [
@@ -281,10 +432,12 @@ class FineSubSettings:
             current = {}
         candidate = {**current, **updates}
         options = _builtin_model_options()
-        allowed_gemini = {
+        # Every provider whose models come from a closed packaged list: a typo
+        # here would otherwise be written out and only fail at routing time.
+        allowed_models = {
             provider: {item["id"] for item in models}
             for provider, models in options.items()
-            if provider.startswith("gemini-")
+            if provider.startswith("gemini-") or provider in LOCAL_AGENT_PROVIDERS
         }
         for prefix in ("default", *(spec["id"] for spec in MODEL_ROUTE_SPECS)):
             route = _route_from_config(candidate, prefix)
@@ -295,7 +448,7 @@ class FineSubSettings:
                 raise ValueError(f"Unknown LLM provider for {prefix}: {provider or '(empty)'}")
             if not model:
                 raise ValueError(f"A model is required for LLM route {prefix}")
-            if provider.startswith("gemini-") and model not in allowed_gemini[provider]:
+            if provider in allowed_models and model not in allowed_models[provider]:
                 raise ValueError(f"Model {model!r} is not available in {provider}")
         update_config_file(self.config_file, {"finoka_models": updates})
 
@@ -358,6 +511,8 @@ class FineSubSettings:
                 return None
             if provider in gemini_targets:
                 return gemini_targets[provider].get(model)
+            if provider in LOCAL_AGENT_PROVIDERS:
+                return _local_agent_model_map(provider).get(model)
             if provider in {"openai", "anthropic"}:
                 return self._custom_target(provider, model)
             return None

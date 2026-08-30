@@ -16,6 +16,17 @@ from finoka.settings import FineSubSettings
 
 
 class FineSubSettingsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # The engine caches config, catalog and routes per process, so a test
+        # that pins a route would otherwise answer the next one's questions.
+        from finesub.config import clear_config_cache
+        from finesub.llm.routing.model_catalog import default_model_catalog
+        from finesub.llm.routing.model_routes import default_model_routes
+
+        for reset in (clear_config_cache, default_model_catalog.cache_clear, default_model_routes.cache_clear):
+            reset()
+            self.addCleanup(reset)
+
     def test_keys_are_saved_in_finesub_format_but_never_returned(self) -> None:
         previous = os.environ.get("FINESUB_ENV_PROTECT")
         os.environ["FINESUB_ENV_PROTECT"] = "0"
@@ -111,6 +122,98 @@ class FineSubSettingsTests(unittest.TestCase):
             self.assertTrue(correction_mid.target_ids[0].startswith("finoka-openai-"))
             self.assertTrue(correction_eff.target_ids[0].startswith("finoka-openai-"))
             self.assertEqual(research.target_ids[0], "gemini-free-3_6-flash")
+
+    def test_local_codex_route_binds_the_packaged_agent_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            snapshot = settings.update_keys(
+                {
+                    "LLM_DEFAULT_PROVIDER": "local-codex",
+                    "LLM_DEFAULT_MODEL": "gpt-5.6-sol",
+                }
+            )
+            codex = next(
+                item for item in snapshot["modelRouting"]["providers"] if item["id"] == "local-codex"
+            )
+            self.assertFalse(codex["requiresKey"])
+            self.assertEqual(codex["mode"], "select")
+            # Sol leads the roster, so selecting the provider fills it in.
+            self.assertEqual([model["id"] for model in codex["models"]], ["gpt-5.6-sol", "gpt-5.6-terra"])
+            self.assertEqual(codex["defaultModel"], "gpt-5.6-sol")
+            config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
+            self.assertIn('default_target = "local-codex-completion-gpt-5_6-sol"', config)
+
+            from finesub.config import clear_config_cache
+            from finesub.llm.routing.model_catalog import default_model_catalog
+            from finesub.llm.routing.model_routes import default_model_routes
+
+            clear_config_cache()
+            default_model_catalog.cache_clear()
+            default_model_routes.cache_clear()
+            routes = default_model_routes()
+            correction, _ = routes.resolve_binding(
+                routes.active_preset_id, "correction-text", "quality"
+            )
+            self.assertEqual(correction.target_ids[0], "local-codex-completion-gpt-5_6-sol")
+            # The API models stay behind it: a local agent cannot serve an
+            # audio or video window, and the fallback is what keeps those
+            # routable.
+            self.assertGreater(len(correction.target_ids), 1)
+
+    def test_codex_installed_off_path_is_still_found_and_put_back_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            app = Path(temporary) / "OpenAI" / "Codex" / "bin"
+            live = app / "6ca77c4a9caa4eed"
+            live.mkdir(parents=True)
+            (live / "codex.exe").write_bytes(b"")
+            staging = app / ".staging-abcdef"
+            staging.mkdir()
+            (staging / "codex.exe").write_bytes(b"")
+            with patch.dict(os.environ, {"LOCALAPPDATA": temporary}, clear=False), patch(
+                "finoka.settings.shutil.which", return_value=None
+            ), patch("finoka.settings.os.name", "nt"):
+                from finoka.settings import local_agent_executable, local_agent_path_entries
+
+                self.assertEqual(local_agent_executable("local-codex"), live / "codex.exe")
+                self.assertEqual(local_agent_path_entries(), [str(live)])
+
+    def test_local_agent_on_path_is_not_added_to_it_twice(self) -> None:
+        with patch("finoka.settings.shutil.which", return_value="/usr/local/bin/codex"):
+            from finoka.settings import local_agent_path_entries
+
+            self.assertEqual(local_agent_path_entries(), [])
+
+    def test_terra_route_binds_its_own_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "LLM_ROUTE_CORRECTION_PROVIDER": "local-codex",
+                    "LLM_ROUTE_CORRECTION_MODEL": "gpt-5.6-terra",
+                }
+            )
+            config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
+            self.assertIn('task_route_correction = "local-codex-completion-gpt-5_6-terra"', config)
+
+    def test_unknown_local_codex_model_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            with self.assertRaisesRegex(ValueError, "not available in local-codex"):
+                settings.update_keys(
+                    {
+                        "LLM_DEFAULT_PROVIDER": "local-codex",
+                        "LLM_DEFAULT_MODEL": "gpt-nope",
+                    }
+                )
 
 
 if __name__ == "__main__":

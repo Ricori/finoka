@@ -45,6 +45,18 @@ fact = "local-codex-gpt-5_6-luna"
 enabled_by = "local_agent"
 execution_profile = "codex-web-search"
 
+[targets.local-codex-completion-gpt-5_6-terra]
+backend = "local_agent"
+fact = "local-codex-gpt-5_6-terra"
+enabled_by = "local_agent"
+execution_profile = "codex-default"
+
+[targets.local-codex-native-gpt-5_6-terra]
+backend = "local_agent"
+fact = "local-codex-gpt-5_6-terra"
+enabled_by = "local_agent"
+execution_profile = "codex-web-search"
+
 [targets.local-codex-completion-gpt-5_6-sol]
 backend = "local_agent"
 fact = "local-codex-gpt-5_6-sol"

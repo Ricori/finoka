@@ -29,7 +29,12 @@ from .document_store import (
 from .peaks import generate_peaks
 from .projector import ProjectionError, project_edit_document
 from .provision import RuntimeProvisionError, RuntimeProvisioner
-from .settings import FineSubSettings
+from .settings import (
+    FineSubSettings,
+    LOCAL_AGENT_PROVIDERS,
+    local_agent_executable,
+    local_agent_path_entries,
+)
 
 
 STATES = {"queued", "running", "completed", "failed", "cancelled", "interrupted"}
@@ -188,7 +193,18 @@ def runtime_report(settings: FineSubSettings | None = None, provisioner: Runtime
             asr_issues.append(_issue("missing_model", "ASR 所需模型尚未安装：" + "、".join(missing_models)))
 
     settings_snapshot = settings.snapshot() if settings is not None else {"llmKeyConfigured": False, "retrievalKeyConfigured": False}
-    local_agent = next((name for name in ("codex", "claude", "agy") if shutil.which(name)), "")
+    # A routable provider first — the Codex app hides its CLI in a directory
+    # PATH never sees, so a plain `which` reports "no agent" on a machine that
+    # has one. The remaining vendors have no desktop route yet, so PATH is the
+    # whole question for them.
+    local_agent = next(
+        (
+            LOCAL_AGENT_PROVIDERS[provider]["command"]
+            for provider in LOCAL_AGENT_PROVIDERS
+            if local_agent_executable(provider) is not None
+        ),
+        "",
+    ) or next((name for name in ("codex", "claude", "agy") if shutil.which(name)), "")
     llm_issues = list(asr_issues)
     if not settings_snapshot.get("llmKeyConfigured") and not local_agent:
         llm_issues.append(_issue("missing_llm_key", "未配置 Gemini/LLM Key，也未检测到可用的本地 Agent"))
@@ -654,6 +670,11 @@ class LocalProvider:
         request = _read_json_when_free(task_dir / "request.json")
         command = self._worker_command(task_id, task_dir)
         environment = self._provisioner.worker_environment() if self._provisioner is not None else os.environ.copy()
+        # The engine resolves an agent CLI by name off PATH, so an install that
+        # is not on PATH has to be put there for the worker.
+        agent_dirs = local_agent_path_entries()
+        if agent_dirs:
+            environment["PATH"] = os.pathsep.join([*agent_dirs, environment.get("PATH", "")])
         project_src = Path(__file__).resolve().parents[1]
         python_paths = [str(project_src), str(self.vendor / "src")]
         if environment.get("PYTHONPATH"):

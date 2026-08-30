@@ -41,6 +41,7 @@ function effectiveRoute(routeID: string, saved: FineSubModelRoute, drafts: Recor
 
 export function LlmConfigurationCard({ providers, modelRouting, drafts, busy, setDrafts, onSave }: LlmConfigurationCardProps) {
   const configured = providers.filter((provider) => provider.key?.configured).length;
+  const localProviders = modelRouting.providers.filter((provider) => provider.requiresKey === false);
   const keyUpdates = Object.fromEntries(
     providers
       .flatMap((provider) => provider.key ? [[provider.key.name, drafts[provider.key.name]?.trim()]] : [])
@@ -75,14 +76,16 @@ export function LlmConfigurationCard({ providers, modelRouting, drafts, busy, se
       setDrafts((current) => ({
         ...current,
         [providerName]: nextProvider,
-        [modelName]: next?.mode === "select" ? (next.models[0]?.id ?? "") : "",
+        [modelName]: next?.mode === "select" ? (next.defaultModel || next.models[0]?.id || "") : "",
       }));
     };
     return (
       <div className="llm-route-controls">
         <select aria-label={`${routeID} 提供商`} value={route.provider} onChange={(event) => setProvider(event.target.value)}>
           <option value="">{allowDefault ? "跟随默认模型" : "内置自动路由"}</option>
-          {modelRouting.providers.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          {modelRouting.providers.map((item) => (
+            <option key={item.id} value={item.id}>{item.label}{item.requiresKey === false ? (item.available ? "（本地 CLI）" : "（未检测到 CLI）") : ""}</option>
+          ))}
         </select>
         {!provider ? (
           <input aria-label={`${routeID} 模型`} value="" disabled placeholder={allowDefault ? "使用默认模型" : "按任务自动选择"} />
@@ -103,7 +106,7 @@ export function LlmConfigurationCard({ providers, modelRouting, drafts, busy, se
         <div>
           <span className="eyebrow">Minimum configuration</span>
           <h2>模型 API Key</h2>
-          <p>Gemini、OpenAI、Anthropic 任选一家配置即可；也可以同时配置多家。</p>
+          <p>Gemini、OpenAI、Anthropic 任选一家配置即可；也可以同时配置多家。已登录本地 Codex CLI 时，可在下方模型路由里直接选用，无需 API Key。</p>
         </div>
         <Mark>{configured > 0 ? `已配置 ${configured} 项` : "任选一家"}</Mark>
       </div>
@@ -156,6 +159,13 @@ export function LlmConfigurationCard({ providers, modelRouting, drafts, busy, se
         <div className="llm-routing-heading">
           <span><strong>默认提供商与模型</strong><small>用于 LLM 纠错、规划、研究与知识处理</small></span>
         </div>
+        {localProviders.length > 0 && (
+          <p className="llm-routing-note">
+            {localProviders.map((item) => `${item.label}${item.available ? "已就绪" : "未检测到 CLI"}`).join("；")}
+            ：本地 Agent 直接调用你自己登录的 CLI 订阅，无需填写 API Key；PATH 中的安装与 Codex 应用自带的 CLI 都会自动识别。
+            纯文本环节可直接使用，音频与视频多模态环节会自动回落到已配置的 API 模型。
+          </p>
+        )}
         <div className="llm-default-route">
           <span><strong>全局默认</strong><small>默认为 Gemini 自动路由</small></span>
           {renderRoute("default", modelRouting.defaultRoute, false)}

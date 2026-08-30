@@ -66,6 +66,7 @@ third_party/finesub/
 | `0002-retry-directory-publish-rename.patch` | `src/finesub_bootstrap` | Windows 下防病毒扫描或读取句柄导致 `os.replace` 偶发报错，引入带退避的有界重试 | 上游合并原子重命名的重试逻辑 |
 | `0003-desktop-model-routing.patch` | `src/finesub` | 读取桌面端首选 LLM 目标与 Gemini Base URL 自定义配置 | 上游提供原生 Base URL 与目标覆盖接口 |
 | `0004-subprocess-text-encoding-and-msvc-include.patch` | `src/finesub` | 非 UTF-8 ANSI 代码页（如 GBK）下 `subprocess(text=True)` 读 ffmpeg/ffprobe 的 UTF-8 输出会抛 `UnicodeDecodeError`；`cl.exe` 在 PATH 但 `INCLUDE` 缺 `<array>` 时 AOTI 会跳过 `vcvars64.bat` 激活 | 上游显式指定 UTF-8 解码并检查 MSVC include 就绪 |
+| `0005-codex-terra-model.patch` | `src/finesub` | Codex CLI 提供 `gpt-5.6-terra`，但打包目录只记录了 luna 与 sol；`LOCAL_CODEX` 的目录行不会自动生成 target（`AUTO_TARGET_LOCAL_AGENT_PROFILES` 仅含 dsh），桌面端因此无目标可指。quality_score 由 owner 评定为 80（介于 sol 90 与 luna 70 之间），其余能力列沿用同族 luna 的实测值，待 terra 单独实测后替换 | 上游在打包目录中收录 terra |
 
 ### 3.2 补丁栈测试约束
 - **正反向重放**：`tests/test_finesub_patch_stack.py` 会从当前 vendor 逆序撤销所有 patch，比对是否与 `BASELINE_FILES.json` 一致；随后重新正序应用，比对是否与 `FILES.json` 完全一致。

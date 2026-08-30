@@ -1,5 +1,6 @@
 fact_id|provider_tier|provider_kind|base_url|key_env|display_name|api_model_id|max_input_tokens|max_output_tokens|supports_audio|supports_video|supports_native_search|thinking|token_scale|rpm|tpm|rpd|tpd|is_free|quality_score|video_high_resolution_only|quota_pool
 local-codex-gpt-5_6-luna|LOCAL_CODEX|local_agent|||GPT-5.6 Luna via Codex|gpt-5.6-luna|194000|65536|false|false|true|xhigh,high,medium|1.0|-1|-1|-1|-1|false|70|false|
+local-codex-gpt-5_6-terra|LOCAL_CODEX|local_agent|||GPT-5.6 Terra via Codex|gpt-5.6-terra|194000|65536|false|false|true|xhigh,high,medium|1.0|-1|-1|-1|-1|false|80|false|
 local-codex-gpt-5_6-sol|LOCAL_CODEX|local_agent|||GPT-5.6 Sol via Codex|gpt-5.6-sol|194000|65536|false|false|true|high,high,low|1.0|-1|-1|-1|-1|false|90|false|
 local-claude-opus-5|LOCAL_CLAUDE|local_agent|||Opus 5 via Claude Code|claude-opus-5|1000000|65536|false|false|true|xhigh,high,low|1.0|-1|-1|-1|-1|false|88|false|
 local-claude-sonnet-5|LOCAL_CLAUDE|local_agent|||Sonnet 5 via Claude Code|claude-sonnet-5|1000000|65536|false|false|true|high,medium,low|1.0|-1|-1|-1|-1|false|77|false|

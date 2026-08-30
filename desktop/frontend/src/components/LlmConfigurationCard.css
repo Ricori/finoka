@@ -40,6 +40,7 @@
 .llm-routing-heading > span, .llm-default-route > span, .llm-task-routing summary > span, .llm-task-route-row > span { display: grid; gap: 3px; min-width: 0; }
 .llm-routing-heading strong { font-size: 12px; }
 .llm-routing-heading small, .llm-routing-heading i, .llm-default-route small, .llm-task-routing summary small, .llm-task-routing summary i, .llm-task-route-row small { color: var(--faint); font-size: 10px; font-style: normal; }
+.llm-routing-note { margin: 0; padding: 0 25px 4px; color: var(--faint); font-size: 10px; line-height: 1.6; }
 .llm-default-route { padding: 8px 25px 17px; }
 .llm-default-route > span, .llm-task-route-row > span { flex: 0 0 180px; }
 .llm-default-route strong, .llm-task-route-row strong, .llm-task-routing summary strong { font-size: 11px; }

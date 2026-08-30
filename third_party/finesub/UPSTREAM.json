@@ -1,10 +1,10 @@
 {
   "archive_sha256": "c927e0f103d4a7cb9a8733a4e23c333bad6ecbb418d98aaa6dce8a383544cea8",
   "commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
-  "content_sha256": "a470c9ca0b6784eaa6cf0b645c968decac7ffdc1dfc30681875364a08fa9028b",
+  "content_sha256": "71341ce57a7ded9b1a32cc64d1a301b094f0f9a362de0c0d22efdf465cf04154",
   "engine_bundle_id": "finesub-0.4.2+8a33092a40ab",
   "engine_version": "0.4.2",
-  "files_manifest_sha256": "cc798be335dc4b20731790ccd7ccf8bbb98caad54f5949891d45f2452beda665",
+  "files_manifest_sha256": "1e483460b661368d2080d27c319119c0017b61413d44ff78cfdf714a351d7172",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
@@ -21,6 +21,10 @@
     {
       "path": "0004-subprocess-text-encoding-and-msvc-include.patch",
       "sha256": "95f8bf44d3c745e9ec0b35a1c8d6300348d7426fcf8e39003f401b91d209bff7"
+    },
+    {
+      "path": "0005-codex-terra-model.patch",
+      "sha256": "02da2e6c98b245402b52284105fe587b81c1fcf85898605c99b095528fd5a980"
     }
   ],
   "ref": "v0.4.2",

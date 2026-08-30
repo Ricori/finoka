@@ -20,7 +20,7 @@ export interface FineSubSettingsState {
   protection: "empty" | "protected" | "plaintext" | "unreadable";
 }
 
-export type FineSubModelProviderID = "gemini-free" | "gemini-paid" | "openai" | "anthropic";
+export type FineSubModelProviderID = "gemini-free" | "gemini-paid" | "openai" | "anthropic" | "local-codex";
 
 export interface FineSubModelOption {
   id: string;
@@ -39,6 +39,11 @@ export interface FineSubModelProvider {
   label: string;
   mode: "select" | "input";
   models: FineSubModelOption[];
+  // 选中该提供商时预填的模型；input 模式为空。
+  defaultModel: string;
+  // 本地 Agent 提供商用自己的 CLI 订阅运行，不需要 API Key；available 表示该 CLI 是否已在 PATH 中。
+  requiresKey: boolean;
+  available: boolean;
 }
 
 export interface FineSubModelRoutingState {

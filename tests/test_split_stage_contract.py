@@ -141,6 +141,13 @@ class PurelyAdditiveTests(unittest.TestCase):
                 "src/finesub/media/source.py",
                 "src/finesub/speech/preprocessing/separator/separator_aoti.py",
             ],
+            # Data, not code: a catalog row and the two targets that make it
+            # routable. The cloud runs the same declaration, so both sides
+            # still resolve the same target ids.
+            "0005-codex-terra-model.patch": [
+                "src/finesub/llm/routing/model_catalog.psv",
+                "src/finesub/llm/routing/model_routes.toml",
+            ],
         }
         for name in names[1:]:
             with self.subTest(patch=name):
