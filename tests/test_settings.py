@@ -82,6 +82,9 @@ class FineSubSettingsTests(unittest.TestCase):
                 {
                     "OPENAI_API_KEY": "openai-secret",
                     "OPENAI_BASE_URL": "https://proxy.example/v1",
+                    # The research route below points at Gemini, and a
+                    # provider without a key cannot be routed to.
+                    "GEMINI_FREE": "gemini-secret",
                     "LLM_DEFAULT_PROVIDER": "openai",
                     "LLM_DEFAULT_MODEL": "gpt-custom",
                     "LLM_ROUTE_RESEARCH_PROVIDER": "gemini-free",
@@ -213,6 +216,64 @@ class FineSubSettingsTests(unittest.TestCase):
                         "LLM_DEFAULT_PROVIDER": "local-codex",
                         "LLM_DEFAULT_MODEL": "gpt-nope",
                     }
+                )
+
+    def test_compat_provider_keeps_its_own_endpoint_and_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            snapshot = settings.update_keys(
+                {
+                    "OPENAI_COMPAT_API_KEY": "compat-secret",
+                    "OPENAI_COMPAT_BASE_URL": "https://vendor.example/v1/",
+                    "LLM_DEFAULT_PROVIDER": "openai-compat",
+                    "LLM_DEFAULT_MODEL": "vendor-large",
+                }
+            )
+            provider = next(
+                item
+                for item in snapshot["modelRouting"]["providers"]
+                if item["id"] == "openai-compat"
+            )
+            self.assertTrue(provider["customEndpoint"])
+            self.assertTrue(provider["keyConfigured"])
+            self.assertEqual(provider["keyName"], "OPENAI_COMPAT_API_KEY")
+            catalog = (Path(temporary) / "model_catalog.psv").read_text(encoding="utf-8")
+            self.assertIn(
+                "openai_compat|https://vendor.example/v1|OPENAI_COMPAT_API_KEY", catalog
+            )
+            # The official OpenAI address is untouched by the compat endpoint.
+            official = next(
+                item for item in snapshot["baseUrls"] if item["name"] == "OPENAI_BASE_URL"
+            )
+            self.assertFalse(official["customized"])
+
+    def test_compat_provider_without_a_base_url_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            with self.assertRaisesRegex(ValueError, "base URL is required"):
+                settings.update_keys(
+                    {
+                        "ANTHROPIC_COMPAT_API_KEY": "compat-secret",
+                        "LLM_DEFAULT_PROVIDER": "anthropic-compat",
+                        "LLM_DEFAULT_MODEL": "vendor-sonnet",
+                    }
+                )
+
+    def test_provider_without_a_key_cannot_be_routed_to(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            with self.assertRaisesRegex(ValueError, "API key is required"):
+                settings.update_keys(
+                    {"LLM_DEFAULT_PROVIDER": "openai", "LLM_DEFAULT_MODEL": "gpt-custom"}
                 )
 
 

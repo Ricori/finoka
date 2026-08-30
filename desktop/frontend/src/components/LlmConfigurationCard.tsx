@@ -1,18 +1,11 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { FineSubBaseUrlState, FineSubKeyState, FineSubModelProviderID, FineSubModelRoute, FineSubModelRoutingState } from "../bridge/settings.ts";
+import type { FineSubBaseUrlState, FineSubKeyState, FineSubModelProvider, FineSubModelProviderID, FineSubModelRoute, FineSubModelRoutingState } from "../bridge/settings.ts";
 import { Mark } from "./Mark.tsx";
 import "./LlmConfigurationCard.css";
 
-interface ProviderConfiguration {
-  id: "gemini" | "gemini-paid" | "openai" | "anthropic";
-  label: string;
-  description: string;
-  key?: FineSubKeyState;
-  baseUrl?: FineSubBaseUrlState;
-}
-
 interface LlmConfigurationCardProps {
-  providers: ProviderConfiguration[];
+  keys: FineSubKeyState[];
+  baseUrls: FineSubBaseUrlState[];
   modelRouting: FineSubModelRoutingState;
   drafts: Record<string, string>;
   busy: boolean;
@@ -39,63 +32,100 @@ function effectiveRoute(routeID: string, saved: FineSubModelRoute, drafts: Recor
   };
 }
 
-export function LlmConfigurationCard({ providers, modelRouting, drafts, busy, setDrafts, onSave }: LlmConfigurationCardProps) {
-  const configured = providers.filter((provider) => provider.key?.configured).length;
-  const localProviders = modelRouting.providers.filter((provider) => provider.requiresKey === false);
+export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, busy, setDrafts, onSave }: LlmConfigurationCardProps) {
+  const keyOf = (provider: FineSubModelProvider) => provider.keyName ? keys.find((item) => item.name === provider.keyName) : undefined;
+  const urlOf = (provider: FineSubModelProvider) => provider.customEndpoint && provider.baseUrlName ? baseUrls.find((item) => item.name === provider.baseUrlName) : undefined;
+  const urlValue = (provider: FineSubModelProvider) => {
+    const setting = urlOf(provider);
+    if (!setting) return "";
+    return hasDraft(drafts, setting.name) ? drafts[setting.name] : (setting.value || setting.defaultValue);
+  };
+  // 已保存的凭据：只有这样的提供商才允许在任务路由里被选中。
+  const isConfigured = (provider: FineSubModelProvider) => {
+    if (!provider.requiresKey) return true;
+    if (!provider.keyConfigured) return false;
+    return !provider.customEndpoint || Boolean(urlOf(provider)?.value);
+  };
+  // 连同本次草稿一起算：Key 与全局模型可以在同一次保存里落盘。
+  const isReady = (provider: FineSubModelProvider) => {
+    if (!provider.requiresKey) return true;
+    const key = keyOf(provider);
+    if (!key?.configured && !(drafts[provider.keyName] ?? "").trim()) return false;
+    return !provider.customEndpoint || Boolean(urlValue(provider).trim());
+  };
+
+  const defaultRoute = effectiveRoute("default", modelRouting.defaultRoute, drafts);
+  const selected = modelRouting.providers.find((item) => item.id === defaultRoute.provider);
+  const selectedKey = selected ? keyOf(selected) : undefined;
+  const selectedUrl = selected ? urlOf(selected) : undefined;
+  const globalReady = Boolean(selected && defaultRoute.model && isReady(selected));
+
+  const credentialNames = new Set(modelRouting.providers.flatMap((provider) => [provider.keyName, provider.customEndpoint ? provider.baseUrlName : ""].filter(Boolean)));
   const keyUpdates = Object.fromEntries(
-    providers
-      .flatMap((provider) => provider.key ? [[provider.key.name, drafts[provider.key.name]?.trim()]] : [])
-      .filter(([, value]) => value),
+    keys.flatMap((item) => credentialNames.has(item.name) && drafts[item.name]?.trim() ? [[item.name, drafts[item.name].trim()]] : []),
   ) as Record<string, string>;
   const urlUpdates = Object.fromEntries(
-    providers.flatMap((provider) => {
-      const setting = provider.baseUrl;
-      if (!setting || !hasDraft(drafts, setting.name)) return [];
+    baseUrls.flatMap((setting) => {
+      if (!credentialNames.has(setting.name) || !hasDraft(drafts, setting.name)) return [];
       const value = drafts[setting.name].trim().replace(/\/+$/, "");
       return [[setting.name, !value || value === setting.defaultValue ? null : value]];
     }),
   ) as Record<string, string | null>;
   const routeUpdates = Object.fromEntries(
-    [
-      ["default", modelRouting.defaultRoute] as const,
-      ...modelRouting.taskRoutes.map((item) => [item.id, item.route] as const),
-    ].flatMap(([routeID]) => (["provider", "model"] as const).flatMap((field) => {
+    ["default", ...modelRouting.taskRoutes.map((item) => item.id)].flatMap((routeID) => (["provider", "model"] as const).flatMap((field) => {
       const name = routeSettingName(routeID, field);
       return hasDraft(drafts, name) ? [[name, drafts[name].trim() || null]] : [];
     })),
   ) as Record<string, string | null>;
   const updates = { ...keyUpdates, ...urlUpdates, ...routeUpdates };
 
-  const renderRoute = (routeID: string, saved: FineSubModelRoute, allowDefault: boolean) => {
+  const blocker = !selected
+    ? "先选择一个提供商"
+    : selected.requiresKey && !(selectedKey?.configured || (drafts[selected.keyName] ?? "").trim())
+      ? `请填写 ${selected.label} API Key`
+      : selected.customEndpoint && !urlValue(selected).trim()
+        ? `请填写 ${selected.label} Base URL`
+        : !defaultRoute.model
+          ? "请选择全局模型"
+          : "";
+
+  const renderModelControl = (routeID: string, provider: FineSubModelProvider | undefined, model: string, placeholder: string) => {
+    const modelName = routeSettingName(routeID, "model");
+    if (!provider) return <input aria-label={`${routeID} 模型`} value="" disabled placeholder={placeholder} />;
+    if (provider.mode === "select") {
+      return (
+        <select aria-label={`${routeID} 模型`} value={model} onChange={(event) => setDrafts((current) => ({ ...current, [modelName]: event.target.value }))}>
+          {provider.models.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.id}</option>)}
+        </select>
+      );
+    }
+    return <input aria-label={`${routeID} 模型 ID`} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={`填写 ${provider.label} 模型 ID`} value={model} onChange={(event) => setDrafts((current) => ({ ...current, [modelName]: event.target.value }))} />;
+  };
+
+  const selectProvider = (routeID: string, nextProvider: string) => {
+    const next = modelRouting.providers.find((item) => item.id === nextProvider);
+    setDrafts((current) => ({
+      ...current,
+      [routeSettingName(routeID, "provider")]: nextProvider,
+      [routeSettingName(routeID, "model")]: next?.mode === "select" ? (next.defaultModel || next.models[0]?.id || "") : "",
+    }));
+  };
+
+  const renderTaskRoute = (routeID: string, saved: FineSubModelRoute) => {
     const route = effectiveRoute(routeID, saved, drafts);
     const provider = modelRouting.providers.find((item) => item.id === route.provider);
-    const providerName = routeSettingName(routeID, "provider");
-    const modelName = routeSettingName(routeID, "model");
-    const setProvider = (nextProvider: string) => {
-      const next = modelRouting.providers.find((item) => item.id === nextProvider);
-      setDrafts((current) => ({
-        ...current,
-        [providerName]: nextProvider,
-        [modelName]: next?.mode === "select" ? (next.defaultModel || next.models[0]?.id || "") : "",
-      }));
-    };
+    // 任务路由里没有配置凭据的入口，所以只列出已经配置好的提供商；
+    // 已保存但凭据被清空的那一项仍要留着，否则会无声消失。
+    const options = modelRouting.providers.filter((item) => isConfigured(item) || item.id === saved.provider);
     return (
       <div className="llm-route-controls">
-        <select aria-label={`${routeID} 提供商`} value={route.provider} onChange={(event) => setProvider(event.target.value)}>
-          <option value="">{allowDefault ? "跟随默认模型" : "内置自动路由"}</option>
-          {modelRouting.providers.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}{item.requiresKey === false ? (item.available ? "（本地 CLI）" : "（未检测到 CLI）") : ""}</option>
+        <select aria-label={`${routeID} 提供商`} value={route.provider} onChange={(event) => selectProvider(routeID, event.target.value)}>
+          <option value="">跟随全局模型</option>
+          {options.map((item) => (
+            <option key={item.id} value={item.id}>{item.label}{item.requiresKey === false && !item.available ? "（未检测到 CLI）" : ""}</option>
           ))}
         </select>
-        {!provider ? (
-          <input aria-label={`${routeID} 模型`} value="" disabled placeholder={allowDefault ? "使用默认模型" : "按任务自动选择"} />
-        ) : provider.mode === "select" ? (
-          <select aria-label={`${routeID} 模型`} value={route.model} onChange={(event) => setDrafts((current) => ({ ...current, [modelName]: event.target.value }))}>
-            {provider.models.map((model) => <option key={model.id} value={model.id}>{model.label} · {model.id}</option>)}
-          </select>
-        ) : (
-          <input aria-label={`${routeID} 模型 ID`} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={`填写 ${provider.label} 模型 ID`} value={route.model} onChange={(event) => setDrafts((current) => ({ ...current, [modelName]: event.target.value }))} />
-        )}
+        {renderModelControl(routeID, provider, route.model, "使用全局模型")}
       </div>
     );
   };
@@ -104,88 +134,87 @@ export function LlmConfigurationCard({ providers, modelRouting, drafts, busy, se
     <article className="panel llm-config-card">
       <div className="llm-config-heading">
         <div>
-          <span className="eyebrow">Minimum configuration</span>
-          <h2>模型 API Key</h2>
-          <p>Gemini、OpenAI、Anthropic 任选一家配置即可；也可以同时配置多家。已登录本地 Codex CLI 时，可在下方模型路由里直接选用，无需 API Key。</p>
+          <span className="eyebrow">Model configuration</span>
+          <h2>模型配置</h2>
+          <p>LLM 模型用于纠错、规划、研究与知识处理。先选择提供商与全局模型，再为它填写 api key。</p>
         </div>
-        <Mark>{configured > 0 ? `已配置 ${configured} 项` : "任选一家"}</Mark>
+        <Mark>{globalReady ? (selected?.label ?? "已配置") : "待配置"}</Mark>
       </div>
-
-      <div className="llm-provider-list">
-        {providers.map((provider) => {
-          const item = provider.key;
-          if (!item) return null;
-          return (
-            <div className="llm-provider-row" key={provider.id}>
-              <div className="llm-provider-copy">
-                <span className={`llm-provider-mark llm-provider-mark-${provider.id}`}>{provider.label.slice(0, 1)}</span>
-                <div><strong>{provider.label}</strong><small>{provider.description}</small></div>
-              </div>
-              <div className="llm-key-status">
-                <span>{item.configured ? `${item.count} 个已配置` : "未配置"}</span>
-                <small>{item.masked.length > 0 ? item.masked.map((entry) => `${entry.name ? `${entry.name} · ` : ""}${entry.value}`).join("，") : item.name}</small>
-              </div>
-              <div className="llm-key-input">
-                <input aria-label={`${provider.label} API Key`} type="password" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={item.configured ? "输入新值以替换" : `粘贴 ${provider.label} API Key`} value={drafts[item.name] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.name]: event.target.value }))} />
-                {item.configured && <button className="danger-link" disabled={busy} onClick={() => void onSave({ [item.name]: null }, provider.label)}>清除</button>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <details className="llm-base-urls">
-        <summary>
-          <span><strong>自定义 Base URL</strong><small>默认使用各服务商的官方地址</small></span>
-          <i>高级设置</i>
-        </summary>
-        <div className="llm-base-url-list">
-          {providers.map((provider) => {
-            const setting = provider.baseUrl;
-            if (!setting) return null;
-            const value = hasDraft(drafts, setting.name) ? drafts[setting.name] : (setting.value || setting.defaultValue);
-            return (
-              <label className="llm-base-url-row" key={setting.name}>
-                <span><strong>{provider.label}</strong><small>{setting.customized ? "正在使用自定义地址" : "官方默认地址"}</small></span>
-                <input aria-label={`${provider.label} Base URL`} type="url" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={value} onChange={(event) => setDrafts((current) => ({ ...current, [setting.name]: event.target.value }))} />
-                {setting.customized && <button type="button" className="danger-link" disabled={busy} onClick={() => void onSave({ [setting.name]: null }, `${provider.label} Base URL`)}>恢复默认</button>}
-              </label>
-            );
-          })}
-        </div>
-      </details>
 
       <section className="llm-model-routing">
         <div className="llm-routing-heading">
-          <span><strong>默认提供商与模型</strong><small>用于 LLM 纠错、规划、研究与知识处理</small></span>
+          <span><strong>提供商与全局模型</strong></span>
         </div>
-        {localProviders.length > 0 && (
-          <p className="llm-routing-note">
-            {localProviders.map((item) => `${item.label}${item.available ? "已就绪" : "未检测到 CLI"}`).join("；")}
-            ：本地 Agent 直接调用你自己登录的 CLI 订阅，无需填写 API Key；PATH 中的安装与 Codex 应用自带的 CLI 都会自动识别。
-            纯文本环节可直接使用，音频与视频多模态环节会自动回落到已配置的 API 模型。
-          </p>
-        )}
         <div className="llm-default-route">
-          <span><strong>全局默认</strong><small>默认为 Gemini 自动路由</small></span>
-          {renderRoute("default", modelRouting.defaultRoute, false)}
-        </div>
-        <details className="llm-task-routing">
-          <summary><span><strong>自定义任务模型</strong><small>覆盖指定环节，其余跟随全局默认</small></span><i>配置 {modelRouting.taskRoutes.length} 个环节</i></summary>
-          <div className="llm-task-route-list">
-            {modelRouting.taskRoutes.map((item) => (
-              <div className="llm-task-route-row" key={item.id}>
-                <span><strong>{item.label}</strong><small>{item.id}</small></span>
-                {renderRoute(item.id, item.route, true)}
-              </div>
-            ))}
+          <div className="llm-route-controls">
+            <select aria-label="全局提供商" value={defaultRoute.provider} onChange={(event) => selectProvider("default", event.target.value)}>
+              <option value="">选择提供商</option>
+              {modelRouting.providers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                  {item.requiresKey === false
+                    ? (item.available ? "（本地 CLI）" : "（未检测到 CLI）")
+                    : (isConfigured(item) ? "" : "（未配置凭据）")}
+                </option>
+              ))}
+            </select>
+            {renderModelControl("default", selected, defaultRoute.model, "先选择提供商")}
           </div>
-        </details>
+        </div>
+
+        {selected && (
+          <div className="llm-provider-setup">
+            {!selected.requiresKey ? (
+              <p className="llm-routing-note">
+                {selected.label}用你自己登录的 CLI 订阅运行，无需 API Key。检测结果：{selected.available ? "已检测到该 CLI。" : "尚未检测到该 CLI，安装后会自动识别。"}
+              </p>
+            ) : (
+              <>
+                <label className="llm-credential-row">
+                  <span>
+                    <strong>{selected.label} API Key</strong>
+                    <small>{selectedKey?.masked.length ? selectedKey.masked.map((entry) => `${entry.name ? `${entry.name} · ` : ""}${entry.value}`).join("，") : (selectedKey?.configured ? `${selectedKey.count} 个已配置` : "未配置，保存后该提供商才可用")}</small>
+                  </span>
+                  <input aria-label={`${selected.label} API Key`} type="password" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={selectedKey?.configured ? "输入新值以替换" : `粘贴 ${selected.label} API Key`} value={drafts[selected.keyName] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [selected.keyName]: event.target.value }))} />
+                  {selectedKey?.configured && <button type="button" className="danger-link" disabled={busy} onClick={() => void onSave({ [selected.keyName]: null }, `${selected.label} API Key`)}>清除</button>}
+                </label>
+                {selectedUrl && (
+                  <label className="llm-credential-row">
+                    <span>
+                      <strong>{selected.label} Base URL</strong>
+                      <small>兼容端点必填，例如 https://vendor.example/v1</small>
+                    </span>
+                    <input aria-label={`${selected.label} Base URL`} type="url" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="https://vendor.example/v1" value={urlValue(selected)} onChange={(event) => setDrafts((current) => ({ ...current, [selectedUrl.name]: event.target.value }))} />
+                  </label>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {globalReady ? (
+          <details className="llm-task-routing">
+            <summary><span><strong>自定义任务模型</strong><small>覆盖指定环节，其余跟随全局模型</small></span><i>配置 {modelRouting.taskRoutes.length} 个环节</i></summary>
+            <div className="llm-task-route-list">
+              {modelRouting.taskRoutes.map((item) => (
+                <div className="llm-task-route-row" key={item.id}>
+                  <span><strong>{item.label}</strong><small>{item.id}</small></span>
+                  {renderTaskRoute(item.id, item.route)}
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : (
+          <div className="llm-task-routing llm-task-routing-locked">
+            <span><strong>自定义任务模型</strong><small>完成提供商与全局模型配置后可用</small></span>
+            <i>{blocker}</i>
+          </div>
+        )}
       </section>
 
       <div className="llm-config-footer">
-        <span>{configured > 0 ? "最小配置已完成" : "保存任意一家 API Key 即可启用本地模型能力"}</span>
-        <button className="primary-button" disabled={busy || Object.keys(updates).length === 0} onClick={() => void onSave(updates, "模型配置")}>{busy ? "正在保存…" : "保存模型配置"}</button>
+        <span>{blocker || (Object.keys(updates).length ? "配置已就绪，保存后生效" : "配置已保存")}</span>
+        <button className="primary-button" disabled={busy || !globalReady || Object.keys(updates).length === 0} onClick={() => void onSave(updates, "模型配置")}>{busy ? "正在保存…" : "保存模型配置"}</button>
       </div>
     </article>
   );

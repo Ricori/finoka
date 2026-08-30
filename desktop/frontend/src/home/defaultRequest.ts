@@ -22,7 +22,7 @@ export function localTaskRequest(entry: MediaEntry): TaskRequest {
       enabled: false,
       media: "audio",
       retrieval: "none",
-      difficulty: "intermediate",
+      difficulty: "quality",
       fast: "auto",
       extra_info: "",
       extra_style: "",

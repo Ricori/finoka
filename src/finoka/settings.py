@@ -18,6 +18,8 @@ KEY_SPECS: tuple[dict[str, str], ...] = (
     {"name": "TAVILY_KEYS", "label": "Tavily", "purpose": "联网检索回退"},
     {"name": "ANTHROPIC_API_KEY", "label": "Anthropic", "purpose": "本地代理高级配置"},
     {"name": "OPENAI_API_KEY", "label": "OpenAI", "purpose": "本地代理高级配置"},
+    {"name": "OPENAI_COMPAT_API_KEY", "label": "OpenAI 兼容提供商", "purpose": "自定义 OpenAI 兼容端点"},
+    {"name": "ANTHROPIC_COMPAT_API_KEY", "label": "Anthropic 兼容提供商", "purpose": "自定义 Anthropic 兼容端点"},
     {"name": "HF_TOKEN", "label": "Hugging Face", "purpose": "受限模型下载"},
 )
 KEY_NAMES = frozenset(spec["name"] for spec in KEY_SPECS)
@@ -37,6 +39,16 @@ BASE_URL_SPECS: tuple[dict[str, str], ...] = (
         "name": "ANTHROPIC_BASE_URL",
         "label": "Anthropic",
         "defaultValue": "https://api.anthropic.com",
+    },
+    {
+        "name": "OPENAI_COMPAT_BASE_URL",
+        "label": "OpenAI 兼容提供商",
+        "defaultValue": "",
+    },
+    {
+        "name": "ANTHROPIC_COMPAT_BASE_URL",
+        "label": "Anthropic 兼容提供商",
+        "defaultValue": "",
     },
 )
 BASE_URL_NAMES = frozenset(spec["name"] for spec in BASE_URL_SPECS)
@@ -64,7 +76,36 @@ LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, str]] = {
     },
 }
 
-MODEL_PROVIDERS = frozenset({"gemini-free", "gemini-paid", "openai", "anthropic"} | set(LOCAL_AGENT_PROVIDERS))
+# Providers reached over HTTP with an API key, in the order the desktop offers
+# them. `keyName` is what gates selecting the provider at all; `baseUrlName` is
+# the endpoint its transport reads. The two compat entries exist so a
+# third-party endpoint can be routed to without overwriting the address of the
+# official service that speaks the same dialect.
+API_PROVIDER_SPECS: tuple[dict[str, Any], ...] = (
+    {"id": "gemini-free", "label": "Gemini", "mode": "select", "keyName": "GEMINI_FREE", "baseUrlName": "GEMINI_BASE_URL", "customEndpoint": False},
+    {"id": "gemini-paid", "label": "Gemini 付费池", "mode": "select", "keyName": "GEMINI_PAID", "baseUrlName": "GEMINI_BASE_URL", "customEndpoint": False},
+    {"id": "openai", "label": "OpenAI", "mode": "input", "keyName": "OPENAI_API_KEY", "baseUrlName": "OPENAI_BASE_URL", "customEndpoint": False},
+    {"id": "anthropic", "label": "Anthropic", "mode": "input", "keyName": "ANTHROPIC_API_KEY", "baseUrlName": "ANTHROPIC_BASE_URL", "customEndpoint": False},
+    {"id": "openai-compat", "label": "OpenAI 兼容提供商", "mode": "input", "keyName": "OPENAI_COMPAT_API_KEY", "baseUrlName": "OPENAI_COMPAT_BASE_URL", "customEndpoint": True},
+    {"id": "anthropic-compat", "label": "Anthropic 兼容提供商", "mode": "input", "keyName": "ANTHROPIC_COMPAT_API_KEY", "baseUrlName": "ANTHROPIC_COMPAT_BASE_URL", "customEndpoint": True},
+)
+API_PROVIDER_BY_ID = {spec["id"]: spec for spec in API_PROVIDER_SPECS}
+LLM_KEY_NAMES = frozenset(spec["keyName"] for spec in API_PROVIDER_SPECS)
+# Providers whose endpoint is the user's own: without a base URL there is
+# nothing to call, and the generated catalog row would not even parse.
+CUSTOM_ENDPOINT_PROVIDERS = frozenset(
+    spec["id"] for spec in API_PROVIDER_SPECS if spec["customEndpoint"]
+)
+# Which packaged HTTP transport carries each provider, and the tier its
+# generated catalog rows are grouped under.
+_HTTP_TRANSPORTS: Mapping[str, tuple[str, str]] = {
+    "openai": ("openai_compat", "FINOKA_OPENAI"),
+    "anthropic": ("anthropic", "FINOKA_ANTHROPIC"),
+    "openai-compat": ("openai_compat", "FINOKA_OPENAI_COMPAT"),
+    "anthropic-compat": ("anthropic", "FINOKA_ANTHROPIC_COMPAT"),
+}
+
+MODEL_PROVIDERS = frozenset(set(API_PROVIDER_BY_ID) | set(LOCAL_AGENT_PROVIDERS))
 MODEL_ROUTE_SPECS: tuple[dict[str, str], ...] = (
     {"id": "correction", "label": "纠错与翻译"},
     {"id": "planning", "label": "窗口规划"},
@@ -337,10 +378,24 @@ class FineSubSettings:
                     # `defaultModel` is what selecting a provider fills in. For
                     # the packaged rosters it is the first entry, which is the
                     # order the option lists are built in.
-                    {"id": "gemini-free", "label": "Gemini", "mode": "select", "models": model_options["gemini-free"], "defaultModel": _first_model(model_options["gemini-free"]), "requiresKey": True, "available": True},
-                    {"id": "gemini-paid", "label": "Gemini 付费池", "mode": "select", "models": model_options["gemini-paid"], "defaultModel": _first_model(model_options["gemini-paid"]), "requiresKey": True, "available": True},
-                    {"id": "openai", "label": "OpenAI", "mode": "input", "models": [], "defaultModel": "", "requiresKey": True, "available": True},
-                    {"id": "anthropic", "label": "Anthropic", "mode": "input", "models": [], "defaultModel": "", "requiresKey": True, "available": True},
+                    *[
+                        {
+                            "id": spec["id"],
+                            "label": spec["label"],
+                            "mode": spec["mode"],
+                            "models": model_options[spec["id"]],
+                            "defaultModel": _first_model(model_options[spec["id"]]),
+                            "requiresKey": True,
+                            "available": True,
+                            "keyName": spec["keyName"],
+                            "baseUrlName": spec["baseUrlName"],
+                            # A compat endpoint has no official address behind
+                            # it, so its Base URL is part of configuring it.
+                            "customEndpoint": spec["customEndpoint"],
+                            "keyConfigured": bool(_entries(values.get(spec["keyName"], ""))),
+                        }
+                        for spec in API_PROVIDER_SPECS
+                    ],
                     *[
                         {
                             "id": provider,
@@ -352,6 +407,10 @@ class FineSubSettings:
                             # is ever asked for; the CLI itself is the gate.
                             "requiresKey": False,
                             "available": _local_agent_detected(provider),
+                            "keyName": "",
+                            "baseUrlName": "",
+                            "customEndpoint": False,
+                            "keyConfigured": False,
                         }
                         for provider, spec in LOCAL_AGENT_PROVIDERS.items()
                     ],
@@ -363,7 +422,7 @@ class FineSubSettings:
                 ],
             },
             "llmKeyConfigured": any(
-                item["configured"] and item["name"] in {"GEMINI_FREE", "GEMINI_PAID", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
+                item["configured"] and item["name"] in LLM_KEY_NAMES
                 for item in keys
             ),
             "retrievalKeyConfigured": any(
@@ -413,9 +472,10 @@ class FineSubSettings:
             normalized[name] = cleaned or None
         if normalized:
             secrets.update_env_file(self.env_file, normalized)
+        env_values = secrets.read_env_file(self.env_file)
         if model_updates:
-            self._update_model_routing(model_updates)
-        self._sync_model_routing(secrets.read_env_file(self.env_file))
+            self._update_model_routing(model_updates, env_values)
+        self._sync_model_routing(env_values)
         try:
             self.env_file.chmod(0o600)
         except OSError:
@@ -424,7 +484,7 @@ class FineSubSettings:
             pass
         return self.snapshot()
 
-    def _update_model_routing(self, updates: Mapping[str, str | None]) -> None:
+    def _update_model_routing(self, updates: Mapping[str, str | None], env_values: Mapping[str, str]) -> None:
         from finesub_bootstrap.config_file import update_config_file
 
         current = _read_toml(self.config_file).get("finoka_models", {})
@@ -450,6 +510,15 @@ class FineSubSettings:
                 raise ValueError(f"A model is required for LLM route {prefix}")
             if provider in allowed_models and model not in allowed_models[provider]:
                 raise ValueError(f"Model {model!r} is not available in {provider}")
+            spec = API_PROVIDER_BY_ID.get(provider)
+            if spec is None:
+                continue
+            # A provider nobody has given credentials to cannot be routed to;
+            # the desktop refuses to offer it for the same reason.
+            if not _entries(env_values.get(spec["keyName"], "")):
+                raise ValueError(f"An API key is required before {provider} can be selected")
+            if provider in CUSTOM_ENDPOINT_PROVIDERS and not env_values.get(spec["baseUrlName"], "").strip():
+                raise ValueError(f"A base URL is required before {provider} can be selected")
         update_config_file(self.config_file, {"finoka_models": updates})
 
     @staticmethod
@@ -486,18 +555,24 @@ class FineSubSettings:
             {
                 (route["provider"], route["model"])
                 for route in routes.values()
-                if route["provider"] in {"openai", "anthropic"} and route["model"]
+                if route["provider"] in _HTTP_TRANSPORTS and route["model"]
             }
         )
         default_urls = {spec["name"]: spec["defaultValue"] for spec in BASE_URL_SPECS}
         catalog_lines = [_MODEL_CATALOG_HEADER]
+        emitted: set[str] = set()
         for provider, model in custom_models:
             target = self._custom_target(provider, model)
-            if provider == "openai":
-                kind, tier, key_env, url_name = "openai_compat", "FINOKA_OPENAI", "OPENAI_API_KEY", "OPENAI_BASE_URL"
-            else:
-                kind, tier, key_env, url_name = "anthropic", "FINOKA_ANTHROPIC", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"
+            kind, tier = _HTTP_TRANSPORTS[provider]
+            key_env = API_PROVIDER_BY_ID[provider]["keyName"]
+            url_name = API_PROVIDER_BY_ID[provider]["baseUrlName"]
             base_url = (env_values.get(url_name) or default_urls[url_name]).strip().rstrip("/")
+            if not base_url:
+                # A compat provider whose endpoint was cleared behind the
+                # route's back: emitting the row would make the whole catalog
+                # unparseable, so drop it and let routing fall back.
+                continue
+            emitted.add(target)
             catalog_lines.append(
                 "|".join(
                     [target, tier, kind, base_url, key_env, model, model, "128000", "16384", "false", "false", "false", "true", "70"]
@@ -513,8 +588,11 @@ class FineSubSettings:
                 return gemini_targets[provider].get(model)
             if provider in LOCAL_AGENT_PROVIDERS:
                 return _local_agent_model_map(provider).get(model)
-            if provider in {"openai", "anthropic"}:
-                return self._custom_target(provider, model)
+            if provider in _HTTP_TRANSPORTS:
+                # Only if the row survived above: pointing a route at a target
+                # the catalog does not carry is worse than falling back.
+                target = self._custom_target(provider, model)
+                return target if target in emitted else None
             return None
 
         update_config_file(
