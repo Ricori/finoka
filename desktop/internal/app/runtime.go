@@ -11,14 +11,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Ricori/finoka/desktop/internal/managedtools"
 	"github.com/Ricori/finoka/desktop/internal/sidecar"
 )
 
 const (
-	pythonEnvironment = "FINOKA_PYTHON"
 	scriptEnvironment = "FINOKA_SIDECAR_SCRIPT"
 	dataEnvironment   = "FINOKA_DATA_DIR"
 	vendorEnvironment = "FINOKA_VENDOR_DIR"
+	// FINOKA_PYTHON lives in managedtools.PythonEnvironment: the plugin host
+	// needs it too, and managedtools is the one package both can import.
 )
 
 // One probe of a candidate interpreter. Generous: a cold first run on a slow
@@ -47,9 +49,9 @@ func SidecarConfig() (sidecar.Config, error) {
 	if resourceRoot == "" {
 		resourceRoot = packagedResourceRoot()
 	}
-	python := os.Getenv(pythonEnvironment)
+	python := os.Getenv(managedtools.PythonEnvironment)
 	if python == "" {
-		pythonCandidates := append([]string{managedBootstrapPython(data)}, bundledPythonCandidates(resourceRoot)...)
+		pythonCandidates := append([]string{managedtools.BootstrapPython(data)}, bundledPythonCandidates(resourceRoot)...)
 		python = firstUsableExecutable(interpreterCanRunSidecar, pythonCandidates...)
 	}
 	if python == "" {
@@ -74,13 +76,6 @@ func SidecarConfig() (sidecar.Config, error) {
 		requirePath(config.Args[0], "sidecar script"),
 		requirePath(config.Args[4], "FineSub vendor directory"),
 	)
-}
-
-func managedBootstrapPython(dataDirectory string) string {
-	if runtime.GOOS == "windows" {
-		return filepath.Join(dataDirectory, "bootstrap", "launcher", "Scripts", "python.exe")
-	}
-	return filepath.Join(dataDirectory, "bootstrap", "launcher", "bin", "python3")
 }
 
 // packagedResourceRoot locates the Python source bundle staged beside a raw

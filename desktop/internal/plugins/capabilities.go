@@ -199,15 +199,17 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 		return DownloadedMedia{}, err
 	}
 
-	ytDLP, err := managedtools.Find(s.dataDirectory, "yt-dlp")
+	ytDLP, ytDLPPrefix, err := managedtools.FindYTDLP(s.dataDirectory)
 	if err != nil {
-		return DownloadedMedia{}, errors.New("Finoka yt-dlp is not installed; install it from 运行环境 first")
+		return DownloadedMedia{}, err
 	}
 	ffmpeg, err := managedtools.Find(s.dataDirectory, "ffmpeg")
 	if err != nil {
 		return DownloadedMedia{}, errors.New("Finoka FFmpeg is not installed; install it from 运行环境 first")
 	}
-	args := append([]string(nil), pluginArgs...)
+	args := append([]string(nil), ytDLPPrefix...)
+	args = append(args, pluginArgs...)
+
 	args = append(args,
 		"--no-playlist",
 		"--newline",
