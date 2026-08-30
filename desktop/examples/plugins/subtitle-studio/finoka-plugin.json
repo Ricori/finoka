@@ -1,0 +1,27 @@
+{
+  "id": "dev.finoka.subtitle-studio",
+  "name": "字幕工作台",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "读取并批量修改字幕文档，导出 ASS/SRT 与压制视频",
+  "publisher": "Finoka",
+  "license": "MIT",
+  "permissions": [
+    "media.list",
+    "document.read",
+    "document.write",
+    "subtitle.export",
+    "media.export-video"
+  ],
+  "contributes": {
+    "tools": [
+      {
+        "id": "studio",
+        "title": "字幕工作台",
+        "icon": "subtitles",
+        "page": "ui/index.html",
+        "order": 900
+      }
+    ]
+  }
+}

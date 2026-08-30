@@ -36,26 +36,8 @@ export const errText = (e: any) => String(e?.message || e || "未知错误")
   .replace(/^Error:\s*/, "");
 
 // ── ASS 字段编解码 ────────────────────────────────────────────────
-/** H:MM:SS.cc（厘秒；小时不补零） */
-export function assTs(sec: number): string {
-  let cs = Math.max(0, Math.round(sec * 100));
-  const h = Math.floor(cs / 360000); cs -= h * 360000;
-  const m = Math.floor(cs / 6000); cs -= m * 6000;
-  const s = Math.floor(cs / 100); cs -= s * 100;
-  return `${h}:${p2(m)}:${p2(s)}.${p2(cs)}`;
-}
-
-/** assTs 的逆：H:MM:SS.cc → 秒 */
-export const assSec = (s: string) => {
-  const p = s.split(":");
-  return (+p[0]) * 3600 + (+p[1]) * 60 + (+p[2]);
-};
-
-/** 花括号会被当成覆写标签，换行转 \N */
-export const assTx = (s: string) => (s || "").replace(/\{/g, "(").replace(/\}/g, ")").replace(/\n/g, "\\N").trim();
-
-/** Name（说话人）：逗号是 Dialogue 的字段分隔符，换行同样会截断行 */
-export const assNm = (s: string) => (s || "").replace(/[,\r\n]/g, " ").trim();
+// 时间码与字段转义搬到了 src/subtitles/format.ts（插件宿主共用同一份），按原名再导出。
+export { assNm, assSec, assTs, assTx } from '../subtitles/format.ts';
 
 /** ASS 颜色 &HAABBGGRR（AA 可省，00=不透明 FF=全透明）→ {css, rgb} */
 export function assColor(c: string): { css: string; rgb: [number, number, number] } {

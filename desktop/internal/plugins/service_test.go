@@ -22,7 +22,19 @@ const testManifest = `{
 }`
 
 type fakeMediaLibrary struct {
-	entries []library.Entry
+	entries  []library.Entry
+	exported *videoExport
+	subtitle *subtitleExport
+}
+
+type videoExport struct {
+	id, name, ass string
+	t0, t1        float64
+	scaleH        int
+}
+
+type subtitleExport struct {
+	name, content string
 }
 
 func (f fakeMediaLibrary) List() []library.Entry { return append([]library.Entry(nil), f.entries...) }
@@ -36,6 +48,44 @@ func (f fakeMediaLibrary) Get(id string) (library.Entry, error) {
 }
 func (f fakeMediaLibrary) Import(paths []string) library.ImportResult {
 	return library.ImportResult{Added: []library.Entry{}, Failed: []library.ImportFailure{}}
+}
+func (f fakeMediaLibrary) SaveSubtitle(name, content string) (string, error) {
+	if f.subtitle != nil {
+		*f.subtitle = subtitleExport{name: name, content: content}
+	}
+	return "/exports/" + name, nil
+}
+func (f fakeMediaLibrary) ExportVideoRange(id, name, ass string, t0, t1 float64, crf int, preset string, scaleH int, abr string) (library.ExportResult, error) {
+	if f.exported != nil {
+		*f.exported = videoExport{id: id, name: name, ass: ass, t0: t0, t1: t1, scaleH: scaleH}
+	}
+	return library.ExportResult{Path: "/exports/" + name, Size: 1024}, nil
+}
+
+type fakeDocuments struct {
+	stored map[string]map[string]any
+	saved  map[string]any
+}
+
+func (f *fakeDocuments) Document(videoID string) (map[string]any, error) {
+	document, ok := f.stored[videoID]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return document, nil
+}
+
+func (f *fakeDocuments) SaveDocument(videoID string, document map[string]any) (map[string]any, error) {
+	if _, ok := f.stored[videoID]; !ok {
+		return nil, os.ErrNotExist
+	}
+	f.saved = document
+	saved := map[string]any{}
+	for key, value := range document {
+		saved[key] = value
+	}
+	saved["rev"] = document["rev"].(float64) + 1
+	return saved, nil
 }
 
 func TestInstallEnablePageAndUninstall(t *testing.T) {
@@ -338,8 +388,142 @@ func TestYTDLPArgumentsUseClosedSafeSet(t *testing.T) {
 	}
 }
 
+func TestDocumentCapabilitiesFollowDeclaredPermissions(t *testing.T) {
+	root := t.TempDir()
+	packageRoot := filepath.Join(t.TempDir(), "plugin")
+	withPermission := strings.Replace(testManifest, `"apiVersion": 1,`, `"apiVersion": 1, "permissions": ["document.read"],`, 1)
+	mustWrite(t, filepath.Join(packageRoot, manifestName), withPermission)
+	mustWrite(t, filepath.Join(packageRoot, "ui", "index.html"), `<p>Hello</p>`)
+	media := fakeMediaLibrary{entries: []library.Entry{{
+		ID: "media-1", Title: "Example.mp4", Duration: 12.5, Available: true, DocumentAvailable: true,
+	}}}
+	documents := &fakeDocuments{stored: map[string]map[string]any{
+		"media-1": {"schema": float64(1), "rev": float64(3), "subtitles": []any{}},
+	}}
+	service, err := New(root, media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetDocuments(service, documents)
+	if _, err := service.Install(packageRoot); err != nil {
+		t.Fatal(err)
+	}
+	document, err := service.Document("dev.finoka.hello", "media-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document["rev"] != float64(3) {
+		t.Fatalf("unexpected document: %#v", document)
+	}
+	if _, err := service.Document("dev.finoka.hello", "media-unknown"); err == nil {
+		t.Fatal("a media id outside the library should not resolve to a document")
+	}
+	// Reading is declared, writing is not: the two capabilities stay separate.
+	if _, err := service.SaveDocument("dev.finoka.hello", "media-1", map[string]any{"rev": float64(3)}); err == nil {
+		t.Fatal("document.write must be declared separately from document.read")
+	}
+}
+
+func TestSaveDocumentKeepsOnlyWritableFields(t *testing.T) {
+	root := t.TempDir()
+	packageRoot := filepath.Join(t.TempDir(), "plugin")
+	withPermission := strings.Replace(testManifest, `"apiVersion": 1,`, `"apiVersion": 1, "permissions": ["document.write"],`, 1)
+	mustWrite(t, filepath.Join(packageRoot, manifestName), withPermission)
+	mustWrite(t, filepath.Join(packageRoot, "ui", "index.html"), `<p>Hello</p>`)
+	media := fakeMediaLibrary{entries: []library.Entry{{ID: "media-1", Title: "Example.mp4", Duration: 12.5, Available: true}}}
+	documents := &fakeDocuments{stored: map[string]map[string]any{"media-1": {"rev": float64(7)}}}
+	service, err := New(root, media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetDocuments(service, documents)
+	if _, err := service.Install(packageRoot); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := service.SaveDocument("dev.finoka.hello", "media-1", map[string]any{
+		"rev":       float64(7),
+		"title":     "Example",
+		"video_id":  "somewhere-else",
+		"subtitles": []any{map[string]any{"t0": float64(1), "t1": float64(2), "ja": "こんにちは", "zh": "你好", "words": []any{}}},
+		"tracks":    []any{map[string]any{"id": "t1", "name": "注释", "segs": []any{}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved["rev"] != float64(8) {
+		t.Fatalf("save should return the stored revision: %#v", saved)
+	}
+	if _, present := documents.saved["video_id"]; present {
+		t.Fatalf("plugin fields outside the writable set reached the store: %#v", documents.saved)
+	}
+	segment := documents.saved["subtitles"].([]any)[0].(map[string]any)
+	if _, present := segment["words"]; !present {
+		t.Fatal("segment fields the plugin did not understand should survive a round trip")
+	}
+	for _, broken := range []map[string]any{
+		{"subtitles": []any{}},
+		{"rev": float64(7), "subtitles": []any{map[string]any{"t0": float64(2), "t1": float64(1)}}},
+		{"rev": float64(7), "subtitles": []any{map[string]any{"t0": float64(0), "t1": float64(1), "zh": float64(9)}}},
+		{"rev": float64(7), "subtitles": "not-a-list"},
+	} {
+		if _, err := service.SaveDocument("dev.finoka.hello", "media-1", broken); err == nil {
+			t.Fatalf("malformed document was accepted: %#v", broken)
+		}
+	}
+}
+
+func TestExportVideoUsesHostOwnedRangeAndName(t *testing.T) {
+	root := t.TempDir()
+	packageRoot := filepath.Join(t.TempDir(), "plugin")
+	withPermission := strings.Replace(testManifest, `"apiVersion": 1,`, `"apiVersion": 1, "permissions": ["media.export-video", "subtitle.export"],`, 1)
+	mustWrite(t, filepath.Join(packageRoot, manifestName), withPermission)
+	mustWrite(t, filepath.Join(packageRoot, "ui", "index.html"), `<p>Hello</p>`)
+	exported := &videoExport{}
+	subtitle := &subtitleExport{}
+	media := fakeMediaLibrary{
+		entries:  []library.Entry{{ID: "media-1", Title: "Example.mp4", Duration: 12.5, Available: true}},
+		exported: exported,
+		subtitle: subtitle,
+	}
+	service, err := New(root, media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(packageRoot); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := service.ExportVideo("dev.finoka.hello", "media-1", `..\..\escape.mkv`, "[Events]\n", 3, 0, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.Format != "mp4" || artifact.Size != 1024 {
+		t.Fatalf("unexpected artifact: %#v", artifact)
+	}
+	if exported.name != "escape.mkv.mp4" {
+		t.Fatalf("plugin file name should be reduced to a bare mp4 name: %q", exported.name)
+	}
+	if exported.t0 != 3 || exported.t1 != 12.5 || exported.scaleH != 720 {
+		t.Fatalf("unexpected export range: %#v", exported)
+	}
+	if _, err := service.ExportVideo("dev.finoka.hello", "media-1", "", "[Events]", 12.5, 12.5, 0); err == nil {
+		t.Fatal("an empty range should be rejected")
+	}
+	if _, err := service.ExportVideo("dev.finoka.hello", "media-1", "", "", 0, 0, 0); err == nil {
+		t.Fatal("an empty subtitle track should be rejected")
+	}
+	if _, err := service.ExportVideo("dev.finoka.hello", "media-1", "", "[Events]", 0, 0, 100); err == nil {
+		t.Fatal("an out-of-range export height should be rejected")
+	}
+	if _, err := service.SaveSubtitleFile("dev.finoka.hello", `C:\Windows\system32\drivers\etc\hosts`, "Dialogue: 0"); err != nil {
+		t.Fatal(err)
+	}
+	if subtitle.name != "hosts.ass" {
+		t.Fatalf("subtitle name should be reduced to a bare file name: %q", subtitle.name)
+	}
+}
+
 func TestExamplePluginsMatchAPIV1(t *testing.T) {
-	for _, name := range []string{"hello-tool", "video-downloader"} {
+	for _, name := range []string{"hello-tool", "video-downloader", "subtitle-studio"} {
 		root := filepath.Join("..", "..", "examples", "plugins", name)
 		manifest, err := readManifest(root)
 		if err != nil {

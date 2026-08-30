@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>字幕工作台</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Noto Sans SC", system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px; color: #eef1f9; background: #1e2333; }
+    body.light { color: #2f2b27; background: #fffdf8; }
+    main { max-width: 780px; margin: 0 auto; display: grid; gap: 16px; }
+    section { border: 1px solid #38405c; border-radius: 16px; padding: 20px; }
+    body.light section { border-color: #e7e2d9; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    h2 { margin: 0 0 10px; font-size: 15px; }
+    p { margin: 0 0 12px; color: #a0aac8; line-height: 1.7; font-size: 13px; }
+    body.light p { color: #6d675f; }
+    button, select, input { border: 0; border-radius: 9px; padding: 9px 13px; font: inherit; }
+    button { background: #8ea6f2; color: #1c2340; font-weight: 700; cursor: pointer; }
+    button.quiet { background: #293047; color: inherit; font-weight: 500; }
+    body.light button.quiet { background: #eeeae1; }
+    button:disabled { opacity: .5; cursor: default; }
+    select, input { background: #293047; color: inherit; }
+    body.light select, body.light input { background: #eeeae1; }
+    select { min-width: 260px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .stat { font-size: 13px; color: #a0aac8; }
+    pre { max-height: 190px; overflow: auto; margin: 0; padding: 12px; border-radius: 10px;
+      background: #161b29; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+    body.light pre { background: #f3efe6; }
+    progress { width: 100%; height: 6px; }
+    #status { font-size: 12px; min-height: 18px; }
+    .warn { color: #f0a878; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>字幕工作台</h1>
+      <p>示例插件：读取字幕文档、批量替换文本并写回、拿到与编辑器逐字相同的 ASS，最后压制成视频。
+        所有能力都由宿主执行，插件只描述要做什么。</p>
+      <div class="row">
+        <select id="media"><option value="">正在读取媒体库…</option></select>
+        <button id="load" class="quiet">读取字幕文档</button>
+      </div>
+      <div class="stat" id="summary">还没有载入文档。</div>
+    </section>
+
+    <section>
+      <h2>批量替换</h2>
+      <p>在原文与译文里做整词替换，保存时带上读到的 rev；编辑器同时改过同一份文档时，宿主会拒绝这次写入。</p>
+      <div class="row">
+        <input id="find" placeholder="查找" size="14">
+        <input id="replace" placeholder="替换为" size="14">
+        <button id="apply" disabled>替换并保存</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>导出</h2>
+      <div class="row">
+        <button id="ass" class="quiet" disabled>预览 ASS</button>
+        <button id="save-ass" class="quiet" disabled>导出 .ass</button>
+        <button id="save-srt" class="quiet" disabled>导出 .srt</button>
+        <button id="burn" disabled>压制到视频</button>
+      </div>
+      <progress id="progress" value="0" max="1" hidden></progress>
+      <pre id="preview">尚未生成字幕。</pre>
+    </section>
+
+    <div id="status"></div>
+  </main>
+  <script>
+    const el = (id) => document.querySelector("#" + id);
+    const status = el("status");
+    let pending = new Map();
+    let counter = 0;
+    let loaded = null;   // 最近一次读到的文档（含 rev）
+    let mediaId = "";
+
+    /** window.finoka.post 之上的 Promise 封装：一个请求 ID 对应一个 rpc.result */
+    function rpc(method, params) {
+      const id = "req-" + (++counter);
+      return new Promise((resolve, reject) => {
+        pending.set(id, { resolve, reject });
+        window.finoka.post(method, params || {}, id);
+      });
+    }
+
+    function say(text, warn) {
+      status.textContent = text;
+      status.className = warn ? "warn" : "";
+    }
+
+    function summarize(document_) {
+      const segs = document_.subtitles || [];
+      const extra = (document_.tracks || []).reduce((total, track) => total + (track.segs || []).length, 0);
+      const untranslated = segs.filter((s) => !(s.zh || "").trim()).length;
+      el("summary").textContent = `rev ${document_.rev} · 默认轨 ${segs.length} 句`
+        + ` · 自定义轨 ${extra} 句 · 未翻译 ${untranslated} 句`;
+      for (const id of ["apply", "ass", "save-ass", "save-srt", "burn"]) el(id).disabled = false;
+    }
+
+    el("load").addEventListener("click", async () => {
+      mediaId = el("media").value;
+      if (!mediaId) return;
+      say("正在读取字幕文档…");
+      try {
+        loaded = await rpc("document.read", { mediaId });
+        summarize(loaded);
+        say("已载入字幕文档。");
+      } catch (error) {
+        say(String(error), true);
+      }
+    });
+
+    el("apply").addEventListener("click", async () => {
+      if (!loaded) return;
+      const find = el("find").value;
+      if (!find) return say("先填要查找的文本。", true);
+      const replace = el("replace").value;
+      let hits = 0;
+      const rewrite = (segs) => (segs || []).map((seg) => {
+        const next = { ...seg };
+        for (const lane of ["ja", "zh"]) {
+          const value = next[lane] || "";
+          if (value.includes(find)) { hits += value.split(find).length - 1; next[lane] = value.split(find).join(replace); }
+        }
+        return next;
+      });
+      const payload = {
+        rev: loaded.rev,
+        title: loaded.title,
+        subtitles: rewrite(loaded.subtitles),
+        tracks: (loaded.tracks || []).map((track) => ({ ...track, segs: rewrite(track.segs) })),
+        track_meta: loaded.track_meta,
+      };
+      if (!hits) return say("没有命中任何句子，没有写入。");
+      say(`正在保存 ${hits} 处替换…`);
+      try {
+        loaded = await rpc("document.save", { mediaId, document: payload });
+        summarize(loaded);
+        say(`已替换 ${hits} 处并保存，新的 rev 是 ${loaded.rev}。`);
+      } catch (error) {
+        say(String(error), true);
+      }
+    });
+
+    el("ass").addEventListener("click", async () => {
+      try {
+        const built = await rpc("subtitle.ass", { mediaId });
+        el("preview").textContent = built.text.split("\n").slice(0, 40).join("\n");
+        say(`已生成 rev ${built.rev} 的 ASS（预览前 40 行）。`);
+      } catch (error) {
+        say(String(error), true);
+      }
+    });
+
+    const saveAs = async (kind) => {
+      try {
+        const built = await rpc(kind === "ass" ? "subtitle.ass" : "subtitle.srt", { mediaId, lang: "both" });
+        const path = await rpc("subtitle.save", { fileName: (loaded.title || "subtitle") + "." + kind, content: built.text });
+        say(path ? "已导出 " + path : "已取消导出。");
+      } catch (error) {
+        say(String(error), true);
+      }
+    };
+    el("save-ass").addEventListener("click", () => saveAs("ass"));
+    el("save-srt").addEventListener("click", () => saveAs("srt"));
+
+    el("burn").addEventListener("click", async () => {
+      el("burn").disabled = true;
+      try {
+        const built = await rpc("subtitle.ass", { mediaId });
+        el("progress").hidden = false;
+        say("正在压制，宿主会先让你选保存位置…");
+        const artifact = await rpc("media.exportVideo", { mediaId, ass: built.text, fileName: loaded.title });
+        say(artifact.path ? `已导出 ${artifact.path}（${Math.round(artifact.size / 1048576)} MB）` : "已取消导出。");
+      } catch (error) {
+        say(String(error), true);
+      } finally {
+        el("progress").hidden = true;
+        el("burn").disabled = false;
+      }
+    });
+
+    window.addEventListener("message", (event) => {
+      const message = event.data;
+      if (message?.source !== "finoka-host") return;
+      if (message.method === "host.info") {
+        document.body.classList.toggle("light", message.result.theme === "light");
+        return;
+      }
+      if (message.method === "media.progress") {
+        el("progress").value = message.result.total ? message.result.done / message.result.total : 0;
+        return;
+      }
+      if (message.method !== "rpc.result") return;
+      const waiting = pending.get(message.id);
+      if (!waiting) return;
+      pending.delete(message.id);
+      if (message.error) waiting.reject(message.error); else waiting.resolve(message.result);
+    });
+
+    rpc("media.list").then((items) => {
+      const usable = items.filter((item) => item.documentAvailable);
+      el("media").replaceChildren(...(usable.length
+        ? usable.map((item) => new Option(item.title, item.id))
+        : [new Option("媒体库里还没有带字幕文档的视频", "")]));
+    }).catch((error) => say(String(error), true));
+  </script>
+</body>
+</html>

@@ -97,6 +97,10 @@ func Run(assets fs.FS) error {
 	if err != nil {
 		return err
 	}
+	// Plugins reach subtitle documents through the same provider the editor
+	// uses, so a plugin write goes through the sidecar's revision check rather
+	// than touching document.json behind the editor's back.
+	plugins.SetDocuments(pluginService, providerService)
 	cloudService, err := cloud.New(dataDirectory, manager, libraryService)
 	if err != nil {
 		return err

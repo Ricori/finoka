@@ -10,12 +10,30 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * Document returns the stored EditDocument for a media entry. The plugin names
+ * the media by the id media.list handed it, never by path.
+ */
+export function Document(pluginID: string, mediaID: string): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(2177955241, pluginID, mediaID);
+}
+
+/**
  * ExportAudio is a structured FFmpeg capability. Plugins select a Finoka media
  * ID and an output format; the host owns input resolution, arguments, the save
  * dialog, temporary files, and final publication.
  */
 export function ExportAudio(pluginID: string, mediaID: string, format: string): $CancellablePromise<$models.ExportedArtifact> {
     return $Call.ByID(2716183520, pluginID, mediaID, format);
+}
+
+/**
+ * ExportVideo burns plugin-supplied ASS into a library video. The plugin owns
+ * the subtitle text and the range; the host owns FFmpeg, the encoding
+ * settings, the save dialog and atomic publication, exactly as the editor's
+ * own export does.
+ */
+export function ExportVideo(pluginID: string, mediaID: string, fileName: string, ass: string, t0: number, t1: number, scaleHeight: number): $CancellablePromise<$models.ExportedArtifact> {
+    return $Call.ByID(3299501749, pluginID, mediaID, fileName, ass, t0, t1, scaleHeight);
 }
 
 /**
@@ -49,6 +67,24 @@ export function PickAndInstall(): $CancellablePromise<$models.InstalledPlugin> {
  */
 export function RunYTDLP(pluginID: string, rawURL: string, pluginArgs: string[] | null): $CancellablePromise<$models.DownloadedMedia> {
     return $Call.ByID(2793227616, pluginID, rawURL, pluginArgs);
+}
+
+/**
+ * SaveDocument writes the editable part of a document back. The payload is
+ * rebuilt from the fields the sidecar accepts, so a plugin can neither invent
+ * document fields nor drop the revision that guards a concurrent editor save.
+ */
+export function SaveDocument(pluginID: string, mediaID: string, document: { [_ in string]?: any } | null): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(395591932, pluginID, mediaID, document);
+}
+
+/**
+ * SaveSubtitleFile publishes plugin-built subtitle text through the host save
+ * dialog. The plugin picks the content and a suggested name; the user picks
+ * where it lands, and the host owns the extension.
+ */
+export function SaveSubtitleFile(pluginID: string, fileName: string, content: string): $CancellablePromise<string> {
+    return $Call.ByID(1114008791, pluginID, fileName, content);
 }
 
 export function SetEnabled(id: string, enabled: boolean): $CancellablePromise<$models.InstalledPlugin> {

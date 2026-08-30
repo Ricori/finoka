@@ -55,46 +55,17 @@ export const TRACK_PALETTE = [
   "rgb(111,191,90)", "rgb(91,192,217)", "rgb(224,151,91)",
 ];
 
-// 与 vod/core/subtitles.py 的 _ASS_SCRIPT_INFO / _ASS_EVENTS_HEAD 保持一致
-export const ASS_SCRIPT_INFO = "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\n"
-  + "PlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n";
-export const ASS_EVENTS_HEAD = "\n[Events]\nFormat: Layer, Start, End, Style, Name,"
-  + " MarginL, MarginR, MarginV, Effect, Text\n";
-
-/** [V4+ Styles] 的标准 Format 行（23 字段）。本地样式表一律按它规范化输出 */
-export const ASS_STYLE_FORMAT = "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour,"
-  + " OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle,"
-  + " BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding";
-
-/**
- * 写死的两个默认样式。默认轨的原文/译文绑的就是它们，样式模板编辑器里不展示，
- * 也删不掉：文档绑到本机没有的样式时，回退的正是这两个（见 ass.ts::resolveStyle）。
- * 本地样式表里出现同名样式时以本地那份为准——「合并」而不是「锁死」。
- */
-export const BUILTIN_ASS_STYLES = `Style: JP,方正准圆_GBK,70,&H00FFF9FD,&HF0000000,&H00EF9320,&H30633306,0,0,0,0,100,100,7,0,1,2,2,8,10,10,30,1
-Style: CN,方正准圆_GBK,70,&H00FFF9FD,&HF0000000,&H00EF9320,&H30633306,0,0,0,0,100,100,7,0,1,2,2,2,10,10,30,1`;
-
-/** 本机样式表还没存过时的种子：旧工程内置模板里除 JP/CN 之外的那几个样式 */
-export const DEFAULT_USER_ASS_STYLES = `Style: 注释,思源黑体 Heavy,60,&H00FFFFFF,&H000000FF,&H00000000,&H00737375,0,0,0,0,100,100,0,0,1,2,2,7,30,30,30,1
-Style: 优花,荆南波波黑,90,&H00D59B57,&H000000FF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,10,10,30,1
-Style: haru,荆南波波黑,90,&H002E0C9B,&H000000FF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,10,10,30,1
-Style: nana,荆南波波黑,90,&H00B9A7F0,&H000000FF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,10,10,30,1
-Style: saya,荆南波波黑,90,&H0091DF82,&H000000FF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,10,10,30,1`;
-
-/** 本机样式表还没存过时写进编辑框的种子（不含写死的 JP/CN） */
-export const DEFAULT_STYLE_SHEET = `[V4+ Styles]
-${ASS_STYLE_FORMAT}
-${DEFAULT_USER_ASS_STYLES}
-`;
-
-/** 旧工程 vod/core/subtitles.py 的全局默认样式；迁移来的文档没带模板时用它兜底。 */
-export const DEFAULT_ASS_TEMPLATE = `[V4+ Styles]
-${ASS_STYLE_FORMAT}
-${BUILTIN_ASS_STYLES}
-${DEFAULT_USER_ASS_STYLES}`;
-
-/** Format 行缺省时的标准 23 字段 */
-export const ASS_FMT_DEFAULT = ASS_STYLE_FORMAT.slice(7).toLowerCase().split(",").map(s => s.trim());
+// ASS 骨架常量搬到了 src/subtitles，编辑器与插件宿主共用同一份；这里按原名再导出，
+// 编辑器内部的引用路径不变。
+export {
+  ASS_SCRIPT_INFO,
+  ASS_EVENTS_HEAD,
+  ASS_STYLE_FORMAT,
+  BUILTIN_ASS_STYLES,
+  DEFAULT_USER_ASS_STYLES,
+  DEFAULT_STYLE_SHEET,
+  ASS_FMT_DEFAULT,
+} from '../subtitles/constants.ts';
 
 /** 随包自带的字体（导出时整个 fonts/ 都会喂给 ffmpeg），缺字检测里直接放行；比对不分大小写 */
 export const BUNDLED_FONTS = ["方正准圆_gbk", "方正准圆", "FZ-ZhunYuan-GBK",

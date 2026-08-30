@@ -6,6 +6,7 @@ import type {
   MediaSummary,
   ToolContribution,
 } from "../../bindings/github.com/Ricori/finoka/desktop/internal/plugins/models.js";
+import type { EditDocument } from "../documents/types.ts";
 
 export type { DownloadedMedia, ExportedArtifact, InstalledPlugin, MediaSummary, ToolContribution };
 
@@ -28,6 +29,14 @@ export const desktopPlugins = {
   },
   exportAudio: PluginService.ExportAudio,
   runYTDLP: PluginService.RunYTDLP,
+  async document(pluginId: string, mediaId: string): Promise<EditDocument> {
+    return await PluginService.Document(pluginId, mediaId) as unknown as EditDocument;
+  },
+  async saveDocument(pluginId: string, mediaId: string, document: unknown): Promise<EditDocument> {
+    return await PluginService.SaveDocument(pluginId, mediaId, document as Record<string, unknown>) as unknown as EditDocument;
+  },
+  saveSubtitleFile: PluginService.SaveSubtitleFile,
+  exportVideo: PluginService.ExportVideo,
 };
 
 export function mountedTools(plugins: InstalledPlugin[]): MountedPluginTool[] {

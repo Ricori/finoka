@@ -112,10 +112,17 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
   );
 }
 
+const PERMISSION_LABELS: Record<string, string> = {
+  "media.list": "读取媒体列表",
+  "media.import": "导入媒体库",
+  "media.export-video": "压制字幕导出视频",
+  "document.read": "读取字幕文档",
+  "document.write": "修改字幕文档",
+  "subtitle.export": "导出字幕文件",
+  "tools.yt-dlp": "执行受控的 yt-dlp 命令",
+  "ffmpeg.extract-audio": "使用 FFmpeg 导出音频",
+};
+
 function permissionLabel(permission: string): string {
-  if (permission === "media.list") return "读取媒体列表";
-  if (permission === "tools.yt-dlp") return "执行受控的 yt-dlp 命令";
-  if (permission === "media.import") return "导入媒体库";
-  if (permission === "ffmpeg.extract-audio") return "使用 FFmpeg 导出音频";
-  return permission;
+  return PERMISSION_LABELS[permission] ?? permission;
 }

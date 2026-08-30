@@ -1,5 +1,6 @@
 import { createStore } from '../../home/lib/createStore';
 import { TRACK_PALETTE } from '../constants';
+import { trackNameOf } from '../../subtitles/build';
 import { resolveStyle, styleRgb } from '../ass';
 import type { Lang, Peaks, Seg, Ti, Track, TrackMeta } from '../types';
 
@@ -46,9 +47,7 @@ export function segsOf(ti: Ti): Seg[] {
 
 export function trackName(ti: Ti): string {
   const d = docStore.get();
-  return ti < 0
-    ? (d.trackMeta?.name || "默认轨")
-    : (d.tracks[ti]?.name || ("轨道 " + (ti + 1)));
+  return trackNameOf({ segs: d.segs, tracks: d.tracks, trackMeta: d.trackMeta }, ti);
 }
 
 /** 定位某句在哪条轨/第几个。选中集合存的是对象引用，位置得现查 */

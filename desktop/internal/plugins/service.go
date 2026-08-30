@@ -94,12 +94,18 @@ type Service struct {
 	app           *application.App
 	home          *application.WebviewWindow
 	media         mediaLibrary
+	documents     documentStore
 }
 
+// mediaLibrary names exactly the library calls plugin capabilities are built
+// from. Anything the host does not list here stays out of reach of a plugin,
+// however the library grows.
 type mediaLibrary interface {
 	List() []library.Entry
 	Get(string) (library.Entry, error)
 	Import([]string) library.ImportResult
+	SaveSubtitle(defaultName, content string) (string, error)
+	ExportVideoRange(id, defaultName, ass string, t0, t1 float64, crf int, preset string, scaleH int, abr string) (library.ExportResult, error)
 }
 
 func init() {
@@ -420,6 +426,10 @@ func validateManifest(manifest Manifest, root string) error {
 	knownPermissions := map[string]bool{
 		"media.list":           true,
 		"media.import":         true,
+		"media.export-video":   true,
+		"document.read":        true,
+		"document.write":       true,
+		"subtitle.export":      true,
 		"tools.yt-dlp":         true,
 		"ffmpeg.extract-audio": true,
 	}

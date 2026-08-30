@@ -51,26 +51,8 @@ export interface Peaks {
   peaks: number[];
 }
 
-/** ASS 模板里解析出来的一个 Style */
-export interface AssStyle {
-  name: string;
-  font: string;
-  size: number;
-  c1: string;
-  c3: string;
-  c4: string;
-  bold: number;
-  italic: number;
-  scx: number;
-  scy: number;
-  sp: number;
-  outline: number;
-  shadow: number;
-  align: number;
-  ml: number;
-  mr: number;
-  mv: number;
-}
+/** ASS 样式：与插件宿主共用 src/subtitles 的定义 */
+export type { AssStyle } from '../subtitles/types.ts';
 
 /** ti：-1 = 默认轨，>=0 = tracks 下标 */
 export type Ti = number;
