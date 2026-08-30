@@ -56,8 +56,8 @@ SETTING_NAMES = KEY_NAMES | BASE_URL_NAMES
 
 # Providers whose models run on a local agent CLI instead of an API key: the
 # tier picks the packaged targets, the command is what has to be on PATH. The
-# engine ships Claude Code, agy and dsh tiers as well; only the ones listed
-# here are offered as a desktop route.
+# engine ships Claude Code and dsh tiers as well; only the ones listed here
+# are offered as a desktop route.
 LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, str]] = {
     "local-codex": {
         "tier": "LOCAL_CODEX",
@@ -72,7 +72,23 @@ LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, str]] = {
         # %LOCALAPPDATA% and never puts it on PATH, so `codex` is a name
         # nothing can resolve on a machine that has it installed. Windows only
         # on purpose: the npm and Homebrew installs land on PATH by themselves.
-        "windows_app_glob": "OpenAI/Codex/bin/*/codex.exe",
+        "windows_app_globs": ("OpenAI/Codex/bin/*/codex.exe",),
+    },
+    "local-agy": {
+        "tier": "LOCAL_AGY",
+        "label": "本地 Antigravity",
+        "command": "agy",
+        # Gemini 3.7 Flash leads: it is the only local-agent model that can
+        # take an audio or video window, so selecting the provider fills in
+        # the one that does not force a fallback. Opus follows for text.
+        "models": ("gemini-3.7-flash", "claude-opus-4-6-thinking"),
+        # `agy` is a native Go binary installed by its own script
+        # (`irm https://antigravity.google/cli/install.ps1 | iex`), *not* by
+        # the Antigravity IDE — that Electron install carries no CLI at all.
+        # The script normally registers its directory on PATH; these globs
+        # only cover the install that did not, and the two spellings the
+        # vendor has shipped it under.
+        "windows_app_globs": ("agy/bin/agy.exe", "Antigravity/agy.exe"),
     },
 }
 
@@ -233,12 +249,13 @@ def local_agent_executable(provider: str) -> Path | None:
     found = shutil.which(spec["command"])
     if found:
         return Path(found)
-    pattern = spec.get("windows_app_glob")
+    patterns = spec.get("windows_app_globs") or ()
     root = os.environ.get("LOCALAPPDATA", "")
-    if not pattern or os.name != "nt" or not root:
+    if not patterns or os.name != "nt" or not root:
         return None
     candidates = [
         path
+        for pattern in patterns
         for path in Path(root).glob(pattern)
         # A half-written update stages itself next to the live install.
         if path.is_file() and not path.parent.name.startswith(".staging")
@@ -312,6 +329,36 @@ def _route_from_config(config: Mapping[str, Any], prefix: str) -> dict[str, str]
     return {"provider": provider, "model": model}
 
 
+def _provider_usable(provider: Mapping[str, Any], base_urls: Mapping[str, str]) -> bool:
+    """该提供商现在能不能真的发起调用。
+
+    API 提供商要有 Key，兼容端点还要有地址；本地 Agent 不要 Key，但 CLI 得
+    真的在这台机器上。
+    """
+    if not provider["requiresKey"]:
+        return bool(provider["available"])
+    if not provider["keyConfigured"]:
+        return False
+    return not provider["customEndpoint"] or bool(base_urls.get(provider["baseUrlName"], ""))
+
+
+def _llm_ready(
+    route: Mapping[str, str],
+    providers: list[dict[str, Any]],
+    base_urls: Mapping[str, str],
+) -> bool:
+    """全局模型是否配置到位。
+
+    「机器上装了 codex」不等于「配置了模型」：只有保存下来的全局路由既选好
+    了提供商与模型、凭据或 CLI 也到位，最终字幕这类 LLM 环节才真的能跑。草稿
+    没保存就不算数——快照读的是落盘的配置。
+    """
+    if not route.get("provider") or not route.get("model"):
+        return False
+    selected = next((item for item in providers if item["id"] == route["provider"]), None)
+    return selected is not None and _provider_usable(selected, base_urls)
+
+
 class FineSubSettings:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().resolve()
@@ -362,60 +409,64 @@ class FineSubSettings:
             protection = "unreadable"
         else:
             protection = "plaintext"
+        base_urls = [
+            {
+                **spec,
+                "value": values.get(spec["name"], "").strip().rstrip("/"),
+                "customized": bool(values.get(spec["name"], "").strip()),
+            }
+            for spec in BASE_URL_SPECS
+        ]
+        base_url_values = {item["name"]: item["value"] for item in base_urls}
+        providers = [
+            # `defaultModel` is what selecting a provider fills in. For the
+            # packaged rosters it is the first entry, which is the order the
+            # option lists are built in.
+            *[
+                {
+                    "id": spec["id"],
+                    "label": spec["label"],
+                    "mode": spec["mode"],
+                    "models": model_options[spec["id"]],
+                    "defaultModel": _first_model(model_options[spec["id"]]),
+                    "requiresKey": True,
+                    "available": True,
+                    "keyName": spec["keyName"],
+                    "baseUrlName": spec["baseUrlName"],
+                    # A compat endpoint has no official address behind it, so
+                    # its Base URL is part of configuring it.
+                    "customEndpoint": spec["customEndpoint"],
+                    "keyConfigured": bool(_entries(values.get(spec["keyName"], ""))),
+                }
+                for spec in API_PROVIDER_SPECS
+            ],
+            *[
+                {
+                    "id": provider,
+                    "label": spec["label"],
+                    "mode": "select",
+                    "models": model_options[provider],
+                    "defaultModel": _first_model(model_options[provider]),
+                    # Runs on the user's own CLI subscription, so no key is
+                    # ever asked for; the CLI itself is the gate.
+                    "requiresKey": False,
+                    "available": _local_agent_detected(provider),
+                    "keyName": "",
+                    "baseUrlName": "",
+                    "customEndpoint": False,
+                    "keyConfigured": False,
+                }
+                for provider, spec in LOCAL_AGENT_PROVIDERS.items()
+            ],
+        ]
+        default_route = _route_from_config(model_config, "default")
         return {
             "schema": 1,
             "keys": keys,
-            "baseUrls": [
-                {
-                    **spec,
-                    "value": values.get(spec["name"], "").strip().rstrip("/"),
-                    "customized": bool(values.get(spec["name"], "").strip()),
-                }
-                for spec in BASE_URL_SPECS
-            ],
+            "baseUrls": base_urls,
             "modelRouting": {
-                "providers": [
-                    # `defaultModel` is what selecting a provider fills in. For
-                    # the packaged rosters it is the first entry, which is the
-                    # order the option lists are built in.
-                    *[
-                        {
-                            "id": spec["id"],
-                            "label": spec["label"],
-                            "mode": spec["mode"],
-                            "models": model_options[spec["id"]],
-                            "defaultModel": _first_model(model_options[spec["id"]]),
-                            "requiresKey": True,
-                            "available": True,
-                            "keyName": spec["keyName"],
-                            "baseUrlName": spec["baseUrlName"],
-                            # A compat endpoint has no official address behind
-                            # it, so its Base URL is part of configuring it.
-                            "customEndpoint": spec["customEndpoint"],
-                            "keyConfigured": bool(_entries(values.get(spec["keyName"], ""))),
-                        }
-                        for spec in API_PROVIDER_SPECS
-                    ],
-                    *[
-                        {
-                            "id": provider,
-                            "label": spec["label"],
-                            "mode": "select",
-                            "models": model_options[provider],
-                            "defaultModel": _first_model(model_options[provider]),
-                            # Runs on the user's own CLI subscription, so no key
-                            # is ever asked for; the CLI itself is the gate.
-                            "requiresKey": False,
-                            "available": _local_agent_detected(provider),
-                            "keyName": "",
-                            "baseUrlName": "",
-                            "customEndpoint": False,
-                            "keyConfigured": False,
-                        }
-                        for provider, spec in LOCAL_AGENT_PROVIDERS.items()
-                    ],
-                ],
-                "defaultRoute": _route_from_config(model_config, "default"),
+                "providers": providers,
+                "defaultRoute": default_route,
                 "taskRoutes": [
                     {**spec, "route": _route_from_config(model_config, spec["id"])}
                     for spec in MODEL_ROUTE_SPECS
@@ -425,6 +476,8 @@ class FineSubSettings:
                 item["configured"] and item["name"] in LLM_KEY_NAMES
                 for item in keys
             ),
+            # 已保存的全局模型是否真的能用——前端据此放行「最终字幕」。
+            "llmReady": _llm_ready(default_route, providers, base_url_values),
             "retrievalKeyConfigured": any(
                 item["configured"] and item["name"] in {"EXA_KEYS", "TAVILY_KEYS", "GEMINI_FREE"}
                 for item in keys

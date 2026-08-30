@@ -192,7 +192,7 @@ def runtime_report(settings: FineSubSettings | None = None, provisioner: Runtime
         if missing_models:
             asr_issues.append(_issue("missing_model", "ASR 所需模型尚未安装：" + "、".join(missing_models)))
 
-    settings_snapshot = settings.snapshot() if settings is not None else {"llmKeyConfigured": False, "retrievalKeyConfigured": False}
+    settings_snapshot = settings.snapshot() if settings is not None else {"llmReady": False, "retrievalKeyConfigured": False}
     # A routable provider first — the Codex app hides its CLI in a directory
     # PATH never sees, so a plain `which` reports "no agent" on a machine that
     # has one. The remaining vendors have no desktop route yet, so PATH is the
@@ -206,8 +206,10 @@ def runtime_report(settings: FineSubSettings | None = None, provisioner: Runtime
         "",
     ) or next((name for name in ("codex", "claude", "agy") if shutil.which(name)), "")
     llm_issues = list(asr_issues)
-    if not settings_snapshot.get("llmKeyConfigured") and not local_agent:
-        llm_issues.append(_issue("missing_llm_key", "未配置 Gemini/LLM Key，也未检测到可用的本地 Agent"))
+    # 装了 CLI 不等于配好了模型：只有设置里保存下来的全局模型（提供商 + 模型，
+    # 且凭据或 CLI 到位）才放行 LLM 环节。
+    if not settings_snapshot.get("llmReady"):
+        llm_issues.append(_issue("missing_llm_key", "尚未配置模型提供商，请在设置里选择提供商与全局模型并保存"))
 
     knowledge_issues = list(llm_issues)
     managed_resources = {item["id"]: item for item in managed.get("resources", [])} if managed else {}

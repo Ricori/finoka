@@ -55,7 +55,7 @@ Finoka 是一个本地优先的 AI 字幕生产与编辑桌面应用，核心目
 - 仅绑定 `127.0.0.1` 随机端口，启动时生成 256 位随机会话令牌，前端请求均需校验令牌。
 - 直接读取本地媒体文件，不产生网络上传；执行时为任务建立受 LRU 容量上限管理的本机工作副本。
 - 监管隔离 worker 进程；应用退出时将任务标记为 `interrupted`，支持下次启动时断点续跑。
-- 管理本地 FineSub 运行时环境、模型下载、缓存与用户自配的 LLM API Key，以及把 LLM 环节路由到本机 Codex CLI 的本地 Agent 选项。
+- 管理本地 FineSub 运行时环境、模型下载、缓存与用户自配的 LLM API Key，以及把 LLM 环节路由到本机 Codex CLI / Antigravity CLI 的本地 Agent 选项。
 
 ### 2.3 Cloud Provider（云端执行）
 通过 HTTPS 与 Nonoka 后端通信：

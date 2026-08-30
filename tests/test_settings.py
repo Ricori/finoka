@@ -126,6 +126,82 @@ class FineSubSettingsTests(unittest.TestCase):
             self.assertTrue(correction_eff.target_ids[0].startswith("finoka-openai-"))
             self.assertEqual(research.target_ids[0], "gemini-free-3_6-flash")
 
+    def test_llm_is_not_ready_until_a_global_model_is_saved(self) -> None:
+        # A key on its own configures nothing: without a saved global model the
+        # desktop must not offer 「最终字幕」.
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            snapshot = settings.update_keys({"GEMINI_FREE": "gemini-secret"})
+            self.assertTrue(snapshot["llmKeyConfigured"])
+            self.assertFalse(snapshot["llmReady"])
+
+            snapshot = settings.update_keys(
+                {
+                    "LLM_DEFAULT_PROVIDER": "gemini-free",
+                    "LLM_DEFAULT_MODEL": "gemini/gemini-3.6-flash",
+                }
+            )
+            self.assertTrue(snapshot["llmReady"])
+
+    def test_llm_is_not_ready_when_the_saved_provider_lost_its_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "GEMINI_FREE": "gemini-secret",
+                    "LLM_DEFAULT_PROVIDER": "gemini-free",
+                    "LLM_DEFAULT_MODEL": "gemini/gemini-3.6-flash",
+                }
+            )
+            snapshot = settings.update_keys({"GEMINI_FREE": None})
+            self.assertFalse(snapshot["llmReady"])
+
+    def test_llm_is_not_ready_when_a_compat_endpoint_has_no_base_url(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            snapshot = settings.update_keys(
+                {
+                    "OPENAI_COMPAT_API_KEY": "compat-secret",
+                    "OPENAI_COMPAT_BASE_URL": "https://vendor.example/v1",
+                    "LLM_DEFAULT_PROVIDER": "openai-compat",
+                    "LLM_DEFAULT_MODEL": "vendor-model",
+                }
+            )
+            self.assertTrue(snapshot["llmReady"])
+            snapshot = settings.update_keys({"OPENAI_COMPAT_BASE_URL": None})
+            self.assertFalse(snapshot["llmReady"])
+
+    def test_local_agent_is_only_ready_once_its_route_is_saved_and_the_cli_exists(self) -> None:
+        # Having codex on the machine is not a configuration — the route has to
+        # be saved — and a saved route to a CLI that is gone is not usable.
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            with patch("finoka.settings.shutil.which", return_value="/usr/local/bin/codex"):
+                self.assertFalse(settings.snapshot()["llmReady"])
+                snapshot = settings.update_keys(
+                    {
+                        "LLM_DEFAULT_PROVIDER": "local-codex",
+                        "LLM_DEFAULT_MODEL": "gpt-5.6-sol",
+                    }
+                )
+                self.assertTrue(snapshot["llmReady"])
+            with patch("finoka.settings.shutil.which", return_value=None), patch(
+                "finoka.settings.os.name", "posix"
+            ):
+                self.assertFalse(settings.snapshot()["llmReady"])
+
     def test_local_codex_route_binds_the_packaged_agent_target(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
             os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
@@ -166,6 +242,80 @@ class FineSubSettingsTests(unittest.TestCase):
             # routable.
             self.assertGreater(len(correction.target_ids), 1)
 
+    def test_local_agy_route_binds_the_packaged_agent_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            snapshot = settings.update_keys(
+                {
+                    "LLM_DEFAULT_PROVIDER": "local-agy",
+                    "LLM_DEFAULT_MODEL": "gemini-3.7-flash",
+                }
+            )
+            agy = next(
+                item for item in snapshot["modelRouting"]["providers"] if item["id"] == "local-agy"
+            )
+            self.assertFalse(agy["requiresKey"])
+            self.assertEqual(agy["mode"], "select")
+            self.assertEqual(
+                [model["id"] for model in agy["models"]],
+                ["gemini-3.7-flash", "claude-opus-4-6-thinking"],
+            )
+            self.assertEqual(agy["defaultModel"], "gemini-3.7-flash")
+            # The multimodal model is why agy leads with it; the snapshot has
+            # to carry that through to the picker.
+            self.assertTrue(agy["models"][0]["supportsAudio"])
+            self.assertTrue(agy["models"][0]["supportsVideo"])
+            config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
+            # The media target, not the search-entitled twin: a pinned target
+            # is prepended to the bound group, so `retrieval=native` has to
+            # stay free to fall through.
+            self.assertIn('default_target = "local-agy-media-gemini-3_7-flash"', config)
+
+            from finesub.config import clear_config_cache
+            from finesub.llm.routing.model_catalog import default_model_catalog
+            from finesub.llm.routing.model_routes import default_model_routes
+
+            clear_config_cache()
+            default_model_catalog.cache_clear()
+            default_model_routes.cache_clear()
+            routes = default_model_routes()
+            correction, _ = routes.resolve_binding(
+                routes.active_preset_id, "correction-text", "quality"
+            )
+            self.assertEqual(correction.target_ids[0], "local-agy-media-gemini-3_7-flash")
+
+    def test_local_agy_opus_route_binds_its_own_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "LLM_ROUTE_CORRECTION_PROVIDER": "local-agy",
+                    "LLM_ROUTE_CORRECTION_MODEL": "claude-opus-4-6-thinking",
+                }
+            )
+            config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
+            self.assertIn('task_route_correction = "local-agy-opus-4_6"', config)
+
+    def test_unknown_local_agy_model_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            with self.assertRaisesRegex(ValueError, "not available in local-agy"):
+                settings.update_keys(
+                    {
+                        "LLM_DEFAULT_PROVIDER": "local-agy",
+                        "LLM_DEFAULT_MODEL": "gemini-nope",
+                    }
+                )
+
     def test_codex_installed_off_path_is_still_found_and_put_back_on_path(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             app = Path(temporary) / "OpenAI" / "Codex" / "bin"
@@ -182,6 +332,34 @@ class FineSubSettingsTests(unittest.TestCase):
 
                 self.assertEqual(local_agent_executable("local-codex"), live / "codex.exe")
                 self.assertEqual(local_agent_path_entries(), [str(live)])
+
+    def test_agy_installed_off_path_is_still_found_and_put_back_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bin_dir = Path(temporary) / "agy" / "bin"
+            bin_dir.mkdir(parents=True)
+            (bin_dir / "agy.exe").write_bytes(b"")
+            with patch.dict(os.environ, {"LOCALAPPDATA": temporary}, clear=False), patch(
+                "finoka.settings.shutil.which", return_value=None
+            ), patch("finoka.settings.os.name", "nt"):
+                from finoka.settings import local_agent_executable, local_agent_path_entries
+
+                self.assertEqual(local_agent_executable("local-agy"), bin_dir / "agy.exe")
+                self.assertEqual(local_agent_path_entries(), [str(bin_dir)])
+
+    def test_antigravity_ide_alone_does_not_count_as_the_agy_cli(self) -> None:
+        # The Electron IDE installs under %LOCALAPPDATA%/Programs/antigravity
+        # and ships no `agy` at all; reporting it as available would put a
+        # provider in the picker that every call then fails on.
+        with tempfile.TemporaryDirectory() as temporary:
+            ide = Path(temporary) / "Programs" / "antigravity"
+            ide.mkdir(parents=True)
+            (ide / "Antigravity.exe").write_bytes(b"")
+            with patch.dict(os.environ, {"LOCALAPPDATA": temporary}, clear=False), patch(
+                "finoka.settings.shutil.which", return_value=None
+            ), patch("finoka.settings.os.name", "nt"):
+                from finoka.settings import local_agent_executable
+
+                self.assertIsNone(local_agent_executable("local-agy"))
 
     def test_local_agent_on_path_is_not_added_to_it_twice(self) -> None:
         with patch("finoka.settings.shutil.which", return_value="/usr/local/bin/codex"):

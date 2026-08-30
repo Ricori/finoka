@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { FineSubBaseUrlState, FineSubKeyState, FineSubModelProvider, FineSubModelProviderID, FineSubModelRoute, FineSubModelRoutingState } from "../bridge/settings.ts";
+import type { FineSubBaseUrlState, FineSubKeyState, FineSubModelProvider, FineSubModelRoute, FineSubModelRoutingState } from "../bridge/settings.ts";
+import { effectiveRoute, hasDraft, pickModelForProvider, routeSettingName } from "./llmRouting.ts";
 import { Mark } from "./Mark.tsx";
 import "./LlmConfigurationCard.css";
 
@@ -13,26 +15,20 @@ interface LlmConfigurationCardProps {
   onSave: (updates: Record<string, string | null>, name: string) => Promise<void>;
 }
 
-function hasDraft(drafts: Record<string, string>, name: string) {
-  return Object.prototype.hasOwnProperty.call(drafts, name);
-}
-
-function routeSettingName(routeID: string, field: "provider" | "model") {
-  return routeID === "default"
-    ? `LLM_DEFAULT_${field.toUpperCase()}`
-    : `LLM_ROUTE_${routeID.toUpperCase()}_${field.toUpperCase()}`;
-}
-
-function effectiveRoute(routeID: string, saved: FineSubModelRoute, drafts: Record<string, string>): FineSubModelRoute {
-  const providerName = routeSettingName(routeID, "provider");
-  const modelName = routeSettingName(routeID, "model");
-  return {
-    provider: (hasDraft(drafts, providerName) ? drafts[providerName] : saved.provider) as FineSubModelProviderID | "",
-    model: hasDraft(drafts, modelName) ? drafts[modelName] : saved.model,
-  };
-}
-
 export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, busy, setDrafts, onSave }: LlmConfigurationCardProps) {
+  // 每个路由下各提供商最近用过的模型。切走再切回来时用它复原，
+  // 否则手填模型 ID 的提供商每次都得重新输入。
+  const modelMemory = useRef<Record<string, Record<string, string>>>({});
+  const rememberModel = (routeID: string, providerID: string, model: string) => {
+    if (!providerID) return;
+    const perRoute = modelMemory.current[routeID] ?? (modelMemory.current[routeID] = {});
+    perRoute[providerID] = model;
+  };
+  const savedRouteOf = (routeID: string): FineSubModelRoute =>
+    routeID === "default"
+      ? modelRouting.defaultRoute
+      : (modelRouting.taskRoutes.find((item) => item.id === routeID)?.route ?? { provider: "", model: "" });
+
   const keyOf = (provider: FineSubModelProvider) => provider.keyName ? keys.find((item) => item.name === provider.keyName) : undefined;
   const urlOf = (provider: FineSubModelProvider) => provider.customEndpoint && provider.baseUrlName ? baseUrls.find((item) => item.name === provider.baseUrlName) : undefined;
   const urlValue = (provider: FineSubModelProvider) => {
@@ -92,22 +88,34 @@ export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, bus
   const renderModelControl = (routeID: string, provider: FineSubModelProvider | undefined, model: string, placeholder: string) => {
     const modelName = routeSettingName(routeID, "model");
     if (!provider) return <input aria-label={`${routeID} 模型`} value="" disabled placeholder={placeholder} />;
+    const editModel = (value: string) => {
+      rememberModel(routeID, provider.id, value);
+      setDrafts((current) => ({ ...current, [modelName]: value }));
+    };
     if (provider.mode === "select") {
       return (
-        <select aria-label={`${routeID} 模型`} value={model} onChange={(event) => setDrafts((current) => ({ ...current, [modelName]: event.target.value }))}>
+        <select aria-label={`${routeID} 模型`} value={model} onChange={(event) => editModel(event.target.value)}>
           {provider.models.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.id}</option>)}
         </select>
       );
     }
-    return <input aria-label={`${routeID} 模型 ID`} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={`填写 ${provider.label} 模型 ID`} value={model} onChange={(event) => setDrafts((current) => ({ ...current, [modelName]: event.target.value }))} />;
+    return <input aria-label={`${routeID} 模型 ID`} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={`填写 ${provider.label} 模型 ID`} value={model} onChange={(event) => editModel(event.target.value)} />;
   };
 
   const selectProvider = (routeID: string, nextProvider: string) => {
+    const saved = savedRouteOf(routeID);
+    const current = effectiveRoute(routeID, saved, drafts);
+    rememberModel(routeID, current.provider, current.model);
     const next = modelRouting.providers.find((item) => item.id === nextProvider);
-    setDrafts((current) => ({
-      ...current,
+    const model = pickModelForProvider({
+      provider: next,
+      remembered: modelMemory.current[routeID]?.[nextProvider],
+      savedModel: saved.provider === nextProvider ? saved.model : "",
+    });
+    setDrafts((drafted) => ({
+      ...drafted,
       [routeSettingName(routeID, "provider")]: nextProvider,
-      [routeSettingName(routeID, "model")]: next?.mode === "select" ? (next.defaultModel || next.models[0]?.id || "") : "",
+      [routeSettingName(routeID, "model")]: model,
     }));
   };
 

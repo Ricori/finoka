@@ -33,7 +33,7 @@ const languageOptions = [
   ["auto", "自动检测"],
 ] as const;
 
-const LLM_KEY_HINT = "未配置任何模型 Key（Gemini / OpenAI / Anthropic），无法进行 LLM 纠错、翻译与知识处理。";
+const LLM_KEY_HINT = "尚未配置模型提供商：请到设置里选择提供商与全局模型并保存，否则无法进行 LLM 纠错、翻译与知识处理。";
 const GEMINI_KEY_HINT = "需要 Gemini Key：音频与视频多模态纠错目前只有 Gemini 模型支持。";
 const RETRIEVAL_KEY_HINT = "需要 Exa、Tavily 或 Gemini 免费池 Key 才能进行本地联网检索。";
 const NATIVE_SEARCH_HINT = "需要 Gemini Key：模型原生检索依赖 Gemini 内置搜索。";
@@ -91,11 +91,11 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const limitsFor = useCallback((target: ExecutionMode): KeyLimits => {
     // 云端运行的凭据由 Nonoka Cloud 管理；读不到本地设置时也不做限制，避免误锁死。
     const keys = target === "local" ? settings : null;
-    const hasLocalAgent = (localCapabilities?.runtime?.localAgent ?? "") !== "";
     const gemini = !keys || keys.keys.some((key) => key.configured && (key.name === "GEMINI_FREE" || key.name === "GEMINI_PAID"));
     const video = (target === "local" ? localCapabilities : cloudCapabilities)?.features.video_multimodal === true;
     return {
-      llm: !keys || keys.llmKeyConfigured || hasLocalAgent,
+      // 只认已保存的全局模型：装了 codex CLI、或在设置里选了却没保存，都不算配置好。
+      llm: !keys || keys.llmReady,
       gemini,
       retrieval: !keys || keys.retrievalKeyConfigured,
       audio: target === "local" && gemini,

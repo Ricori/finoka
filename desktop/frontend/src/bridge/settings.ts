@@ -16,11 +16,13 @@ export interface FineSubSettingsState {
   baseUrls: FineSubBaseUrlState[];
   modelRouting: FineSubModelRoutingState;
   llmKeyConfigured: boolean;
+  // 已保存的全局模型是否可用：选好提供商与模型，且凭据或本地 CLI 到位。
+  llmReady: boolean;
   retrievalKeyConfigured: boolean;
   protection: "empty" | "protected" | "plaintext" | "unreadable";
 }
 
-export type FineSubModelProviderID = "gemini-free" | "gemini-paid" | "openai" | "anthropic" | "openai-compat" | "anthropic-compat" | "local-codex";
+export type FineSubModelProviderID = "gemini-free" | "gemini-paid" | "openai" | "anthropic" | "openai-compat" | "anthropic-compat" | "local-codex" | "local-agy";
 
 export interface FineSubModelOption {
   id: string;

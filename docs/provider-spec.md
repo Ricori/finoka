@@ -365,7 +365,7 @@ interface UploadedAudioSource {
 
 面向用户的可操作分类，Provider 应尽量归类而非一律 `engine_failed`：
 
-`missing_llm_key`（未配置 LLM Key）、`missing_gpu`（CUDA / 驱动不可用）、`missing_model`（模型权重缺失）、`insufficient_disk`（磁盘空间不足）、`missing_dependency`（依赖缺失）、`engine_failed`（兜底）。
+`missing_llm_key`（未配置可用的模型提供商）、`missing_gpu`（CUDA / 驱动不可用）、`missing_model`（模型权重缺失）、`insufficient_disk`（磁盘空间不足）、`missing_dependency`（依赖缺失）、`engine_failed`（兜底）。
 
 ---
 
