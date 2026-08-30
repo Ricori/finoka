@@ -13,7 +13,8 @@ export type Theme = "dark" | "light";
 
 export type DialogState =
   | { kind: "rename"; entry: MediaEntry; value: string }
-  | { kind: "remove"; entry: MediaEntry; deleteDocument: boolean }
+  | { kind: "delete-subtitles"; entry: MediaEntry }
+  | { kind: "remove"; entry: MediaEntry }
   | { kind: "cloud-remove"; entry: CloudEntry };
 
 export type LibraryItem =

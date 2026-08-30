@@ -1,8 +1,11 @@
 package cloud
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -82,6 +85,21 @@ func TestBackendValidation(t *testing.T) {
 	}
 	if got, err := validBackend("https://example.com/api/"); err != nil || got != "https://example.com/api" {
 		t.Fatalf("backend = %q, %v", got, err)
+	}
+}
+
+func TestArtifactVerificationRepairsOnlyDigestVerifiedNewlines(t *testing.T) {
+	stored := []byte("1\r\n00:00:00,000 --> 00:00:01,000\r\nsubtitle\r\n")
+	digest := sha256.Sum256(stored)
+	expected := hex.EncodeToString(digest[:])
+	downloaded := bytes.ReplaceAll(stored, []byte("\r\n"), []byte("\n"))
+
+	verified, actual, ok := verifyArtifactContent(downloaded, expected)
+	if !ok || actual != expected || !bytes.Equal(verified, stored) {
+		t.Fatalf("CRLF artifact was not restored: ok=%v actual=%q content=%q", ok, actual, verified)
+	}
+	if _, _, ok := verifyArtifactContent([]byte("tampered\n"), expected); ok {
+		t.Fatal("non-newline artifact corruption passed verification")
 	}
 }
 
@@ -218,22 +236,47 @@ func TestAdminKeyManagement(t *testing.T) {
 func TestDeleteLibraryEntry(t *testing.T) {
 	root := t.TempDir()
 	identifier := "vid_0123456789abcdef01234567"
+	taskID := "0123456789abcdef0123456789abcdef"
+	taskRoot := filepath.Join(root, "tasks", taskID, "workspace")
+	if err := os.MkdirAll(taskRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	artifactPath := filepath.Join(taskRoot, "final.srt")
+	if err := os.WriteFile(artifactPath, []byte("deleted cloud subtitles must stay deleted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	provider := fakeProvider{manifest: artifactManifest{
+		TaskID: taskID,
+		Artifacts: map[string]struct {
+			URI string `json:"uri"`
+		}{"final_srt": {URI: localFileURI(artifactPath)}},
+	}}
+	deleted := false
+	syncCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/v1/session":
 			_, _ = writer.Write([]byte(`{"authenticated":true,"remaining":3,"running":0}`))
 		case request.Method == http.MethodGet && request.URL.Path == "/v1/library":
-			_, _ = writer.Write([]byte(`{"videos":[]}`))
+			if deleted {
+				_, _ = writer.Write([]byte(`{"videos":[]}`))
+			} else {
+				_ = json.NewEncoder(writer).Encode(map[string]any{"videos": []Entry{{ID: identifier, Title: "demo", Fingerprint: "fingerprint", Status: "completed", Source: "local_sync"}}})
+			}
 		case request.Method == http.MethodDelete && request.URL.Path == "/v1/library/"+identifier:
+			deleted = true
 			_, _ = writer.Write([]byte(`{"removed":"` + identifier + `"}`))
+		case request.Method == http.MethodPost && request.URL.Path == "/v1/library/sync":
+			syncCalls++
+			_, _ = writer.Write([]byte(`{"id":"vid_111111111111111111111111","fingerprint":"fingerprint","status":"completed","source":"local_sync"}`))
 		default:
 			http.NotFound(writer, request)
 		}
 	}))
 	defer server.Close()
 
-	service, err := New(root, fakeProvider{})
+	service, err := New(root, provider)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,6 +285,26 @@ func TestDeleteLibraryEntry(t *testing.T) {
 	}
 	if err := service.DeleteLibraryEntry(identifier); err != nil {
 		t.Fatalf("delete library entry: %v", err)
+	}
+	entry, err := service.SyncLocalTask(taskID, "loc_0123456789ab", "fingerprint", "demo", 1)
+	if err != nil || entry.Status != "suppressed" || syncCalls != 0 {
+		t.Fatalf("deleted subtitles were re-synced: entry=%#v calls=%d err=%v", entry, syncCalls, err)
+	}
+	reloaded, err := New(root, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err = reloaded.SyncLocalTask(taskID, "loc_0123456789ab", "fingerprint", "demo", 1)
+	if err != nil || entry.Status != "suppressed" || syncCalls != 0 {
+		t.Fatalf("sync suppression was not persisted: entry=%#v calls=%d err=%v", entry, syncCalls, err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(artifactPath, future, future); err != nil {
+		t.Fatal(err)
+	}
+	entry, err = reloaded.SyncLocalTask(taskID, "loc_0123456789ab", "fingerprint", "demo", 1)
+	if err != nil || entry.Status != "completed" || syncCalls != 1 {
+		t.Fatalf("new local result did not clear suppression: entry=%#v calls=%d err=%v", entry, syncCalls, err)
 	}
 	if err := service.DeleteLibraryEntry("invalid"); err == nil {
 		t.Fatal("expected invalid library entry id to fail")
@@ -552,6 +615,9 @@ func TestCloudTaskUploadsAudioPollsCancelsAndProjectsArtifacts(t *testing.T) {
 	if projector.projected == nil || projector.projected["video_id"] != "loc_0123456789ab" {
 		t.Fatalf("projection = %#v", projector.projected)
 	}
+	if projector.projected["relaxed_srt"] != true {
+		t.Fatalf("cloud projection must bypass SRT validation: %#v", projector.projected)
+	}
 }
 
 // Media transcribed on another machine reaches this one as a fingerprint match
@@ -600,6 +666,9 @@ func TestAdoptLibraryEntryProjectsSubtitlesTranscribedElsewhere(t *testing.T) {
 	}
 	if projector.projected == nil || projector.projected["video_id"] != "loc_0123456789ab" {
 		t.Fatalf("projection = %#v", projector.projected)
+	}
+	if projector.projected["relaxed_srt"] != true {
+		t.Fatalf("cloud adoption must bypass SRT validation: %#v", projector.projected)
 	}
 	if artifacts, ok := projector.projected["artifacts"].(map[string]string); !ok || artifacts["stable_json"] != subtitles {
 		t.Fatalf("projected artifacts = %#v", projector.projected["artifacts"])

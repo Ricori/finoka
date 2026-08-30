@@ -19,7 +19,9 @@ interface LocalMediaCardProps {
   onStart: (entry: MediaEntry) => Promise<void>;
   onCancel: () => Promise<void>;
   onRename: (entry: MediaEntry) => void;
+  onDeleteSubtitles: (entry: MediaEntry) => void;
   onRemove: (entry: MediaEntry) => void;
+  onAdoptCloud: (entry: MediaEntry, cloudEntry: CloudEntry) => Promise<void>;
   onDeleteCloud: (entry: CloudEntry) => void;
   onRelink: (entry: MediaEntry) => Promise<void>;
 }
@@ -64,7 +66,7 @@ function CardMenu({ actions }: { actions: MenuAction[] }) {
 }
 
 export function LocalMediaCard(props: LocalMediaCardProps) {
-  const { entry, thumbnail, running, adopting, runningProgress, cloudEntry, canStart, onOpen, onStart, onCancel, onRename, onRemove, onDeleteCloud, onRelink } = props;
+  const { entry, thumbnail, running, adopting, runningProgress, cloudEntry, canStart, onOpen, onStart, onCancel, onRename, onDeleteSubtitles, onRemove, onAdoptCloud, onDeleteCloud, onRelink } = props;
   // Subtitles adopted from the cloud before the video reached this machine.
   // The entry is unavailable like a missing file, but nothing was lost, so it
   // reads as "no video yet" rather than "文件丢失".
@@ -82,8 +84,9 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
     { label: "重命名", onSelect: () => onRename(entry) },
     ...(entry.documentAvailable && entry.available ? [{ label: "重新转写", disabled: !canStart || adopting, onSelect: () => void onStart(entry) }] : []),
     ...(entry.available ? [{ label: "在文件夹中显示", onSelect: () => void mediaLibrary.revealInFolder(entry.sourcePath) }] : []),
-    { label: "从本地媒体库移除", danger: true, onSelect: () => onRemove(entry) },
+    ...(entry.documentAvailable ? [{ label: "删除本地字幕", danger: true, onSelect: () => onDeleteSubtitles(entry) }] : []),
     ...(cloudEntry ? [{ label: "删除云端字幕", danger: true, disabled: cloudEntry.status === "queued" || cloudEntry.status === "running", onSelect: () => onDeleteCloud(cloudEntry) }] : []),
+    { label: "从媒体库移除视频", danger: true, onSelect: () => onRemove(entry) },
   ];
   return (
     <article className={`media-card local-card ${!entry.available ? "missing-media" : ""}`}>
@@ -103,11 +106,16 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
         <div className="media-card-actions">
           {entry.documentAvailable && <button className="primary-card-action" onClick={() => onOpen(entry)}>编辑字幕</button>}
           {!entry.available ? (
-            <button className={entry.documentAvailable ? "secondary-card-action" : "primary-card-action"} onClick={() => void onRelink(entry)}>{subtitleOnly ? "关联视频" : "重新定位"}</button>
+            <button className={entry.documentAvailable ? "secondary-card-action" : "primary-card-action"} onClick={() => void onRelink(entry)}>{entry.documentAvailable || subtitleOnly ? "关联视频" : "重新定位"}</button>
           ) : running ? (
             <button className="cancel-card-action" disabled={cancelling} onClick={() => void cancel()} title="停止本次处理；已完成的环节会保留，之后可以继续">{cancelling ? "正在取消…" : "取消处理"}</button>
+          ) : !entry.documentAvailable && cloudEntry?.status === "completed" ? (
+            <>
+              <button className="primary-card-action" disabled={adopting} onClick={() => void onAdoptCloud(entry, cloudEntry)}>{adopting ? "取回云端字幕…" : "取回云端字幕"}</button>
+              <button className="secondary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>重新转写</button>
+            </>
           ) : !entry.documentAvailable ? (
-            <button className="primary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>{adopting ? "取回云端字幕…" : "开始转写"}</button>
+            <button className="primary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>开始转写</button>
           ) : null}
         </div>
       </div>
@@ -115,7 +123,7 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
   );
 }
 
-export function CloudMediaCard({ entry, thumbnail, adopting, onEdit, onAssociate, onDelete }: { entry: CloudEntry; thumbnail?: string; adopting: boolean; onEdit: (entry: CloudEntry) => Promise<void>; onAssociate: () => Promise<void>; onDelete: (entry: CloudEntry) => void }) {
+export function CloudMediaCard({ entry, thumbnail, adopting, onEdit, onAssociate, onDelete }: { entry: CloudEntry; thumbnail?: string; adopting: boolean; onEdit: (entry: CloudEntry) => Promise<void>; onAssociate: (entry: CloudEntry) => Promise<void>; onDelete: (entry: CloudEntry) => void }) {
   return (
     <article className="media-card cloud-card">
       <div className="media-thumb cloud-thumb">{thumbnail ? <img src={thumbnail} alt="" /> : <span>☁</span>}<small className="duration-badge">{formatDuration(entry.duration)}</small><strong className="state-badge cloud">仅云端字幕</strong></div>
@@ -125,7 +133,7 @@ export function CloudMediaCard({ entry, thumbnail, adopting, onEdit, onAssociate
         <div className="media-chips"><small className="cloud-badge">{entry.source === "local_sync" ? "由本机自动同步" : "云端容器任务"}</small>{entry.ownerName && <small className="cloud-badge">{entry.ownerName}</small>}</div>
         <div className="media-card-actions">
           {entry.status === "completed" && <button className="primary-card-action" disabled={adopting} onClick={() => void onEdit(entry)} title="不需要本地视频，字幕会取回本机后直接打开编辑器">{adopting ? "取回字幕…" : "编辑字幕"}</button>}
-          <button className={entry.status === "completed" ? "secondary-card-action" : "primary-card-action"} disabled={adopting} onClick={() => void onAssociate()}>关联本地视频</button>
+          <button className={entry.status === "completed" ? "secondary-card-action" : "primary-card-action"} disabled={adopting || entry.status !== "completed"} onClick={() => void onAssociate(entry)}>关联本地视频</button>
         </div>
       </div>
     </article>

@@ -36,15 +36,18 @@ interface LibraryPageProps {
   onStart: (entry: MediaEntry) => Promise<void>;
   onCancel: () => Promise<void>;
   onRename: (entry: MediaEntry) => void;
+  onDeleteSubtitles: (entry: MediaEntry) => void;
   onRemove: (entry: MediaEntry) => void;
+  onAdoptCloud: (entry: MediaEntry, cloudEntry: CloudEntry) => Promise<void>;
   onEditCloud: (entry: CloudEntry) => Promise<void>;
+  onAssociateCloud: (entry: CloudEntry) => Promise<void>;
   onDeleteCloud: (entry: CloudEntry) => void;
   onRelink: (entry: MediaEntry) => Promise<void>;
   onDismissMessage: () => void;
 }
 
 export function LibraryPage(props: LibraryPageProps) {
-  const { items, visibleItems, thumbnails, cloudThumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, messageTone, localRunningID, adoptingMedia, adoptingCloud, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onCancel, onRename, onRemove, onEditCloud, onDeleteCloud, onRelink, onDismissMessage } = props;
+  const { items, visibleItems, thumbnails, cloudThumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, messageTone, localRunningID, adoptingMedia, adoptingCloud, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onCancel, onRename, onDeleteSubtitles, onRemove, onAdoptCloud, onEditCloud, onAssociateCloud, onDeleteCloud, onRelink, onDismissMessage } = props;
   return (
     <section className="library-view">
       <div className="library-toolbar">
@@ -61,8 +64,8 @@ export function LibraryPage(props: LibraryPageProps) {
         />
         <div className="view-switch" aria-label="视图切换"><button className={view === "grid" ? "active" : ""} aria-label="网格视图" onClick={() => setView("grid")}>▦</button><button className={view === "list" ? "active" : ""} aria-label="列表视图" onClick={() => setView("list")}>☷</button></div>
       </div>
-      <Notice className="library-message" message={message} tone={messageTone} onDismiss={onDismissMessage} />
-      {syncing ? (
+      <Notice className="library-message" message={message} tone={messageTone} autoDismissMs={messageTone === "warn" ? 0 : undefined} onDismiss={onDismissMessage} />
+      {syncing && items.length === 0 ? (
         <div className="library-sync-state" role="status" aria-live="polite" aria-busy="true">
           <span className="library-sync-spinner" aria-hidden="true" />
           <strong>正在同步媒体库…</strong>
@@ -74,8 +77,8 @@ export function LibraryPage(props: LibraryPageProps) {
       ) : (
         <div className={`media-grid ${view === "list" ? "list-view" : ""}`}>
           {visibleItems.map((item) => item.kind === "local" ? (
-            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={thumbnails[item.entry.id]} running={item.entry.id === localRunningID} adopting={adoptingMedia.has(item.entry.id)} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive} onOpen={onOpen} onStart={onStart} onCancel={onCancel} onRename={onRename} onRemove={onRemove} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
-          ) : <CloudMediaCard key={`cloud:${item.entry.id}`} entry={item.entry} thumbnail={cloudThumbnails[item.entry.id]} adopting={adoptingCloud.has(item.entry.id)} onEdit={onEditCloud} onAssociate={onImport} onDelete={onDeleteCloud} />)}
+            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={thumbnails[item.entry.id]} running={item.entry.id === localRunningID} adopting={adoptingMedia.has(item.entry.id)} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive} onOpen={onOpen} onStart={onStart} onCancel={onCancel} onRename={onRename} onDeleteSubtitles={onDeleteSubtitles} onRemove={onRemove} onAdoptCloud={onAdoptCloud} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
+          ) : <CloudMediaCard key={`cloud:${item.entry.id}`} entry={item.entry} thumbnail={cloudThumbnails[item.entry.id]} adopting={adoptingCloud.has(item.entry.id)} onEdit={onEditCloud} onAssociate={onAssociateCloud} onDelete={onDeleteCloud} />)}
         </div>
       )}
     </section>

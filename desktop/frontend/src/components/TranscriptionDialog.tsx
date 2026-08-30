@@ -154,7 +154,7 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
             <h2 id="transcription-title">{step === "mode" ? "选择运行位置" : "转写设置"}</h2>
             <p title={entry.sourcePath}>{entry.title}</p>
           </div>
-          <button className="transcription-close" aria-label="关闭" disabled={busy} onClick={onClose}>×</button>
+          <button type="button" className="transcription-close" aria-label="关闭" disabled={busy} onClick={onClose}>×</button>
         </header>
 
         {step === "mode" ? (

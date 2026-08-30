@@ -17,9 +17,9 @@ export function AdminKeys(): $CancellablePromise<$models.AdminKey[] | null> {
  * AdoptCloudEntry makes a finished cloud entry editable on a machine that does
  * not have the video at all. The subtitles are the deliverable; the media is
  * only needed to play them back, so the library records a placeholder for the
- * fingerprint and the document hangs on that. Importing or relinking the video
- * later fills the same entry in -- the fingerprint has to match, so the pairing
- * cannot drift. Returns the local media id to open.
+ * fingerprint and the document hangs on that. Associating a video later fills
+ * the same entry in while retaining the subtitle record's identity. Returns the
+ * local media id to open.
  */
 export function AdoptCloudEntry(videoID: string): $CancellablePromise<string> {
     return $Call.ByID(3065162032, videoID);

@@ -35,6 +35,7 @@ import { LibraryPage } from "../pages/LibraryPage.tsx";
 import { PluginManagerPage } from "../plugins/PluginManagerPage.tsx";
 import { PluginPageHost } from "../plugins/PluginPageHost.tsx";
 import { parseTaskHistory } from "./format.ts";
+import { reconcileTaskHistory } from "./taskHistory.ts";
 import { applyTheme, initialTheme } from "./theme.ts";
 import type { DialogState, ExecutionMode, LibraryFilter, LibraryItem, LoadState, NavigationSection, Section, SortMode, TaskHistoryEntry, Theme, ViewMode } from "./types.ts";
 import { activeStates, taskHistoryLimit } from "./types.ts";
@@ -43,12 +44,12 @@ const taskPollIntervalMs = 10_000;
 // Reconnect attempts while the local sidecar is not answering.
 const sidecarRetryIntervalMs = 4_000;
 
-/** Library notices carry their own tone so a completed action does not read as a
+/** Page notices carry their own tone so a completed action does not read as a
     warning. The helpers are module level, keeping setState callers dependency free. */
-type LibraryNotice = { text: string; tone: NoticeTone };
-const noNotice: LibraryNotice = { text: "", tone: "warn" };
-const warnNotice = (text: string): LibraryNotice => ({ text, tone: "warn" });
-const okNotice = (text: string): LibraryNotice => ({ text, tone: "success" });
+type PageNotice = { text: string; tone: NoticeTone };
+const noNotice: PageNotice = { text: "", tone: "warn" };
+const warnNotice = (text: string): PageNotice => ({ text, tone: "warn" });
+const okNotice = (text: string): PageNotice => ({ text, tone: "success" });
 
 function NavIcon({ kind }: { kind: NavigationSection }) {
   const paths = {
@@ -98,16 +99,17 @@ export default function App() {
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [cloudThumbnails, setCloudThumbnails] = useState<Record<string, string>>({});
   const [adoptFailed, setAdoptFailed] = useState<ReadonlySet<string>>(() => new Set());
+  const [manualAdoptingMedia, setManualAdoptingMedia] = useState<ReadonlySet<string>>(() => new Set());
   const [adoptingCloud, setAdoptingCloud] = useState<ReadonlySet<string>>(() => new Set());
   const [libraryBusy, setLibraryBusy] = useState(false);
-  const [libraryMessage, setLibraryMessage] = useState<LibraryNotice>(noNotice);
+  const [libraryMessage, setLibraryMessage] = useState<PageNotice>(noNotice);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
   const [cacheBusy, setCacheBusy] = useState(false);
   const [cacheMessage, setCacheMessage] = useState("");
   const [pipeline, setPipeline] = useState<PipelineState>(controller.current() as PipelineState);
   const [taskHistory, setTaskHistory] = useState<TaskHistoryEntry[]>([]);
   const [taskHistoryBusy, setTaskHistoryBusy] = useState(false);
-  const [taskHistoryMessage, setTaskHistoryMessage] = useState("");
+  const [taskHistoryMessage, setTaskHistoryMessage] = useState<PageNotice>(noNotice);
   const [settings, setSettings] = useState<FineSubSettingsState | null>(null);
   const [runtimeProvision, setRuntimeProvision] = useState<RuntimeProvisionState | null>(null);
   // Failures of the install/cancel/remove actions used to land in `message`,
@@ -135,7 +137,7 @@ export default function App() {
   const cloudThumbnailsTried = useRef(new Set<string>());
   const adoptedCloudEntries = useRef(new Set<string>());
   const syncedTasks = useRef(new Set<string>());
-  const completedTasks = useRef(new Set<string>());
+  const reconciledLocalTasks = useRef(new Set<string>());
   const taskHistoryHydrated = useRef(false);
   const preferencesHydrated = useRef(false);
   // History persists to its own file, so it needs a hydration gate of its own:
@@ -347,14 +349,17 @@ export default function App() {
       // The media this app is transcribing right now is excluded: its own
       // pipeline projects the result the moment the task finishes, and both
       // paths would otherwise download the same artifacts at once.
-      .filter((entry) => entry.available && !entry.documentAvailable && entry.fingerprint && entry.id !== activeMedia?.id)
+      .filter((entry) => entry.available && !entry.documentAvailable && !entry.documentRemoved && entry.fingerprint && entry.id !== activeMedia?.id)
       .flatMap((entry) => {
         const remote = cloudMedia.find((item) => item.status === "completed" && item.fingerprint === entry.fingerprint);
         return remote ? [{ key: `${remote.id}:${entry.id}`, localID: entry.id, videoID: remote.id }] : [];
       })
       .filter((pair) => !adoptFailed.has(pair.key));
   }, [activeMedia?.id, adoptFailed, cloudMedia, cloudSession?.authenticated, media]);
-  const adoptingMedia = useMemo(() => new Set(pendingAdoptions.map((pair) => pair.localID)), [pendingAdoptions]);
+  const adoptingMedia = useMemo(() => new Set([
+    ...pendingAdoptions.map((pair) => pair.localID),
+    ...manualAdoptingMedia,
+  ]), [manualAdoptingMedia, pendingAdoptions]);
 
   // Pull the finished text down, once per pair, whether the media arrived
   // through 关联本地视频, a plain import or a relink. Deliberately not
@@ -409,6 +414,25 @@ export default function App() {
       await loadLibrary();
     } finally {
       setAdoptingCloud((current) => new Set([...current].filter((id) => id !== entry.id)));
+    }
+  }, [loadLibrary]);
+
+  const adoptLocalSubtitles = useCallback(async (entry: MediaEntry, remote: CloudEntry) => {
+    const key = `${remote.id}:${entry.id}`;
+    adoptedCloudEntries.current.add(key);
+    setManualAdoptingMedia((current) => new Set([...current, entry.id]));
+    setLibraryMessage(noNotice);
+    try {
+      await cloudAccount.adoptLibraryEntry(remote.id, entry.id);
+      setAdoptFailed((current) => new Set([...current].filter((item) => item !== key)));
+      await loadLibrary();
+      setMedia((current) => current.map((item) => item.id === entry.id ? { ...item, documentAvailable: true } : item));
+      setLibraryMessage(okNotice(`已从云端取回“${entry.title}”的字幕。`));
+    } catch (value) {
+      setAdoptFailed((current) => new Set([...current, key]));
+      setLibraryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
+    } finally {
+      setManualAdoptingMedia((current) => new Set([...current].filter((id) => id !== entry.id)));
     }
   }, [loadLibrary]);
 
@@ -565,7 +589,7 @@ export default function App() {
 
   const refreshTaskHistory = useCallback(async () => {
     setTaskHistoryBusy(true);
-    setTaskHistoryMessage("");
+    setTaskHistoryMessage(noNotice);
     try {
       const current = taskHistoryRef.current;
       const refreshed = await Promise.all(current.map(async (item) => {
@@ -577,29 +601,12 @@ export default function App() {
           return item;
         }
       }));
-      const listings = await Promise.allSettled([
-        localProvider.listTasks(),
-        cloudSession?.authenticated ? cloudProvider.listTasks() : Promise.resolve([]),
-      ]);
-      const byTask = new Map(refreshed.map((item) => [item.taskId, item]));
-      for (const listing of listings) {
-        if (listing.status !== "fulfilled") continue;
-        for (const item of listing.value) {
-          const existing = byTask.get(item.snapshot.task_id);
-          byTask.set(item.snapshot.task_id, {
-            taskId: item.snapshot.task_id,
-            provider: item.snapshot.provider,
-            mediaId: item.media_id || existing?.mediaId || "",
-            title: item.title || existing?.title || item.snapshot.task_id,
-            snapshot: item.snapshot,
-          });
-        }
-      }
-      setTaskHistory([...byTask.values()]
-        .sort((left, right) => Date.parse(right.snapshot.updated_at) - Date.parse(left.snapshot.updated_at))
-        .slice(0, taskHistoryLimit));
+      // History is local-only. Providers may update snapshots for rows already
+      // saved here, but their task listings must never repopulate cleared rows.
+      // Use commit-time state so an in-flight refresh cannot undo "clear".
+      setTaskHistory((currentHistory) => reconcileTaskHistory(currentHistory, refreshed));
     } catch (value) {
-      setTaskHistoryMessage(value instanceof Error ? value.message : String(value));
+      setTaskHistoryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
     } finally {
       setTaskHistoryBusy(false);
     }
@@ -644,7 +651,7 @@ export default function App() {
 
   const actOnHistoryTask = useCallback(async (item: TaskHistoryEntry, action: "cancel" | "resume") => {
     const taskProvider = item.provider === "local" ? localProvider : cloudProvider;
-    setTaskHistoryMessage("");
+    setTaskHistoryMessage(noNotice);
     try {
       const isCurrent = pipeline.snapshot?.task_id === item.taskId;
       // "继续" covers three states, and the local provider accepts only one of
@@ -662,7 +669,7 @@ export default function App() {
       if (!snapshot) return;
       setTaskHistory((current) => current.map((record) => record.taskId === item.taskId ? { ...record, snapshot } : record));
     } catch (value) {
-      setTaskHistoryMessage(value instanceof Error ? value.message : String(value));
+      setTaskHistoryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
     }
   }, [cloudProvider, controller, localProvider, pipeline.snapshot?.task_id]);
 
@@ -690,15 +697,31 @@ export default function App() {
     [localProvider],
   );
 
-  const clearTaskHistory = useCallback(() => {
+  const clearTaskHistory = useCallback(async () => {
     const active = taskHistoryRef.current.filter((item) => activeStates.has(item.snapshot.state));
     const clearedCount = taskHistoryRef.current.length - active.length;
     if (clearedCount === 0) return;
+    // Update the ref before awaiting disk I/O so any refresh already in flight
+    // sees the cleared local history when it commits.
+    taskHistoryRef.current = active;
     setTaskHistory(active);
-    setTaskHistoryMessage(active.length > 0
-      ? `已清除 ${clearedCount} 条历史记录，进行中的任务已保留。`
-      : "任务列表已清空。");
+    try {
+      await desktopTaskHistory.save(active.slice(0, taskHistoryLimit));
+      setTaskHistoryMessage(okNotice(active.length > 0
+        ? `已清除 ${clearedCount} 条本地历史记录，进行中的任务已保留。`
+        : "本地任务列表已清空。"));
+    } catch (value) {
+      setTaskHistoryMessage(warnNotice(`清空本地任务历史失败：${value instanceof Error ? value.message : String(value)}`));
+    }
   }, []);
+
+  const navigateLibrary = useCallback(() => {
+    setSection("library");
+    // A task may have finished through history polling instead of the active
+    // pipeline (for example after an app restart). Refresh on entry as a final
+    // guard against rendering the pre-completion library snapshot.
+    void loadLibrary();
+  }, [loadLibrary]);
 
   const startMedia = useCallback(async (entry: MediaEntry) => {
     setLibraryMessage(noNotice);
@@ -765,41 +788,90 @@ export default function App() {
     rememberTask(pipeline.snapshot, activeMedia);
   }, [activeMedia, pipeline.snapshot, rememberTask]);
 
+  // Completion can arrive through the active pipeline or through task-history
+  // polling. The latter is how a local run finishes after an app restart, and
+  // used to update only the history row: the media card stayed at 等待处理 and
+  // the cloud sync never ran. Reconcile every newly completed local task from
+  // the durable history instead of tying these side effects to activeMedia.
   useEffect(() => {
-    const snapshot = pipeline.snapshot;
-    if (!snapshot || snapshot.provider !== "local" || snapshot.state !== "completed" || !pipeline.artifacts || !activeMedia || !cloudSession?.authenticated) return;
-    if (syncedTasks.current.has(snapshot.task_id)) return;
-    syncedTasks.current.add(snapshot.task_id);
-    setAccountMessage("正在把本机字幕同步到云端…");
-    void cloudAccount.syncLocalTask(snapshot.task_id, activeMedia.id, activeMedia.fingerprint, activeMedia.title, activeMedia.duration)
-      .then(async () => {
-        setAccountMessage("本机字幕已自动同步到云端。");
-        setCloudMedia(await cloudAccount.library());
-      })
-      .catch((value) => {
-        syncedTasks.current.delete(snapshot.task_id);
-        setAccountMessage(`自动同步失败：${value instanceof Error ? value.message : String(value)}`);
-      });
-  }, [activeMedia, cloudSession?.authenticated, pipeline.artifacts, pipeline.snapshot]);
-
-  useEffect(() => {
-    const snapshot = pipeline.snapshot;
-    if (!snapshot || snapshot.state !== "completed" || !pipeline.artifacts) return;
-    if (completedTasks.current.has(snapshot.task_id)) return;
-    completedTasks.current.add(snapshot.task_id);
-    void loadLibrary();
-    void loadCacheStatus();
-    if (activeMedia) {
-      setLibraryMessage(okNotice(`"${activeMedia.title}" 字幕处理完成，可以直接编辑。`));
+    const completed = taskHistory.filter((item) =>
+      item.provider === "local"
+      && item.snapshot.state === "completed"
+      && item.mediaId
+      && !reconciledLocalTasks.current.has(item.taskId));
+    if (completed.length === 0) return;
+    completed.forEach((item) => reconciledLocalTasks.current.add(item.taskId));
+    const current = completed.find((item) => item.taskId === pipeline.snapshot?.task_id);
+    if (current) {
+      // The local provider writes the document before publishing "completed".
+      // Reflect that fact immediately instead of making the card wait for the
+      // library refresh or the cloud-sync effect that follows it.
+      setMedia((entries) => entries.map((entry) => entry.id === current.mediaId
+        ? { ...entry, documentAvailable: true, documentRemoved: false }
+        : entry));
+      setLibraryMessage(okNotice(`"${current.title}" 字幕处理完成，可以直接编辑。`));
     }
-  }, [activeMedia, loadCacheStatus, loadLibrary, pipeline.artifacts, pipeline.snapshot]);
+    void Promise.all([loadLibrary(), loadCacheStatus()]);
+  }, [loadCacheStatus, loadLibrary, pipeline.snapshot?.task_id, taskHistory]);
+
+  // Sync from the reconciled media document, not from activeMedia. This also
+  // repairs a completed run discovered after restart. A remote local-sync entry
+  // newer than the task is treated as its acknowledgement so reopening the app
+  // does not upload the same historical result over and over.
+  useEffect(() => {
+    if (!cloudSession?.authenticated || cloudLoading) return;
+    const latestByFingerprint = new Map<string, { item: TaskHistoryEntry; entry: MediaEntry }>();
+    for (const item of taskHistory) {
+      if (item.provider !== "local" || item.snapshot.state !== "completed" || syncedTasks.current.has(item.taskId)) continue;
+      const entry = media.find((candidate) => candidate.id === item.mediaId);
+      if (!entry?.documentAvailable || !entry.fingerprint) continue;
+      const existing = latestByFingerprint.get(entry.fingerprint);
+      if (!existing || Date.parse(item.snapshot.updated_at) > Date.parse(existing.item.snapshot.updated_at)) {
+        latestByFingerprint.set(entry.fingerprint, { item, entry });
+      }
+    }
+    const candidates = [...latestByFingerprint.values()].filter(({ item, entry }) => {
+      const acknowledged = cloudMedia.some((remote) =>
+        remote.fingerprint === entry.fingerprint
+        && remote.status === "completed"
+        && remote.source === "local_sync"
+        && Date.parse(remote.updatedAt) >= Date.parse(item.snapshot.updated_at));
+      return !acknowledged;
+    });
+    if (candidates.length === 0) return;
+    candidates.forEach(({ item }) => syncedTasks.current.add(item.taskId));
+    setAccountMessage("正在把本机字幕同步到云端…");
+    void (async () => {
+      try {
+        let suppressed = 0;
+        for (const { item, entry } of candidates) {
+          const result = await cloudAccount.syncLocalTask(item.taskId, entry.id, entry.fingerprint, entry.title, entry.duration);
+          if (result.status === "suppressed") suppressed += 1;
+        }
+        setCloudMedia(await cloudAccount.library());
+        const uploaded = candidates.length - suppressed;
+        setAccountMessage(uploaded === 0
+          ? "已保留云端删除设置，本机字幕不会自动重新上传。"
+          : suppressed > 0
+            ? `已自动同步 ${uploaded} 个本机字幕；另有 ${suppressed} 个按云端删除设置保留在本机。`
+            : uploaded === 1 ? "本机字幕已自动同步到云端。" : `已自动同步 ${uploaded} 个本机字幕到云端。`);
+      } catch (value) {
+        candidates.forEach(({ item }) => syncedTasks.current.delete(item.taskId));
+        setAccountMessage(`自动同步失败：${value instanceof Error ? value.message : String(value)}`);
+      }
+    })();
+  }, [cloudLoading, cloudMedia, cloudSession?.authenticated, media, taskHistory]);
 
   const renameMedia = useCallback((entry: MediaEntry) => {
     setDialog({ kind: "rename", entry, value: entry.title });
   }, []);
 
   const removeMedia = useCallback((entry: MediaEntry) => {
-    setDialog({ kind: "remove", entry, deleteDocument: false });
+    setDialog({ kind: "remove", entry });
+  }, []);
+
+  const deleteLocalSubtitles = useCallback((entry: MediaEntry) => {
+    setDialog({ kind: "delete-subtitles", entry });
   }, []);
 
   const deleteCloudMedia = useCallback((entry: CloudEntry) => {
@@ -818,7 +890,15 @@ export default function App() {
         }
         await mediaLibrary.rename(dialog.entry.id, title);
       } else if (dialog.kind === "remove") {
-        await mediaLibrary.remove(dialog.entry.id, dialog.deleteDocument);
+        await mediaLibrary.remove(dialog.entry.id, false);
+      } else if (dialog.kind === "delete-subtitles") {
+        const remote = cloudMedia.find((entry) => entry.status === "completed" && entry.fingerprint === dialog.entry.fingerprint);
+        if (remote) {
+          const key = `${remote.id}:${dialog.entry.id}`;
+          adoptedCloudEntries.current.add(key);
+          setAdoptFailed((current) => new Set([...current, key]));
+        }
+        await mediaLibrary.deleteDocument(dialog.entry.id);
       } else {
         await cloudAccount.deleteLibraryEntry(dialog.entry.id);
         setTaskHistory((current) => current.filter((item) => item.taskId !== dialog.entry.id));
@@ -831,7 +911,7 @@ export default function App() {
     } finally {
       setDialogBusy(false);
     }
-  }, [dialog, loadCloud, loadLibrary]);
+  }, [cloudMedia, dialog, loadCloud, loadLibrary]);
 
   const relinkMedia = useCallback(async (entry: MediaEntry) => {
     try {
@@ -839,6 +919,25 @@ export default function App() {
       await loadLibrary();
     } catch (value) {
       setLibraryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
+    }
+  }, [loadLibrary]);
+
+  const associateCloudMedia = useCallback(async (entry: CloudEntry) => {
+    setLibraryMessage(noNotice);
+    setAdoptingCloud((current) => new Set([...current, entry.id]));
+    try {
+      // Create or reuse the subtitle placeholder first, then attach the chosen
+      // file to that same local id. Going through the generic import flow here
+      // creates a second media entry beside the downloaded subtitles.
+      const localID = await cloudAccount.adoptCloudEntry(entry.id);
+      const relinked = await mediaLibrary.relink(localID);
+      await loadLibrary();
+      if (relinked?.id) setLibraryMessage(okNotice(`已为“${entry.title}”关联本地视频。`));
+    } catch (value) {
+      setLibraryMessage(warnNotice(value instanceof Error ? value.message : String(value)));
+      await loadLibrary();
+    } finally {
+      setAdoptingCloud((current) => new Set([...current].filter((id) => id !== entry.id)));
     }
   }, [loadLibrary]);
 
@@ -983,13 +1082,13 @@ export default function App() {
           ? "插件管理"
           : section === "plugin"
             ? activeMountedPlugin?.tool.title ?? "插件工具"
-        : section === "account"
-          ? "云端账户"
-          : section === "adminKeys"
-            ? "Key 管理"
-            : section === "about"
-              ? "关于"
-              : "设置";
+            : section === "account"
+              ? "云端账户"
+              : section === "adminKeys"
+                ? "Key 管理"
+                : section === "about"
+                  ? "关于"
+                  : "设置";
   const remoteByFingerprint = useMemo(() => new Map(cloudMedia.filter((entry) => entry.fingerprint).map((entry) => [entry.fingerprint, entry])), [cloudMedia]);
   const cloudOnly = useMemo(() => {
     const localFingerprints = new Set(media.map((entry) => entry.fingerprint));
@@ -1141,15 +1240,11 @@ export default function App() {
             </div>
           </header>
 
-          {!runtimeReady && (section === "library" || section === "tasks") && <section className={`runtime-banner warning`}>
+          {!runtimeReady && loadState !== "loading" && (section === "library" || section === "tasks") && <section className={`runtime-banner warning`}>
             <div className="runtime-symbol">!</div>
             <div className="runtime-copy">
               <span className="eyebrow">本地执行环境</span>
-              <h2>
-                {loadState === "loading"
-                  ? "正在连接本地服务"
-                  : "需要完成运行时配置"}
-              </h2>
+              <h2>需要完成运行时配置</h2>
               <p>
                 {message || issues[0]?.message || "正在读取 capabilities…"}
               </p>
@@ -1186,8 +1281,11 @@ export default function App() {
               onStart={startMedia}
               onCancel={cancelActiveTask}
               onRename={renameMedia}
+              onDeleteSubtitles={deleteLocalSubtitles}
               onRemove={removeMedia}
+              onAdoptCloud={adoptLocalSubtitles}
               onEditCloud={editCloudEntry}
+              onAssociateCloud={associateCloudMedia}
               onDeleteCloud={deleteCloudMedia}
               onRelink={relinkMedia}
               onDismissMessage={() => setLibraryMessage(noNotice)}
@@ -1199,14 +1297,15 @@ export default function App() {
               tasks={taskHistory}
               media={media}
               activeCount={activeTaskCount}
-              message={taskHistoryMessage}
+              message={taskHistoryMessage.text}
+              messageTone={taskHistoryMessage.tone}
               pipelineError={pipeline.error?.message}
               logSource={localTaskLogs}
-              onNavigateLibrary={() => setSection("library")}
+              onNavigateLibrary={navigateLibrary}
               onOpenEditor={(entry) => void openEditor(entry)}
               onClearTasks={clearTaskHistory}
               onTaskAction={actOnHistoryTask}
-              onDismissMessage={() => setTaskHistoryMessage("")}
+              onDismissMessage={() => setTaskHistoryMessage(noNotice)}
             />
           )}
 

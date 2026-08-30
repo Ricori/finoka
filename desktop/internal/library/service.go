@@ -48,6 +48,7 @@ type Entry struct {
 	ThumbnailAvailable bool    `json:"thumbnailAvailable"`
 	Available          bool    `json:"available"`
 	DocumentAvailable  bool    `json:"documentAvailable"`
+	DocumentRemoved    bool    `json:"documentRemoved,omitempty"`
 	Cached             bool    `json:"cached"`
 	Clips              []Clip  `json:"clips,omitempty"`
 }
@@ -234,6 +235,9 @@ func (s *Service) List() []Entry {
 		result[index].Cached = s.cachedPath(result[index].ID) != ""
 		result[index].Available = result[index].Cached || fileExists(result[index].SourcePath)
 		result[index].DocumentAvailable = fileExists(filepath.Join(s.root, "documents", result[index].ID, "document.json"))
+		if result[index].DocumentAvailable {
+			result[index].DocumentRemoved = false
+		}
 	}
 	sort.SliceStable(result, func(left, right int) bool { return result[left].AddedAt > result[right].AddedAt })
 	return result
@@ -365,9 +369,8 @@ func truncateRunes(value string, limit int) string {
 
 // AddPlaceholder records media the library has subtitles for but no file of:
 // a cloud entry transcribed on another machine, adopted here so the document
-// has something to hang on. The entry is deliberately indistinguishable from
-// one whose source went missing -- the card offers 重新定位 and Relink refuses
-// any file whose fingerprint is not this one.
+// has something to hang on. The fingerprint remains the subtitle record's
+// identity even when the user later associates an arbitrary playback video.
 func (s *Service) AddPlaceholder(title, fingerprint string, duration float64) (Entry, error) {
 	fingerprint = strings.TrimSpace(fingerprint)
 	if fingerprint == "" || len(fingerprint) > 256 {

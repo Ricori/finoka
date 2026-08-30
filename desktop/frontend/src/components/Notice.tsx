@@ -30,6 +30,13 @@ export function Notice({ message, className = "", tone = "warn", autoDismissMs =
   const hidden = !message || dismissed === message;
 
   useEffect(() => {
+    // The parent clears controlled notices after close/auto-dismiss. Forget the
+    // locally dismissed text at that boundary so the exact same error can be
+    // shown again when a retry fails with the same message.
+    if (!message && dismissed) setDismissed("");
+  }, [dismissed, message]);
+
+  useEffect(() => {
     // Pointer or keyboard focus inside the notice holds the timer: a message the
     // reader is still working through should not disappear underneath them.
     if (hidden || held || autoDismissMs <= 0) return;

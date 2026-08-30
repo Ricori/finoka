@@ -1,10 +1,11 @@
-.transcription-backdrop { z-index: 60; }
+.transcription-backdrop { z-index: 60; -webkit-app-region: no-drag; --wails-draggable: no-drag; }
 .transcription-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(720px, 100%); max-height: min(820px, calc(100vh - 42px)); border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: 0 24px 80px rgba(0, 0, 0, .52); overflow: hidden; }
-.transcription-head { display: flex; justify-content: space-between; gap: 20px; padding: 24px 26px 19px; border-bottom: 1px solid var(--line-soft); }
+.transcription-head { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 20px; padding: 24px 26px 19px; border-bottom: 1px solid var(--line-soft); }
 .transcription-head h2 { margin: 5px 0 4px; color: var(--text); font-size: 21px; }
 .transcription-head p { max-width: 570px; margin: 0; overflow: hidden; color: var(--mut); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.transcription-close { width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--mut); cursor: pointer; font-size: 21px; }
+.transcription-close { position: relative; z-index: 1; display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--mut); cursor: pointer; font-size: 21px; line-height: 1; -webkit-app-region: no-drag; --wails-draggable: no-drag; }
 .transcription-close:hover { background: var(--raised); color: var(--text); }
+.transcription-close:disabled { cursor: wait; opacity: .5; }
 .execution-picker { display: grid; gap: 12px; padding: 28px 26px; overflow: auto; }
 .execution-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 15px; width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 18px; background: color-mix(in srgb, var(--bg) 66%, var(--panel)); color: var(--text); cursor: pointer; text-align: left; }
 .execution-card:hover:not(:disabled), .execution-card.preferred:not(:disabled) { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }

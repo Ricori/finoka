@@ -26,6 +26,7 @@ export const mediaLibrary = {
   importPaths: LibraryService.Import,
   thumbnail: LibraryService.ThumbnailDataURL,
   rename: LibraryService.Rename,
+  deleteDocument: LibraryService.DeleteDocument,
   remove: LibraryService.Remove,
   relink: LibraryService.PickRelink,
   mediaURL: LibraryService.MediaURL,

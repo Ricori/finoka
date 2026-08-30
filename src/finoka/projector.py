@@ -34,32 +34,34 @@ def _srt_seconds(value: str) -> float:
 
 def parse_srt(text: str) -> list[SrtCue]:
     lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    timings: list[tuple[int, re.Match[str]]] = []
+    for line_index, line in enumerate(lines):
+        # Cloud output can contain extra separators, prose, or cue ids in
+        # unexpected places. Timing lines are the only structural boundary we
+        # need; everything between two boundaries can be recovered as text.
+        match = _TIMING.match(line.strip())
+        if match:
+            timings.append((line_index, match))
+    if not timings:
+        raise ProjectionError("final SRT has no timing lines")
+
     cues: list[SrtCue] = []
-    index = 0
-    while index < len(lines):
-        while index < len(lines) and not lines[index].strip():
-            index += 1
-        if index >= len(lines):
-            break
-        if lines[index].strip().isdigit():
-            index += 1
-        if index >= len(lines):
-            raise ProjectionError("final SRT ends before a timing line")
-        match = _TIMING.fullmatch(lines[index].strip())
-        if not match:
-            raise ProjectionError(f"invalid final SRT timing line: {lines[index]!r}")
-        index += 1
-        body: list[str] = []
-        while index < len(lines) and lines[index].strip():
-            body.append(lines[index])
-            index += 1
-        if not body:
-            raise ProjectionError("final SRT cue has no text")
+    for timing_index, (line_index, match) in enumerate(timings):
+        next_line = timings[timing_index + 1][0] if timing_index + 1 < len(timings) else len(lines)
+        body = list(lines[line_index + 1:next_line])
+        while body and not body[-1].strip():
+            body.pop()
+        # The next cue id sits immediately before its timing line, so it lands
+        # at the end of this slice. It is metadata, not subtitle text.
+        if body and body[-1].strip().isdigit():
+            body.pop()
+        while body and not body[0].strip():
+            body.pop(0)
         start = _srt_seconds(match.group("start"))
         end = _srt_seconds(match.group("end"))
         if end <= start:
             raise ProjectionError("final SRT cue has a non-positive duration")
-        cues.append(SrtCue(start, end, "\n".join(body).strip()))
+        cues.append(SrtCue(start, end, "\n".join(line for line in body if line.strip()).strip()))
     return cues
 
 
@@ -107,6 +109,7 @@ def parse_annotated(text: str) -> list[dict[str, Any]]:
             {
                 "kind": "insert" if normalized_kind == "insert" else "sub",
                 "source_ids": source_ids,
+                "duration": float(duration),
                 "corrected": _decode_cell(corrected),
                 "translation": _decode_cell(translation),
                 "conf": _confidence(conf),
@@ -173,6 +176,7 @@ def project_edit_document(
     title: str,
     source: str = "",
     fingerprint: str | None = None,
+    relaxed_srt: bool = False,
 ) -> dict[str, Any]:
     """Create an editor-compatible document from raw or final FineSub artifacts."""
 
@@ -196,20 +200,49 @@ def project_edit_document(
             projected.append(item)
     else:
         annotated = parse_annotated(Path(annotated_csv).read_text(encoding="utf-8"))
-        cues = parse_srt(Path(final_srt).read_text(encoding="utf-8"))
-        if len(annotated) != len(cues):
+        if relaxed_srt:
+            # Cloud artifacts produced by older engines are not guaranteed to
+            # obey one exact SRT block layout. Retrieval must remain possible:
+            # consume any cues we can recognize, then recover missing timing
+            # and text from the row-aligned annotated/stable artifacts.
+            try:
+                cues = parse_srt(Path(final_srt).read_text(encoding="utf-8"))
+            except ProjectionError:
+                cues = []
+        else:
+            cues = parse_srt(Path(final_srt).read_text(encoding="utf-8"))
+        if not relaxed_srt and len(annotated) != len(cues):
             raise ProjectionError(
                 "annotated.csv and final SRT row counts differ "
                 f"({len(annotated)} vs {len(cues)}); refusing positional truncation"
             )
         mode = "final"
-        for row, cue in zip(annotated, cues, strict=True):
+        previous_end = 0.0
+        for index, row in enumerate(annotated):
             words = _words_for(row["source_ids"], stable_by_id)
+            cue = cues[index] if index < len(cues) else None
+            if cue is not None:
+                start, end, translated = cue.start, cue.end, cue.text or row["translation"]
+            elif row["source_ids"]:
+                sources = [stable_by_id[source_id] for source_id in row["source_ids"]]
+                start, end, translated = sources[0]["start"], sources[-1]["end"], row["translation"]
+            else:
+                # Insert rows have no stable source. In the unlikely event that
+                # their SRT cue is unreadable, keep the text and place it after
+                # the preceding row instead of rejecting the whole document.
+                start = previous_end
+                end = start + max(float(row["duration"]), 0.001)
+                translated = row["translation"]
             item = {
-                "t0": cue.start,
-                "t1": cue.end,
+                "t0": start,
+                "t1": end,
                 "ja": row["corrected"],
-                "zh": cue.text,
+                # The annotated table is the LLM stage's row-aligned source of
+                # truth and often still contains the translation when a loose
+                # SRT renderer emits an empty cue. Keep the final SRT wording
+                # when present, otherwise recover that row instead of rejecting
+                # the entire cloud document.
+                "zh": translated,
             }
             if words:
                 item["words"] = words
@@ -217,6 +250,7 @@ def project_edit_document(
             if row["conf"] == "low" or source_low:
                 item["low_conf"] = True
             projected.append(item)
+            previous_end = end
     return {
         "schema": 1,
         "video_id": video_id,

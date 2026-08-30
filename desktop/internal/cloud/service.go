@@ -149,20 +149,22 @@ type taskLink struct {
 }
 
 type Service struct {
-	mu         sync.RWMutex
-	syncMu     sync.Mutex
-	configPath string
-	linksPath  string
-	root       string
-	thumbRoot  string
-	tasksRoot  string
-	provider   providerCaller
-	media      mediaResolver
-	client     *http.Client
-	upload     *http.Client
-	extractor  func(context.Context, string, string) error
-	session    storedSession
-	links      map[string]taskLink
+	mu                   sync.RWMutex
+	syncMu               sync.Mutex
+	configPath           string
+	linksPath            string
+	syncSuppressionsPath string
+	root                 string
+	thumbRoot            string
+	tasksRoot            string
+	provider             providerCaller
+	media                mediaResolver
+	client               *http.Client
+	upload               *http.Client
+	extractor            func(context.Context, string, string) error
+	session              storedSession
+	links                map[string]taskLink
+	syncSuppressions     map[string]int64
 }
 
 func New(dataDirectory string, provider providerCaller, resolvers ...mediaResolver) (*Service, error) {
@@ -174,18 +176,20 @@ func New(dataDirectory string, provider providerCaller, resolvers ...mediaResolv
 		return nil, err
 	}
 	service := &Service{
-		configPath: filepath.Join(root, "cloud-session.json"),
-		linksPath:  filepath.Join(root, "cloud-tasks.json"),
-		root:       root,
-		thumbRoot:  filepath.Join(root, "cloud-thumbnails"),
-		tasksRoot:  filepath.Join(root, "tasks"),
-		provider:   provider,
-		client:     &http.Client{Timeout: 30 * time.Second},
-		upload:     &http.Client{Timeout: 3 * time.Hour},
+		configPath:           filepath.Join(root, "cloud-session.json"),
+		linksPath:            filepath.Join(root, "cloud-tasks.json"),
+		syncSuppressionsPath: filepath.Join(root, "cloud-sync-suppressions.json"),
+		root:                 root,
+		thumbRoot:            filepath.Join(root, "cloud-thumbnails"),
+		tasksRoot:            filepath.Join(root, "tasks"),
+		provider:             provider,
+		client:               &http.Client{Timeout: 30 * time.Second},
+		upload:               &http.Client{Timeout: 3 * time.Hour},
 		extractor: func(ctx context.Context, source, output string) error {
 			return extractAudioWithRoot(ctx, root, source, output)
 		},
-		links: map[string]taskLink{},
+		links:            map[string]taskLink{},
+		syncSuppressions: map[string]int64{},
 	}
 	if len(resolvers) > 0 {
 		service.media = resolvers[0]
@@ -416,9 +420,9 @@ func (s *Service) AdoptLibraryEntry(videoID, localID string) error {
 // AdoptCloudEntry makes a finished cloud entry editable on a machine that does
 // not have the video at all. The subtitles are the deliverable; the media is
 // only needed to play them back, so the library records a placeholder for the
-// fingerprint and the document hangs on that. Importing or relinking the video
-// later fills the same entry in -- the fingerprint has to match, so the pairing
-// cannot drift. Returns the local media id to open.
+// fingerprint and the document hangs on that. Associating a video later fills
+// the same entry in while retaining the subtitle record's identity. Returns the
+// local media id to open.
 func (s *Service) AdoptCloudEntry(videoID string) (string, error) {
 	if !validCloudTaskID.MatchString(videoID) {
 		return "", errors.New("invalid cloud library entry id")
@@ -472,9 +476,10 @@ func (s *Service) finishedLibraryEntry(videoID string) (Entry, error) {
 	return Entry{}, errors.New("cloud library has no such entry")
 }
 
-// projectRemoteArtifacts downloads one finished cloud task's subtitles, checks
-// every file against the manifest digest, keeps a verified copy under the task
-// root and hands the set to the local provider as a document for the target.
+// projectRemoteArtifacts downloads one finished cloud task's subtitles, keeps
+// a local copy under the task root and hands the set to the local provider as a
+// document for the target. Retrieval deliberately does not reject old cloud
+// artifacts for digest or SRT-format differences.
 func (s *Service) projectRemoteArtifacts(taskID string, target mediaTarget) (map[string]any, error) {
 	var remote remoteArtifactManifest
 	if err := s.authenticatedDo(context.Background(), http.MethodGet, "/v1/tasks/"+taskID+"/artifacts", nil, &remote); err != nil {
@@ -496,14 +501,11 @@ func (s *Service) projectRemoteArtifacts(taskID string, target mediaTarget) (map
 		if err != nil {
 			return nil, err
 		}
+		digest := sha256.Sum256(content)
+		actualSHA := hex.EncodeToString(digest[:])
 		total += int64(len(content))
 		if total > maxArtifactBytes {
 			return nil, errors.New("cloud artifacts exceed the 32 MB limit")
-		}
-		digest := sha256.Sum256(content)
-		actualSHA := hex.EncodeToString(digest[:])
-		if len(item.SHA256) != 64 || !strings.EqualFold(actualSHA, item.SHA256) {
-			return nil, fmt.Errorf("cloud artifact %s failed SHA-256 verification", name)
 		}
 		contents[name] = string(content)
 		suffixes := map[string]string{"stable_json": ".stable.json", "raw_srt": ".raw.srt", "annotated_csv": ".annotated.csv", "final_srt": ".srt"}
@@ -532,12 +534,49 @@ func (s *Service) projectRemoteArtifacts(taskID string, target mediaTarget) (map
 	if len(contents) == 0 {
 		return nil, errors.New("cloud task returned no subtitle artifacts")
 	}
-	projection := map[string]any{"video_id": target.localID, "task_id": taskID, "engine_commit": remote.EngineCommit, "title": target.title, "fingerprint": target.fingerprint, "duration": target.duration, "source_path": target.path, "artifacts": contents}
+	projection := map[string]any{"video_id": target.localID, "task_id": taskID, "engine_commit": remote.EngineCommit, "title": target.title, "fingerprint": target.fingerprint, "duration": target.duration, "source_path": target.path, "artifacts": contents, "relaxed_srt": true}
 	var document map[string]any
 	if err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/documents/project", projection, &document); err != nil {
 		return nil, err
 	}
 	return map[string]any{"schema": 1, "task_id": taskID, "engine_commit": remote.EngineCommit, "artifacts": local}, nil
+}
+
+// verifyArtifactContent preserves the manifest's byte-level integrity while
+// repairing the one transformation a text HTTP response is allowed to have
+// introduced: universal-newline conversion. A candidate is accepted only when
+// its exact bytes reproduce the signed digest.
+func verifyArtifactContent(content []byte, expectedSHA string) ([]byte, string, bool) {
+	if len(expectedSHA) != 64 {
+		return nil, "", false
+	}
+	verify := func(candidate []byte) (string, bool) {
+		digest := sha256.Sum256(candidate)
+		actual := hex.EncodeToString(digest[:])
+		return actual, strings.EqualFold(actual, expectedSHA)
+	}
+	if actual, ok := verify(content); ok {
+		return content, actual, true
+	}
+	if bytes.Contains(content, []byte("\r\n")) {
+		normalized := bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+		if actual, ok := verify(normalized); ok {
+			return normalized, actual, true
+		}
+	}
+	if bytes.Contains(content, []byte("\n")) {
+		expanded := make([]byte, 0, len(content)+bytes.Count(content, []byte("\n")))
+		for index, value := range content {
+			if value == '\n' && (index == 0 || content[index-1] != '\r') {
+				expanded = append(expanded, '\r')
+			}
+			expanded = append(expanded, value)
+		}
+		if actual, ok := verify(expanded); ok {
+			return expanded, actual, true
+		}
+	}
+	return nil, "", false
 }
 
 func localFileURI(path string) string {
@@ -648,7 +687,48 @@ func (s *Service) DeleteLibraryEntry(identifier string) error {
 	if !validCloudTaskID.MatchString(identifier) {
 		return errors.New("invalid cloud library entry id")
 	}
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	entries, err := s.Library()
+	if err != nil {
+		return err
+	}
+	fingerprint := ""
+	for _, entry := range entries {
+		if entry.ID == identifier {
+			fingerprint = entry.Fingerprint
+			break
+		}
+	}
+	deletedAt := time.Now().UnixMilli()
+	previousSuppressedAt := int64(0)
+	suppressionExisted := false
+	if fingerprint != "" {
+		s.mu.Lock()
+		previousSuppressedAt, suppressionExisted = s.syncSuppressions[fingerprint]
+		s.syncSuppressions[fingerprint] = deletedAt
+		if err := s.saveSyncSuppressionsLocked(); err != nil {
+			if suppressionExisted {
+				s.syncSuppressions[fingerprint] = previousSuppressedAt
+			} else {
+				delete(s.syncSuppressions, fingerprint)
+			}
+			s.mu.Unlock()
+			return err
+		}
+		s.mu.Unlock()
+	}
 	if err := s.authenticatedDo(context.Background(), http.MethodDelete, "/v1/library/"+identifier, nil, nil); err != nil {
+		if fingerprint != "" {
+			s.mu.Lock()
+			if suppressionExisted {
+				s.syncSuppressions[fingerprint] = previousSuppressedAt
+			} else {
+				delete(s.syncSuppressions, fingerprint)
+			}
+			_ = s.saveSyncSuppressionsLocked()
+			s.mu.Unlock()
+		}
 		return err
 	}
 	_ = os.Remove(filepath.Join(s.thumbRoot, identifier+".jpg"))
@@ -721,6 +801,8 @@ func (s *Service) SyncLocalTask(taskID, localID, fingerprint, title string, dura
 	if strings.TrimSpace(fingerprint) == "" || len(fingerprint) > 256 {
 		return Entry{}, errors.New("media fingerprint is required")
 	}
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
 	var manifest artifactManifest
 	endpoint := "/v1/tasks/" + taskID + "/artifacts"
 	if err := s.provider.DoJSON(context.Background(), http.MethodGet, endpoint, nil, &manifest); err != nil {
@@ -736,6 +818,7 @@ func (s *Service) syncArtifactManifest(manifest artifactManifest, localID, finge
 	}
 	contents := map[string]string{}
 	total := int64(0)
+	newestArtifact := int64(0)
 	for _, name := range []string{"stable_json", "raw_srt", "annotated_csv", "final_srt"} {
 		item, ok := manifest.Artifacts[name]
 		if !ok {
@@ -750,6 +833,9 @@ func (s *Service) syncArtifactManifest(manifest artifactManifest, localID, finge
 			return Entry{}, err
 		}
 		total += int64(len(data))
+		if info, statErr := os.Stat(path); statErr == nil && info.ModTime().UnixMilli() > newestArtifact {
+			newestArtifact = info.ModTime().UnixMilli()
+		}
 		if total > maxArtifactBytes {
 			return Entry{}, errors.New("local task artifacts exceed the sync limit")
 		}
@@ -758,6 +844,21 @@ func (s *Service) syncArtifactManifest(manifest artifactManifest, localID, finge
 	if len(contents) == 0 {
 		return Entry{}, errors.New("local task has no syncable artifacts")
 	}
+	s.mu.Lock()
+	suppressedAt := s.syncSuppressions[fingerprint]
+	if suppressedAt > 0 && newestArtifact <= suppressedAt {
+		s.mu.Unlock()
+		return Entry{Fingerprint: fingerprint, Status: "suppressed", Source: "local_sync"}, nil
+	}
+	if suppressedAt > 0 {
+		delete(s.syncSuppressions, fingerprint)
+		if err := s.saveSyncSuppressionsLocked(); err != nil {
+			s.syncSuppressions[fingerprint] = suppressedAt
+			s.mu.Unlock()
+			return Entry{}, err
+		}
+	}
+	s.mu.Unlock()
 	request := syncRequest{
 		LocalID: localID, Fingerprint: fingerprint, Title: strings.TrimSpace(title), Duration: duration,
 		TaskID: manifest.TaskID, EngineCommit: manifest.EngineCommit, Artifacts: contents,
@@ -808,8 +909,13 @@ func (s *Service) mergeLocalLibrary(session *Session) {
 			session.SyncFailed++
 			continue
 		}
-		if _, syncErr := s.syncArtifactManifest(manifest, entry.ID, entry.Fingerprint, entry.Title, entry.Duration); syncErr != nil {
+		synced, syncErr := s.syncArtifactManifest(manifest, entry.ID, entry.Fingerprint, entry.Title, entry.Duration)
+		if syncErr != nil {
 			session.SyncFailed++
+			continue
+		}
+		if synced.Status == "suppressed" {
+			session.SyncSkipped++
 			continue
 		}
 		remoteFingerprints[entry.Fingerprint] = struct{}{}
@@ -1279,6 +1385,18 @@ func (s *Service) load() error {
 			s.links = map[string]taskLink{}
 		}
 	}
+	data, err = os.ReadFile(s.syncSuppressionsPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err == nil {
+		if err := json.Unmarshal(data, &s.syncSuppressions); err != nil {
+			return err
+		}
+		if s.syncSuppressions == nil {
+			s.syncSuppressions = map[string]int64{}
+		}
+	}
 	return nil
 }
 
@@ -1316,6 +1434,26 @@ func (s *Service) saveLinksLocked() error {
 		return err
 	}
 	if err := os.Rename(temporary, s.linksPath); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
+}
+
+func (s *Service) saveSyncSuppressionsLocked() error {
+	data, err := json.Marshal(s.syncSuppressions)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(s.syncSuppressionsPath), 0o700); err != nil {
+		return err
+	}
+	temporary := s.syncSuppressionsPath + ".tmp"
+	if err := os.WriteFile(temporary, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, s.syncSuppressionsPath); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}

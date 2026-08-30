@@ -31,6 +31,7 @@ export interface Entry {
     "thumbnailAvailable": boolean;
     "available": boolean;
     "documentAvailable": boolean;
+    "documentRemoved"?: boolean;
     "cached": boolean;
     "clips"?: Clip[] | null;
 }

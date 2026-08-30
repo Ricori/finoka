@@ -284,7 +284,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
         )}
         {optionalTools.length > 0 && (
           <section className="asset-group optional">
-            <div className="asset-group-heading"><strong>可选工具</strong><small>按需使用，不影响环境就绪状态</small></div>
+            <div className="asset-group-heading"><strong>可选工具</strong><small>按需使用，不影响任务运行</small></div>
             <div className="asset-grid">
               {optionalTools.map((item) => <AssetTile
                 item={item}

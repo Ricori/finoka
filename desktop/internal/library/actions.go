@@ -101,6 +101,52 @@ func (s *Service) Remove(id string, deleteDocument bool) error {
 	return nil
 }
 
+// DeleteDocument removes the editable subtitles and their revision history
+// while keeping the media entry, thumbnail and source video in the library.
+func (s *Service) DeleteDocument(id string) error {
+	if !validID(id) {
+		return errors.New("invalid media id")
+	}
+	directory := filepath.Join(s.root, "documents", id)
+	if filepath.Dir(directory) != filepath.Join(s.root, "documents") {
+		return errors.New("invalid document directory")
+	}
+	s.mu.Lock()
+	index := -1
+	for current := range s.entries {
+		if s.entries[current].ID == id {
+			index = current
+			break
+		}
+	}
+	if index < 0 {
+		s.mu.Unlock()
+		return errors.New("media entry not found")
+	}
+	previous := s.entries[index].DocumentRemoved
+	s.entries[index].DocumentRemoved = true
+	if err := s.saveLocked(); err != nil {
+		s.entries[index].DocumentRemoved = previous
+		s.mu.Unlock()
+		return err
+	}
+	s.mu.Unlock()
+	if err := os.RemoveAll(directory); err != nil {
+		s.mu.Lock()
+		for current := range s.entries {
+			if s.entries[current].ID == id {
+				s.entries[current].DocumentRemoved = previous
+				break
+			}
+		}
+		_ = s.saveLocked()
+		s.mu.Unlock()
+		return err
+	}
+	s.emitChanged()
+	return nil
+}
+
 func (s *Service) PickRelink(id string) (Entry, error) {
 	if !validID(id) {
 		return Entry{}, errors.New("invalid media id")
@@ -151,17 +197,21 @@ func (s *Service) Relink(id, path string) (Entry, error) {
 		if s.entries[index].ID != id {
 			continue
 		}
-		if s.entries[index].Fingerprint != "" && s.entries[index].Fingerprint != fingerprint {
-			s.mu.Unlock()
-			return Entry{}, errors.New("selected file does not match the original media fingerprint")
-		}
 		previous := s.entries[index]
 		s.entries[index].SourcePath = absolute
 		s.entries[index].Size = stat.Size()
 		s.entries[index].Duration = metadata.Duration
 		s.entries[index].Width = metadata.Width
 		s.entries[index].Height = metadata.Height
-		s.entries[index].Fingerprint = fingerprint
+		// Once subtitles exist, the fingerprint identifies that subtitle record
+		// locally and in the cloud. An arbitrarily associated video is only its
+		// playback source; replacing the identity here makes the original cloud
+		// entry look unmatched and creates another subtitle-only card on the next
+		// adoption. Entries without subtitles can still take on the new video's
+		// identity as before.
+		if !fileExists(filepath.Join(s.root, "documents", id, "document.json")) {
+			s.entries[index].Fingerprint = fingerprint
+		}
 		s.entries[index].LastAccess = time.Now().UnixMilli()
 		s.entries[index].Available = true
 		if err := s.saveLocked(); err != nil {

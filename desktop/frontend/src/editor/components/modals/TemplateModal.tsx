@@ -19,8 +19,7 @@ export function TemplateModal() {
         <button className="x-close" id="tpl-close" title="关闭" onClick={close}>✕</button>
         <h3 id="tpl-title">ASS 样式模板</h3>
         <div className="hint">Finoka 的预览与导出共用这份内置模板。轨道通过样式名绑定其中的 Style；
-          可粘贴完整 ASS 头（含 [Script Info]）或仅 [V4+ Styles] 段，[Events] 段会被忽略。</div>
-        <div className="hint" id="tpl-readonly-hint">当前版本使用内置模板；可查看样式名用于轨道绑定。</div>
+          可粘贴完整 ASS 头（含 [Script Info]）或仅 [V4+ Styles] 段。</div>
         <textarea id="tpl-text" spellCheck={false} wrap="off" readOnly value={text} />
         <div className="foot" id="tpl-foot"><button className="btn" onClick={close}>关闭</button></div>
       </div>

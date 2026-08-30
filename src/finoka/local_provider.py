@@ -618,7 +618,12 @@ class LocalProvider:
             path = directory / (name + suffixes[name])
             path.write_text(content, encoding="utf-8")
             manifest["artifacts"][name] = {"uri": path.resolve().as_uri(), "bytes": path.stat().st_size}
-        document = self._project_manifest(video_id, value, manifest)
+        document = self._project_manifest(
+            video_id,
+            value,
+            manifest,
+            relaxed_srt=bool(value.get("relaxed_srt")),
+        )
         self._write_optional_peaks(video_id, str(value.get("source_path") or ""), float(value.get("duration") or 0))
         return document
 
@@ -777,7 +782,14 @@ class LocalProvider:
                 self._processes.pop(task_id, None)
                 self._threads.pop(task_id, None)
 
-    def _project_manifest(self, video_id: str, metadata: Mapping[str, Any], manifest: Mapping[str, Any]) -> dict[str, Any]:
+    def _project_manifest(
+        self,
+        video_id: str,
+        metadata: Mapping[str, Any],
+        manifest: Mapping[str, Any],
+        *,
+        relaxed_srt: bool = False,
+    ) -> dict[str, Any]:
         if not _safe_component(video_id):
             raise ProviderError("invalid_document", "Invalid document id")
         entries = manifest.get("artifacts")
@@ -808,6 +820,7 @@ class LocalProvider:
             title=str(metadata.get("title") or video_id),
             source=str(metadata.get("path") or metadata.get("source_path") or ""),
             fingerprint=str(metadata.get("fingerprint") or "") or None,
+            relaxed_srt=relaxed_srt,
         )
         return self.documents.create(video_id, projection, artifacts=manifest, replace_default=True)
 

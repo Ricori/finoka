@@ -12,9 +12,8 @@ import * as $models from "./models.js";
 /**
  * AddPlaceholder records media the library has subtitles for but no file of:
  * a cloud entry transcribed on another machine, adopted here so the document
- * has something to hang on. The entry is deliberately indistinguishable from
- * one whose source went missing -- the card offers 重新定位 and Relink refuses
- * any file whose fingerprint is not this one.
+ * has something to hang on. The fingerprint remains the subtitle record's
+ * identity even when the user later associates an arbitrary playback video.
  */
 export function AddPlaceholder(title: string, fingerprint: string, duration: number): $CancellablePromise<$models.Entry> {
     return $Call.ByID(3374103389, title, fingerprint, duration);
@@ -38,6 +37,14 @@ export function ClearVideoCache(): $CancellablePromise<$models.CacheStatus> {
 
 export function Close(): $CancellablePromise<void> {
     return $Call.ByID(3491987727);
+}
+
+/**
+ * DeleteDocument removes the editable subtitles and their revision history
+ * while keeping the media entry, thumbnail and source video in the library.
+ */
+export function DeleteDocument(id: string): $CancellablePromise<void> {
+    return $Call.ByID(587593803, id);
 }
 
 export function ExportVideo(id: string, ass: string): $CancellablePromise<string> {

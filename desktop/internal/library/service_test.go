@@ -192,7 +192,55 @@ func TestRenameRelinkAndRemoveManageOnlyIndexedData(t *testing.T) {
 	}
 }
 
-func TestRelinkRejectsDifferentMediaFingerprint(t *testing.T) {
+func TestDeleteDocumentKeepsMediaInLibrary(t *testing.T) {
+	root := t.TempDir()
+	video := filepath.Join(root, "video.mp4")
+	if err := os.WriteFile(video, []byte("media-fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools := fixtureTools{metadata: Metadata{Duration: 12, Width: 1280, Height: 720, HasVideo: true, HasAudio: true}}
+	data := filepath.Join(root, "data")
+	service, err := newServiceWithTools(data, tools, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := service.Import([]string{video}).Added[0]
+	document := filepath.Join(data, "documents", entry.ID)
+	if err := os.MkdirAll(filepath.Join(document, "history"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(document, "document.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(document, "history", "00000000.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DeleteDocument(entry.ID); err != nil {
+		t.Fatal(err)
+	}
+	entries := service.List()
+	if len(entries) != 1 || entries[0].ID != entry.ID || entries[0].DocumentAvailable || !entries[0].DocumentRemoved {
+		t.Fatalf("media entry after subtitle deletion = %#v", entries)
+	}
+	if _, err := os.Stat(video); err != nil {
+		t.Fatal("deleting subtitles must not remove source media")
+	}
+	if _, err := os.Stat(document); !os.IsNotExist(err) {
+		t.Fatal("subtitle document and history were not removed")
+	}
+	if err := os.MkdirAll(document, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(document, "document.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restored := service.List()[0]
+	if !restored.DocumentAvailable || restored.DocumentRemoved {
+		t.Fatalf("new subtitle document did not restore editable state: %#v", restored)
+	}
+}
+
+func TestRelinkAcceptsDifferentMediaFingerprint(t *testing.T) {
 	root := t.TempDir()
 	first := filepath.Join(root, "first.mp4")
 	second := filepath.Join(root, "second.mp4")
@@ -208,8 +256,55 @@ func TestRelinkRejectsDifferentMediaFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := service.Import([]string{first}).Added[0]
-	if _, err := service.Relink(entry.ID, second); err == nil {
-		t.Fatal("different media fingerprint was accepted")
+	relinked, err := service.Relink(entry.ID, second)
+	if err != nil {
+		t.Fatalf("relink different media: %v", err)
+	}
+	if relinked.SourcePath != second {
+		t.Fatalf("relinked source path = %q, want %q", relinked.SourcePath, second)
+	}
+	if relinked.Fingerprint == entry.Fingerprint {
+		t.Fatal("relinked entry kept the original media fingerprint")
+	}
+}
+
+func TestRelinkSubtitleOnlyEntryKeepsSubtitleFingerprint(t *testing.T) {
+	root := t.TempDir()
+	video := filepath.Join(root, "associated.mp4")
+	if err := os.WriteFile(video, []byte("unrelated-video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools := fixtureTools{metadata: Metadata{Duration: 8, HasVideo: true, HasAudio: true}}
+	data := filepath.Join(root, "data")
+	service, err := newServiceWithTools(data, tools, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := service.AddPlaceholder("subtitles", "subtitle-fingerprint", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := filepath.Join(data, "documents", entry.ID)
+	if err := os.MkdirAll(document, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(document, "document.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	relinked, err := service.Relink(entry.ID, video)
+	if err != nil {
+		t.Fatalf("associate unrelated video: %v", err)
+	}
+	if relinked.SourcePath != video {
+		t.Fatalf("associated source path = %q, want %q", relinked.SourcePath, video)
+	}
+	if relinked.Fingerprint != entry.Fingerprint {
+		t.Fatalf("subtitle fingerprint changed from %q to %q", entry.Fingerprint, relinked.Fingerprint)
+	}
+	entries := service.List()
+	if len(entries) != 1 || entries[0].ID != entry.ID {
+		t.Fatalf("association created another local card: %#v", entries)
 	}
 }
 
