@@ -15,7 +15,6 @@ type State struct {
 	SidebarCollapsed bool                    `json:"sidebarCollapsed"`
 	LibraryView      string                  `json:"libraryView"`
 	Bounds           map[string]WindowBounds `json:"bounds"`
-	TaskHistory      []map[string]any        `json:"taskHistory"`
 }
 
 type WindowBounds struct {
@@ -89,27 +88,6 @@ func (s *Service) Save(patch map[string]any) (State, error) {
 		}
 		next.LibraryView = view
 	}
-	if value, exists := patch["taskHistory"]; exists {
-		history, ok := value.([]any)
-		if !ok {
-			return s.data, errors.New("taskHistory must be an array")
-		}
-		if len(history) > 50 {
-			history = history[:50]
-		}
-		encoded, err := json.Marshal(history)
-		if err != nil || len(encoded) > 512<<10 {
-			return s.data, errors.New("taskHistory exceeds the storage limit")
-		}
-		next.TaskHistory = make([]map[string]any, 0, len(history))
-		for _, item := range history {
-			record, ok := item.(map[string]any)
-			if !ok {
-				return s.data, errors.New("taskHistory contains an invalid item")
-			}
-			next.TaskHistory = append(next.TaskHistory, cloneRecord(record))
-		}
-	}
 	if err := writeAtomic(s.path, next); err != nil {
 		return s.data, err
 	}
@@ -164,12 +142,6 @@ func (s *Service) load() error {
 	if state.Bounds == nil {
 		state.Bounds = map[string]WindowBounds{}
 	}
-	if state.TaskHistory == nil {
-		state.TaskHistory = []map[string]any{}
-	}
-	if len(state.TaskHistory) > 50 {
-		state.TaskHistory = state.TaskHistory[:50]
-	}
 	s.data = state
 	return nil
 }
@@ -179,22 +151,6 @@ func cloneState(state State) State {
 	result.Bounds = make(map[string]WindowBounds, len(state.Bounds))
 	for kind, bounds := range state.Bounds {
 		result.Bounds[kind] = bounds
-	}
-	result.TaskHistory = make([]map[string]any, len(state.TaskHistory))
-	for index, record := range state.TaskHistory {
-		result.TaskHistory[index] = cloneRecord(record)
-	}
-	return result
-}
-
-func cloneRecord(record map[string]any) map[string]any {
-	data, err := json.Marshal(record)
-	if err != nil {
-		return map[string]any{}
-	}
-	var result map[string]any
-	if json.Unmarshal(data, &result) != nil {
-		return map[string]any{}
 	}
 	return result
 }

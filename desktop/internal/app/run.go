@@ -16,6 +16,7 @@ import (
 	"github.com/Ricori/finoka/desktop/internal/provider"
 	"github.com/Ricori/finoka/desktop/internal/selfupdate"
 	"github.com/Ricori/finoka/desktop/internal/sidecar"
+	"github.com/Ricori/finoka/desktop/internal/taskhistory"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -57,6 +58,12 @@ func Run(assets fs.FS) error {
 	}
 	library.SetBundledFonts(libraryService, fonts)
 	preferencesService, err := preferences.New(dataDirectory)
+	if err != nil {
+		return err
+	}
+	// Constructed after preferences so the first launch can lift any history
+	// still sitting in preferences.json before that file is rewritten.
+	taskHistoryService, err := taskhistory.New(dataDirectory)
 	if err != nil {
 		return err
 	}
@@ -104,6 +111,7 @@ func Run(assets fs.FS) error {
 			application.NewService(cloudService),
 			application.NewService(pluginService),
 			application.NewService(preferencesService),
+			application.NewService(taskHistoryService),
 			application.NewService(windowService),
 			application.NewService(updateService),
 		},

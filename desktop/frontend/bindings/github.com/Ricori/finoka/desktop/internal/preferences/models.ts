@@ -8,7 +8,6 @@ export interface State {
     "sidebarCollapsed": boolean;
     "libraryView": string;
     "bounds": { [_ in string]?: WindowBounds } | null;
-    "taskHistory": ({ [_ in string]?: any } | null)[] | null;
 }
 
 export interface WindowBounds {

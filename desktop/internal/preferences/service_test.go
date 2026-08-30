@@ -14,13 +14,9 @@ func TestPreferencesPersistValidatedPartialUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := []any{map[string]any{"taskId": "task-1", "provider": "local"}}
-	updated, err := service.Save(map[string]any{"homeTheme": "dark", "editorTheme": "light", "sidebarCollapsed": true, "taskHistory": history})
+	updated, err := service.Save(map[string]any{"homeTheme": "dark", "editorTheme": "light", "sidebarCollapsed": true})
 	if err != nil || updated.HomeTheme != "dark" || updated.EditorTheme != "light" || !updated.SidebarCollapsed || updated.LibraryView != "grid" {
 		t.Fatalf("updated = %#v, %v", updated, err)
-	}
-	if len(updated.TaskHistory) != 1 || updated.TaskHistory[0]["taskId"] != "task-1" {
-		t.Fatalf("task history = %#v", updated.TaskHistory)
 	}
 	reloaded, err := New(root)
 	if err != nil || !reflect.DeepEqual(reloaded.Get(), updated) {

@@ -10,6 +10,7 @@ import type { FineSubSettingsState } from "../bridge/settings.ts";
 import { fineSubRuntime } from "../bridge/runtime.ts";
 import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeProvisionState } from "../bridge/runtime.ts";
 import { desktopPreferences } from "../bridge/preferences.ts";
+import { desktopTaskHistory } from "../bridge/taskHistory.ts";
 import { desktopPlugins, mountedTools } from "../bridge/plugins.ts";
 import type { InstalledPlugin, MountedPluginTool } from "../bridge/plugins.ts";
 import { desktopWindows } from "../bridge/windows.ts";
@@ -137,6 +138,9 @@ export default function App() {
   const completedTasks = useRef(new Set<string>());
   const taskHistoryHydrated = useRef(false);
   const preferencesHydrated = useRef(false);
+  // History persists to its own file, so it needs a hydration gate of its own:
+  // saving before the stored history has loaded would overwrite it with [].
+  const taskHistoryStored = useRef(false);
   const taskHistoryRef = useRef(taskHistory);
   const pythonBootstrapStarted = useRef(false);
 
@@ -211,7 +215,7 @@ export default function App() {
 
   useEffect(() => {
     taskHistoryRef.current = taskHistory;
-    if (preferencesHydrated.current) void desktopPreferences.save({ taskHistory: taskHistory.slice(0, taskHistoryLimit) }).catch(() => undefined);
+    if (taskHistoryStored.current) void desktopTaskHistory.save(taskHistory.slice(0, taskHistoryLimit)).catch(() => undefined);
   }, [taskHistory]);
 
   useEffect(() => {
@@ -219,9 +223,16 @@ export default function App() {
       setTheme(value.homeTheme === "dark" ? "dark" : "light");
       setSidebarCollapsed(value.sidebarCollapsed);
       setViewMode(value.libraryView === "list" ? "list" : "grid");
-      setTaskHistory(parseTaskHistory(value.taskHistory));
     }).catch(() => undefined).finally(() => {
       preferencesHydrated.current = true;
+    });
+  }, []);
+
+  useEffect(() => {
+    void desktopTaskHistory.get().then((value) => {
+      setTaskHistory(parseTaskHistory(value));
+    }).catch(() => undefined).finally(() => {
+      taskHistoryStored.current = true;
     });
   }, []);
 
