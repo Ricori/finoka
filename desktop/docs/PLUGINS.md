@@ -78,7 +78,7 @@ window.finoka.post("host.getInfo", {});
 - `ui.openPluginManager`：返回插件管理页面。
 - `media.list`：需要 `media.list` 权限，返回媒体 ID、标题、时长、画面尺寸和字幕状态，不返回本地路径。
 - `ffmpeg.extractAudio`：需要 `ffmpeg.extract-audio` 权限。参数为 `{ mediaId, format }`，其中格式只能是 `wav`、`flac`、`mp3` 或 `m4a`。Finoka 负责解析输入、选择输出位置、构造 FFmpeg 参数和原子发布结果。
-- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Finoka 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。
+- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Finoka 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。yt-dlp 以 Python wheel 形式安装，因此该能力同时依赖 Finoka 的 Python 运行时。
 
 `tools.runYtDLP` 当前只接受公开的 YouTube、youtu.be 和 Twitch HTTPS 地址，并且只允许以下参数：
 

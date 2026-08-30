@@ -8,6 +8,7 @@
 
 - FFmpeg
 - 可选工具 yt-dlp
+- Python 运行时（yt-dlp 以 Python wheel 形式安装，需要解释器才能运行）
 
 Demo 支持公开的 YouTube 视频、Twitch VOD 和 Twitch Clips。它不读取浏览器 Cookie，也不支持会员、订阅者限定或其他需要账户认证的内容。
 
