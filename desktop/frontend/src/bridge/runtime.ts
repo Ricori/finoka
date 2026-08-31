@@ -8,7 +8,8 @@ export interface RuntimeItem {
   source?: "managed" | "system";
 }
 
-export type RuntimeInstallTarget = "media" | "runtime" | "models" | "all" | "git" | "yt-dlp" | "tokcount" | "aria2c" | "node" | "pot-provider" | "video-tools";
+export type RuntimeInstallTarget = "media" | "runtime" | "models" | "all" | "git" | "yt-dlp" | "tokcount" | "aria2c" | "node" | "pot-provider" | "video-tools" | "optional-tools";
+export type RuntimeToolGroup = "video-tools" | "optional-tools";
 
 export interface RuntimeProvisionState {
   schema: 1;
@@ -53,4 +54,5 @@ export const fineSubRuntime = {
   install: (target: RuntimeInstallTarget) => ProviderService.InstallRuntime(target) as Promise<unknown> as Promise<RuntimeProvisionState>,
   cancel: () => ProviderService.CancelRuntimeInstall() as Promise<unknown> as Promise<RuntimeProvisionState>,
   removeAll: () => ProviderService.RemoveRuntime() as Promise<unknown> as Promise<RuntimeProvisionState>,
+  removeGroup: (target: RuntimeToolGroup) => ProviderService.RemoveRuntimeGroup(target) as Promise<unknown> as Promise<RuntimeProvisionState>,
 };

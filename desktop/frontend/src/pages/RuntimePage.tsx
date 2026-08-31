@@ -1,6 +1,6 @@
 import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/finoka/desktop/internal/sidecar/models.js";
 import { useState } from "react";
-import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeItem, RuntimeProvisionState } from "../bridge/runtime.ts";
+import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeItem, RuntimeProvisionState, RuntimeToolGroup } from "../bridge/runtime.ts";
 import { Mark } from "../components/Mark.tsx";
 import type { Capabilities } from "../providers/types.ts";
 import "./RuntimePage.css";
@@ -21,6 +21,7 @@ interface RuntimePageProps {
   onInstallPython: () => Promise<void>;
   onCancelInstall: () => Promise<void>;
   onRemoveAll: () => Promise<void>;
+  onRemoveGroup: (target: RuntimeToolGroup) => Promise<void>;
 }
 
 const installPhases = [
@@ -43,6 +44,31 @@ const optionalToolIds = new Set(["git", "yt-dlp", "tokcount", "aria2c", "node", 
 // 这几样单独装没有意义：yt-dlp 下载，aria2c 提速，node 与 pot-provider 一起
 // 提供 YouTube 要的 PO token。所以它们作为一件事呈现，也作为一件事安装。
 const videoToolIds = new Set(["yt-dlp", "aria2c", "node", "pot-provider"]);
+
+const assetLabels: Record<string, string> = {
+  python: "Python / CUDA",
+  uv: "uv",
+  ffmpeg: "FFmpeg",
+  ffprobe: "FFprobe",
+  separator: "人声分离模型",
+  whisper: "Whisper 转写模型",
+  "qwen-referee": "Qwen 复核模型",
+  git: "Git",
+  "yt-dlp": "yt-dlp",
+  tokcount: "tokcount",
+  aria2c: "aria2c",
+  node: "Node.js",
+  "pot-provider": "PO Token Provider",
+};
+
+const toolPurposes: Record<string, string> = {
+  git: "克隆与更新知识库",
+  tokcount: "本地精确统计 Token",
+  "yt-dlp": "解析在线视频与字幕",
+  aria2c: "多连接加速下载",
+  node: "运行 JavaScript 挑战",
+  "pot-provider": "生成 YouTube PO Token",
+};
 
 const stageOrder: Record<string, number> = {
   preparing: 0,
@@ -113,77 +139,147 @@ function ProvisionProgress({ job, onCancel, cancellable = true }: { job: Progres
   );
 }
 
-function AssetTile({ item, optional = false, busy = false, installing = false, onInstall }: {
+function AssetTile({ item, optional = false }: {
   item: RuntimeItem;
   optional?: boolean;
-  busy?: boolean;
-  installing?: boolean;
-  onInstall?: () => Promise<void>;
 }) {
   const ready = item.state === "ready";
   const stateLabel = optional && !ready
     ? item.state === "downloading" ? "下载中" : item.state === "outdated" ? "可按需更新" : "按需安装"
     : ready && item.source === "system" ? "系统已安装" : assetStateLabels[item.state] ?? item.state;
+  const purpose = toolPurposes[item.id];
+  const label = assetLabels[item.id] ?? item.id;
+  const title = [label, stateLabel, item.version, purpose, item.detail].filter(Boolean).join(" · ");
   return (
-    <div className={optional ? "optional-asset-tile" : undefined} title={item.detail}>
+    <div className={optional ? "optional-asset-tile" : undefined} title={title || undefined} aria-label={`${label}：${stateLabel}${purpose ? `，${purpose}` : ""}`}>
       <span className={ready ? "asset-ready" : optional ? "asset-optional" : "asset-missing"}>{ready ? "✓" : optional ? "○" : "↓"}</span>
-      <div><strong>{item.id}</strong><small>{item.version ? `${item.version} · ` : ""}{stateLabel}</small></div>
-      {optional && !ready && onInstall && (
-        <button className="optional-install-button" disabled={busy} title={busy ? "已有安装任务正在进行，请等待其结束。" : undefined} onClick={() => void onInstall()} type="button">
-          {installing ? "安装中…" : item.state === "outdated" ? "更新" : "下载"}
-        </button>
-      )}
+      <div>
+        <span className="asset-title-row">
+          <strong>{label}</strong>
+          <small className="asset-state">{stateLabel}</small>
+        </span>
+        {purpose && <small className="asset-purpose">{purpose}</small>}
+      </div>
     </div>
   );
 }
 
-export function RuntimePage({ capabilities, message, provisionMessage, provision, pythonBootstrap, ready, sidecar, onCancelInstall, onDismissProvisionMessage, onInstall, onInstallPython, onRemoveAll }: RuntimePageProps) {
+function AssetGroup({ title, items, optional = false, target, installing, blocked, removable = false, confirmingRemove = false, onInstall, onRemove, onCancelRemove }: {
+  title: string;
+  items: RuntimeItem[];
+  optional?: boolean;
+  target: RuntimeInstallTarget;
+  installing: boolean;
+  blocked: string;
+  removable?: boolean;
+  confirmingRemove?: boolean;
+  onInstall: (target: RuntimeInstallTarget) => Promise<void>;
+  onRemove?: () => void;
+  onCancelRemove?: () => void;
+}) {
+  const readyCount = items.filter((item) => item.state === "ready").length;
+  const allReady = items.length > 0 && readyCount === items.length;
+  const disabledReason = blocked
+    || (!items.length ? "当前平台没有可安装的项目。" : "")
+    || (allReady ? "该分组已全部安装并通过校验。" : "");
+  return (
+    <section className={`asset-group categorized ${optional ? "optional" : "required"}`}>
+      <div className="asset-group-heading">
+        <div className="asset-group-title">
+          <strong>{title}</strong>
+          <small>{readyCount}/{items.length} 已就绪</small>
+        </div>
+        <div className="asset-group-actions">
+          {(!allReady || !removable) && (
+            <button
+              className="quiet-button asset-group-action"
+              disabled={disabledReason !== ""}
+              onClick={() => void onInstall(target)}
+              title={disabledReason || `下载并安装「${title}」中的缺失项`}
+              type="button"
+            >
+              {installing ? "安装中…" : allReady ? "已安装" : "下载缺失项"}
+            </button>
+          )}
+          {removable && onRemove && (
+            <button
+              className={`asset-group-remove${allReady ? " installed" : ""}${confirmingRemove ? " confirming" : ""}`}
+              disabled={blocked !== ""}
+              onBlur={onCancelRemove}
+              onClick={onRemove}
+              title={blocked || `卸载「${title}」中的所有托管工具`}
+              aria-label={confirmingRemove ? `确认卸载「${title}」` : `卸载「${title}」`}
+              type="button"
+            >
+              {confirmingRemove ? "确认卸载" : allReady ? (
+                <>
+                  <span className="remove-idle-label">已安装</span>
+                  <span className="remove-hover-label">卸载整组</span>
+                </>
+              ) : "卸载整组"}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="asset-grid">
+        {items.map((item) => <AssetTile item={item} key={`${item.id}:${item.version ?? ""}`} optional={optional} />)}
+        {!items.length && <p className="asset-group-empty">当前平台没有可用项目</p>}
+      </div>
+    </section>
+  );
+}
+
+export function RuntimePage({ capabilities, message, provisionMessage, provision, pythonBootstrap, ready, sidecar, onCancelInstall, onDismissProvisionMessage, onInstall, onInstallPython, onRemoveAll, onRemoveGroup }: RuntimePageProps) {
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmRemoveGroup, setConfirmRemoveGroup] = useState<RuntimeToolGroup | null>(null);
   const issues = capabilities?.runtime?.issues ?? [];
   const stages = capabilities?.runtime?.stages ?? [];
   const job = provision?.job;
-  const mediaInstalling = job?.state === "running" && job.target === "media";
-  const mediaStage = stages.find((stage) => stage.id === "media");
-  const ffmpegReady = provision?.media_ready === true || (mediaStage !== undefined && !mediaStage.issues.some((issue) => issue.code === "missing_ffmpeg"));
-  const mediaState = mediaInstalling ? "downloading" : ffmpegReady ? "ready" : "missing";
   const pythonInstalling = pythonBootstrap?.state === "running";
   // A sidecar started on an interpreter without FineSub's bootstrap dependencies
   // answers requests but cannot build its provisioner. The card is the way out
   // of that state, so a running sidecar must not hide it.
   const bootstrapBroken = (provision?.bootstrap_error ?? "") !== "";
   const showPythonCard = !sidecar?.running || pythonInstalling || bootstrapBroken || pythonBootstrap?.state === "failed";
-  const assets = [provision?.runtime, ...(provision?.resources ?? []), ...(provision?.models ?? [])]
-    .filter((item): item is RuntimeItem => item !== undefined && item.id !== "ffmpeg" && item.id !== "ffprobe");
-  const optionalTools = assets.filter((item) => optionalToolIds.has(item.id));
+  const resources = provision?.resources ?? [];
+  const optionalTools = resources.filter((item) => optionalToolIds.has(item.id));
   const videoTools = optionalTools.filter((item) => videoToolIds.has(item.id));
   const otherTools = optionalTools.filter((item) => !videoToolIds.has(item.id));
-  const videoToolsReady = videoTools.length > 0 && videoTools.every((item) => item.state === "ready");
-  const requiredAssets = assets.filter((item) => !optionalToolIds.has(item.id));
-  const readyAssets = requiredAssets.filter((item) => item.state === "ready");
-  const pendingAssets = requiredAssets.filter((item) => item.state !== "ready");
+  const requiredRuntimeAssets = [
+    ...(provision?.runtime_supported && provision.runtime ? [provision.runtime] : []),
+    ...resources.filter((item) => !optionalToolIds.has(item.id)),
+  ];
+  const requiredModels = provision?.models ?? [];
+  const runtimeTarget: RuntimeInstallTarget = provision?.runtime_supported ? "runtime" : "media";
   // Every control below is gated on provision state. Without a reason attached
   // the panel greys out silently — on a first launch, or whenever the sidecar
   // cannot build its provisioner, that reads as a dead page.
   const jobRunning = job?.state === "running";
-  const provisionBlocked = !provision
+  const connectionBlocked = !provision
     ? pythonInstalling
       ? "正在准备 Python 启动环境，完成后即可安装运行时与模型。"
       : "本地执行服务尚未连接，无法读取运行时状态。等待服务启动，或点击右上角「重新检查」。"
     : provision.bootstrap_error
       ? `FineSub bootstrap 不可用，暂时无法安装运行时或模型：${provision.bootstrap_error}。可用下方「Python 3.12」卡片安装隔离的启动环境后重试。`
-      : !provision.supported
-        ? `当前 ${provision.platform} ${provision.media_supported ? "支持上方媒体必备工具；" : ""}本地 GPU 流水线仍仅面向 Windows x64/NVIDIA，也可继续使用云端容器。`
-        : "";
-  const runtimeBlocked = provisionBlocked || (jobRunning ? "已有安装任务正在进行，请等待其结束。" : "");
-  const modelsBlocked = runtimeBlocked || (provision && provision.runtime.state !== "ready" ? "需要先完成「仅装运行时」。" : "");
-  const mediaUnavailable = !provision
-    ? "本地执行服务尚未连接，无法下载 FFmpeg。等待服务启动，或点击右上角「重新检查」。"
-    : provision.bootstrap_error
-      ? `FineSub bootstrap 不可用：${provision.bootstrap_error}`
-      : !provision.media_supported
-        ? `托管 FFmpeg 暂不支持 ${provision.platform}，请自行安装并加入 PATH。`
-        : "";
-  const mediaBlocked = mediaUnavailable || (jobRunning ? "已有安装任务正在进行，请等待其结束。" : "");
+      : "";
+  const platformNotice = provision && !provision.runtime_supported
+    ? `当前 ${provision.platform} ${provision.media_supported ? "仅支持安装 FFmpeg 媒体工具；" : "暂不支持托管环境；"}本地 GPU 流水线仍仅面向 Windows x64/NVIDIA，也可继续使用云端容器。`
+    : "";
+  const jobBlocked = jobRunning ? "已有安装任务正在进行，请等待其结束。" : "";
+  const runtimeUnavailable = provision && !provision.runtime_supported && !provision.media_supported
+    ? `托管运行时暂不支持 ${provision.platform}。`
+    : "";
+  const runtimeBlocked = connectionBlocked || runtimeUnavailable || jobBlocked;
+  const allBlocked = connectionBlocked
+    || (provision && !provision.runtime_supported ? `本地 GPU 环境暂不支持 ${provision.platform}。` : "")
+    || jobBlocked;
+  const modelsBlocked = connectionBlocked
+    || (provision && !provision.runtime_supported ? `本地模型暂不支持 ${provision.platform}。` : "")
+    || jobBlocked
+    || (provision && provision.runtime.state !== "ready" ? "需要先完成「必备运行时」。" : "");
+  const toolsBlocked = connectionBlocked
+    || (provision && !provision.runtime_supported ? `托管可选工具暂不支持 ${provision.platform}。` : "")
+    || jobBlocked;
   const pythonBlocked = !pythonBootstrap
     ? ""
     : !pythonBootstrap.supported
@@ -200,16 +296,16 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
           <ul className="issues">
             {issues.map((issue) => <li key={`${issue.code}:${issue.message}`}><strong>{issue.code}</strong><span>{issue.message}</span></li>)}
           </ul>
-        ) : <p className="success-copy">{ready ? "未发现运行时问题。" : message || "等待 capabilities。"}</p>}
+        ) : !ready && <p className="success-copy">{message || "等待环境状态。"}</p>}
         <div className="diagnostic-section-heading">
-          <strong>当前环境下可运行环节</strong>
+          <strong>运行环节</strong>
           <small>{stages.filter((stage) => stage.ready).length} / {stages.length} 可用</small>
         </div>
         <div className="stage-list">
           {stages.map((stage) => (
             <div className={stage.ready ? "stage-ready" : "stage-blocked"} key={stage.id}>
               <span>{stage.ready ? "✓" : "!"}</span>
-              <div><strong>{stage.label}</strong><small>{stage.ready ? "可以运行" : stage.issues[0]?.message}</small></div>
+              <div><strong>{stage.label}</strong>{!stage.ready && <small>{stage.issues[0]?.message}</small>}</div>
             </div>
           ))}
           {!stages.length && <p className="success-copy">连接桌面执行服务后，将分别检测媒体准备、ASR、LLM、知识库和视频多模态环节。</p>}
@@ -219,15 +315,29 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
         <div className="panel-heading">
           <div><span className="eyebrow">Managed assets</span><h2>运行时与模型</h2></div>
           <div className="provision-actions">
-            <button className="step-button" disabled={runtimeBlocked !== ""} onClick={() => void onInstall("runtime")} title={runtimeBlocked || "第 1 步：只安装 Python/CUDA 运行环境与 uv、FFmpeg 基础资源，不下载任何模型"}>仅装运行时</button>
-            <button className="step-button" disabled={modelsBlocked !== ""} onClick={() => void onInstall("models")} title={modelsBlocked || "第 2 步：只补齐缺失的模型，需要运行时已就绪"}>仅补缺失模型</button>
-            <button className="primary-button" disabled={runtimeBlocked !== ""} onClick={() => void onInstall("all")} title={runtimeBlocked || "依次执行上面两步：先装运行时，再下载缺失的模型"}>一键准备全部</button>
+            <button
+              className={confirmRemove ? "runtime-remove-button confirming" : "runtime-remove-button"}
+              disabled={!provision?.root || jobRunning}
+              onBlur={() => setConfirmRemove(false)}
+              onClick={() => {
+                if (!confirmRemove) {
+                  setConfirmRemove(true);
+                  return;
+                }
+                setConfirmRemove(false);
+                void onRemoveAll();
+              }}
+              title={jobRunning ? "请先取消或等待当前安装任务结束。" : "删除托管的运行时、模型与缓存；不会删除任务、字幕和用户设置。"}
+              type="button"
+            >
+              {confirmRemove ? "确认删除环境" : "删除环境"}
+            </button>
+            <button className="primary-button" disabled={allBlocked !== ""} onClick={() => void onInstall("all")} title={allBlocked || "安装必备运行时，并下载全部缺失模型"}>一键准备全部</button>
           </div>
         </div>
-        <p className="provision-hint">「一键准备全部」= 先执行「仅装运行时」，再执行「仅补缺失模型」。已就绪的部分会自动跳过，重复执行只补缺失或损坏的内容。</p>
         <Notice className="provision-message failed" message={provisionMessage} autoDismissMs={0} onDismiss={onDismissProvisionMessage} />
-        {provisionBlocked !== "" && (
-          <p className={provision?.bootstrap_error ? "provision-blocked failed" : "provision-blocked"} role="status">{provisionBlocked}</p>
+        {(connectionBlocked || platformNotice) !== "" && (
+          <p className={provision?.bootstrap_error ? "provision-blocked failed" : "provision-blocked"} role="status">{connectionBlocked || platformNotice}</p>
         )}
         {showPythonCard && <section className={`required-dependency-card ${pythonBootstrap?.state ?? "missing"}`}>
           <div className="required-dependency-main">
@@ -253,102 +363,68 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             progress: pythonBootstrap.progress,
           }} onCancel={async () => undefined} cancellable={false} />}
         </section>}
-        {mediaState !== "ready" && <section className={`required-dependency-card ${mediaState}`}>
-          <div className="required-dependency-main">
-            <div className="required-dependency-icon" aria-hidden="true">FF</div>
-            <div className="required-dependency-copy">
-              <span>必备依赖 · REQUIRED</span>
-              <h3>FFmpeg</h3>
-              <p>用于视频探测、缩略图、波形、音频提取和视频导出；缺失时无法导入视频。</p>
-              {mediaUnavailable !== "" && <p className="required-dependency-blocked">{mediaUnavailable}</p>}
-            </div>
-            <div className="required-dependency-action">
-              <small>{mediaState === "downloading" ? "↓ 下载中" : "! 尚未安装"}</small>
-              <button className="primary-button" disabled={mediaBlocked !== ""} title={mediaBlocked || undefined} onClick={() => void onInstall("media")}>
-                {mediaState === "downloading" ? "正在安装…" : "立即下载"}
-              </button>
-            </div>
-          </div>
-          {mediaInstalling && job && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
-        </section>}
-        {job?.state === "running" && !mediaInstalling && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
+        {job?.state === "running" && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
         {job?.state !== "running" && <Notice className={`provision-message ${job?.state ?? ""}`} message={job?.message ?? ""} />}
-        {pendingAssets.length > 0 && (
-          <section className="asset-group pending">
-            <div className="asset-group-heading"><strong>待安装</strong><small>{pendingAssets.length} 项缺失或需要更新</small></div>
-            <div className="asset-grid">
-              {pendingAssets.map((item) => <AssetTile item={item} key={`${item.id}:${item.version ?? ""}`} />)}
-            </div>
-          </section>
-        )}
-        {readyAssets.length > 0 && (
-          <section className="asset-group ready">
-            <div className="asset-group-heading"><strong>已就绪</strong><small>{readyAssets.length} 项已安装并校验</small></div>
-            <div className="asset-grid">
-              {readyAssets.map((item) => <AssetTile item={item} key={`${item.id}:${item.version ?? ""}`} />)}
-            </div>
-          </section>
-        )}
-        {videoTools.length > 0 && (
-          <section className="asset-group optional">
-            <div className="asset-group-heading">
-              <div className="asset-group-title">
-                <strong>视频下载工具</strong>
-                <small>下载 YouTube 视频所需</small>
-              </div>
-              <button
-                className="quiet-button asset-group-action"
-                disabled={jobRunning || videoToolsReady}
-                onClick={() => onInstall("video-tools")}
-              >
-                {jobRunning && job?.target === "video-tools" ? "正在安装…" : videoToolsReady ? "已安装" : "安装全部"}
-              </button>
-            </div>
-            <div className="asset-grid">
-              {videoTools.map((item) => <AssetTile
-                item={item}
-                key={`${item.id}:${item.version ?? ""}`}
-                optional
-                busy={jobRunning}
-                installing={jobRunning && job.target === item.id}
-                onInstall={() => onInstall(item.id as RuntimeInstallTarget)}
-              />)}
-            </div>
-          </section>
-        )}
-        {otherTools.length > 0 && (
-          <section className="asset-group optional">
-            <div className="asset-group-heading"><strong>可选工具</strong><small>按需使用，不影响任务运行</small></div>
-            <div className="asset-grid">
-              {otherTools.map((item) => <AssetTile
-                item={item}
-                key={`${item.id}:${item.version ?? ""}`}
-                optional
-                busy={job?.state === "running"}
-                installing={job?.state === "running" && job.target === item.id}
-                onInstall={() => onInstall(item.id as RuntimeInstallTarget)}
-              />)}
-            </div>
-          </section>
-        )}
-        {provision?.root && <div className="runtime-storage-row">
-          <small className="runtime-root">安装目录：{provision.root}</small>
-          <button
-            className={confirmRemove ? "runtime-remove-button confirming" : "runtime-remove-button"}
-            disabled={job?.state === "running"}
-            onBlur={() => setConfirmRemove(false)}
-            onClick={() => {
-              if (!confirmRemove) {
-                setConfirmRemove(true);
+        <div className="asset-groups">
+          <AssetGroup
+            title="必备运行时"
+            items={requiredRuntimeAssets}
+            target={runtimeTarget}
+            installing={jobRunning && job?.target === runtimeTarget}
+            blocked={runtimeBlocked}
+            onInstall={onInstall}
+          />
+          <AssetGroup
+            title="必备模型"
+            items={requiredModels}
+            target="models"
+            installing={jobRunning && job?.target === "models"}
+            blocked={modelsBlocked}
+            onInstall={onInstall}
+          />
+          <AssetGroup
+            title="视频下载工具"
+            items={videoTools}
+            optional
+            target="video-tools"
+            installing={jobRunning && job?.target === "video-tools"}
+            blocked={toolsBlocked}
+            removable={videoTools.some((item) => item.source !== "system" && item.state !== "missing")}
+            confirmingRemove={confirmRemoveGroup === "video-tools"}
+            onInstall={onInstall}
+            onCancelRemove={() => setConfirmRemoveGroup((current) => current === "video-tools" ? null : current)}
+            onRemove={() => {
+              if (confirmRemoveGroup !== "video-tools") {
+                setConfirmRemoveGroup("video-tools");
                 return;
               }
-              setConfirmRemove(false);
-              void onRemoveAll();
+              setConfirmRemoveGroup(null);
+              void onRemoveGroup("video-tools");
             }}
-            type="button"
-          >
-            {confirmRemove ? "再次点击确认删除" : "删除所有环境"}
-          </button>
+          />
+          <AssetGroup
+            title="可选工具"
+            items={otherTools}
+            optional
+            target="optional-tools"
+            installing={jobRunning && job?.target === "optional-tools"}
+            blocked={toolsBlocked}
+            removable={otherTools.some((item) => item.source !== "system" && item.state !== "missing")}
+            confirmingRemove={confirmRemoveGroup === "optional-tools"}
+            onInstall={onInstall}
+            onCancelRemove={() => setConfirmRemoveGroup((current) => current === "optional-tools" ? null : current)}
+            onRemove={() => {
+              if (confirmRemoveGroup !== "optional-tools") {
+                setConfirmRemoveGroup("optional-tools");
+                return;
+              }
+              setConfirmRemoveGroup(null);
+              void onRemoveGroup("optional-tools");
+            }}
+          />
+        </div>
+        {provision?.root && <div className="runtime-storage-row">
+          <small className="runtime-root">安装目录：{provision.root}</small>
         </div>}
       </article>
     </section>

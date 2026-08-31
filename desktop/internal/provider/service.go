@@ -22,7 +22,8 @@ var validTaskID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 // message is derived from it rather than written out again, because the two
 // drifted apart once already -- aria2c was added to the Python side and this
 // list still refused it, naming the old tools in the error.
-var runtimeTargets = []string{"media", "runtime", "models", "all", "git", "yt-dlp", "tokcount", "aria2c", "node", "pot-provider", "video-tools"}
+var runtimeTargets = []string{"media", "runtime", "models", "all", "git", "yt-dlp", "tokcount", "aria2c", "node", "pot-provider", "video-tools", "optional-tools"}
+var removableRuntimeGroups = []string{"video-tools", "optional-tools"}
 
 type caller interface {
 	DoJSON(context.Context, string, string, any, any) error
@@ -94,6 +95,17 @@ func (s *Service) InstallRuntime(target string) (map[string]any, error) {
 func (s *Service) RemoveRuntime() (map[string]any, error) {
 	var result map[string]any
 	err := s.provider.DoJSON(context.Background(), http.MethodDelete, "/v1/runtime/provision", nil, &result)
+	return result, err
+}
+
+// RemoveRuntimeGroup removes one managed optional-tool group without touching
+// the required runtime, models, tasks, subtitles, or user settings.
+func (s *Service) RemoveRuntimeGroup(target string) (map[string]any, error) {
+	if !slices.Contains(removableRuntimeGroups, target) {
+		return nil, fmt.Errorf("removable runtime group must be one of: %s", strings.Join(removableRuntimeGroups, ", "))
+	}
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodDelete, "/v1/runtime/provision/group", map[string]any{"target": target}, &result)
 	return result, err
 }
 

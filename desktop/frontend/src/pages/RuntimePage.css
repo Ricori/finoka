@@ -1,13 +1,14 @@
-.runtime-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 17px; color: var(--text); }
-.runtime-layout > .panel { min-height: 430px; padding: 25px; }
+.runtime-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; color: var(--text); }
+.runtime-layout > .panel { min-height: 0; padding: 22px 24px; }
 .runtime-diagnostics { display: flex; flex-direction: column; }
-.runtime-diagnostics .issues { margin-bottom: 7px; }
-.diagnostic-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line-soft); }
-.diagnostic-section-heading strong { font-size: 12px; }
-.diagnostic-section-heading small { color: var(--faint); font-size: 11px; white-space: nowrap; }
-.runtime-diagnostics .stage-list { grid-template-columns: 1fr; margin-top: 12px; }
-.runtime-diagnostics .stage-list > div { padding: 10px 11px; }
-.runtime-layout .provision-panel { align-content: start; }
+.runtime-diagnostics .issues { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 9px; margin: 12px 0 0; }
+.runtime-diagnostics .success-copy { margin: 10px 0 0; }
+.diagnostic-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line-soft); }
+.diagnostic-section-heading strong { font-size: 13px; }
+.diagnostic-section-heading small { color: var(--faint); font-size: 12px; white-space: nowrap; }
+.runtime-diagnostics .stage-list { grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 10px; margin-top: 10px; }
+.runtime-diagnostics .stage-list > div { padding: 11px 12px; }
+.runtime-layout .provision-panel { container-name: provision; container-type: inline-size; align-content: start; gap: 16px; }
 .provision-blocked { display: flex; gap: 8px; margin: 0; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--warn) 34%, var(--line-soft)); border-radius: 10px; background: color-mix(in srgb, var(--warn) 9%, transparent); color: var(--mut); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
 .provision-blocked::before { flex: 0 0 auto; color: var(--warn); font-weight: 700; content: "!"; }
 .provision-blocked.failed { color: var(--warn); }
@@ -56,11 +57,36 @@
 .provision-phase-list .active i { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
 .provision-phase-list .complete { color: var(--mut); }
 .provision-phase-list .complete i { border-color: transparent; background: color-mix(in srgb, #64d9aa 17%, transparent); color: #64d9aa; }
+.asset-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; gap: 14px; }
+.asset-group.categorized { align-content: start; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line-soft); border-radius: 14px; background: color-mix(in srgb, var(--bg) 34%, transparent); }
+.asset-group.categorized .asset-group-heading { align-items: center; }
+.asset-group.categorized .asset-group-title { display: grid; gap: 4px; }
+.asset-group.categorized .asset-group-title strong { font-size: 14px; }
+.asset-group.categorized .asset-group-title small { font-size: 11px; line-height: 1.4; white-space: normal; }
 .asset-group.optional .asset-group-heading strong::before { background: var(--mut); }
+.asset-group-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.asset-group-heading .asset-group-action { min-width: 68px; padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 650; line-height: 1.4; white-space: nowrap; }
+.asset-group-remove { min-width: 68px; padding: 5px 9px; border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line-soft)); border-radius: 8px; background: transparent; color: var(--mut); font-size: 11px; font-weight: 650; line-height: 1.4; white-space: nowrap; cursor: pointer; }
+.asset-group-remove.installed { border-color: var(--line-soft); background: color-mix(in srgb, var(--ok) 7%, transparent); color: var(--ok); }
+.asset-group-remove .remove-hover-label { display: none; }
+.asset-group-remove.installed:not(.confirming):hover .remove-idle-label,
+.asset-group-remove.installed:not(.confirming):focus-visible .remove-idle-label { display: none; }
+.asset-group-remove.installed:not(.confirming):hover .remove-hover-label,
+.asset-group-remove.installed:not(.confirming):focus-visible .remove-hover-label { display: inline; }
+.asset-group-remove:hover:not(:disabled), .asset-group-remove:focus-visible:not(:disabled), .asset-group-remove.confirming { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); }
+.asset-group-remove:disabled { opacity: .42; cursor: not-allowed; }
+.asset-group.categorized .asset-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.asset-group.categorized .asset-grid > div { gap: 10px; min-width: 0; padding: 10px 11px; border-radius: 10px; }
+.asset-group.categorized .asset-grid > div > span:first-child { width: 27px; height: 27px; border-radius: 8px; font-size: 12px; }
+.asset-group.categorized .asset-grid > div > div { gap: 3px; }
+.asset-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-width: 0; }
+.asset-title-row strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.asset-title-row .asset-state { display: block; flex: 0 0 auto; font-size: 10px; white-space: nowrap; }
 .asset-optional { color: var(--mut); background: color-mix(in srgb, var(--mut) 14%, transparent); }
-.asset-grid > .optional-asset-tile { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
-.optional-install-button { flex: 0 0 auto; min-width: 34px; padding: 6px 8px; border: 1px solid var(--line-soft); border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--accent); font-size: 11px; font-weight: 650; white-space: nowrap; cursor: pointer; }
-.optional-install-button:disabled { opacity: .48; cursor: not-allowed; }
+.asset-grid > .optional-asset-tile { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+.asset-grid .asset-purpose { overflow: hidden; color: var(--mut); font-size: 11px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.asset-grid .asset-state { color: var(--faint); }
+.asset-group-empty { grid-column: 1 / -1; margin: 0; padding: 10px; color: var(--faint); font-size: 11px; text-align: center; }
 .runtime-storage-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .runtime-remove-button { flex: 0 0 auto; padding: 6px 9px; border: 1px solid color-mix(in srgb, var(--warn) 28%, var(--line-soft)); border-radius: 8px; background: transparent; color: var(--mut); font-size: 10px; cursor: pointer; }
 .runtime-remove-button.confirming { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
@@ -73,14 +99,27 @@
   .download-pulse span, .provision-progress-track.indeterminate span { animation: none; }
 }
 
-@media (max-width: 1050px) {
-  .runtime-layout { grid-template-columns: 1fr; }
-  .runtime-layout > .panel { min-height: 0; }
+@media (max-width: 900px) {
+  .asset-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
+  .asset-groups { grid-template-columns: 1fr; }
   .provision-progress-heading { grid-template-columns: auto minmax(0, 1fr) auto; }
   .provision-progress-heading .cancel-button { grid-column: 2 / -1; justify-self: end; }
   .required-dependency-main { grid-template-columns: auto minmax(0, 1fr); }
   .required-dependency-action { grid-column: 1 / -1; grid-template-columns: 1fr auto; align-items: center; justify-items: start; width: 100%; }
+  .asset-group.categorized .asset-group-heading { align-items: flex-start; }
+}
+
+/* The sidebar and workspace padding can make this panel narrow while the
+   viewport itself is still wide. Reflow against the panel, not the window. */
+@container provision (max-width: 900px) {
+  .asset-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container provision (max-width: 560px) {
+  .provision-panel > .panel-heading { flex-wrap: wrap; align-items: flex-start; }
+  .provision-panel > .panel-heading .provision-actions { justify-content: flex-start; width: 100%; }
+  .asset-groups { grid-template-columns: minmax(0, 1fr); }
 }

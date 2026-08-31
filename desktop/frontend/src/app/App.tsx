@@ -8,7 +8,7 @@ import type { CloudEntry, CloudSession } from "../bridge/cloud.ts";
 import { fineSubSettings } from "../bridge/settings.ts";
 import type { FineSubSettingsState } from "../bridge/settings.ts";
 import { fineSubRuntime } from "../bridge/runtime.ts";
-import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeProvisionState } from "../bridge/runtime.ts";
+import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeProvisionState, RuntimeToolGroup } from "../bridge/runtime.ts";
 import { desktopPreferences } from "../bridge/preferences.ts";
 import { desktopTaskHistory } from "../bridge/taskHistory.ts";
 import { desktopPlugins, mountedTools } from "../bridge/plugins.ts";
@@ -1016,6 +1016,17 @@ export default function App() {
     }
   }, [refresh]);
 
+  const removeRuntimeGroup = useCallback(async (target: RuntimeToolGroup) => {
+    setProvisionMessage("");
+    try {
+      setRuntimeProvision(await fineSubRuntime.removeGroup(target));
+      await refresh();
+    } catch (value) {
+      setProvisionMessage(value instanceof Error ? value.message : String(value));
+      await refresh({ silent: true });
+    }
+  }, [refresh]);
+
   const cancelRuntimeInstall = useCallback(async () => {
     setProvisionMessage("");
     try {
@@ -1333,7 +1344,7 @@ export default function App() {
           )}
 
           {section === "runtime" && (
-            <RuntimePage capabilities={capabilities} message={message} provisionMessage={provisionMessage} onDismissProvisionMessage={() => setProvisionMessage("")} provision={runtimeProvision} pythonBootstrap={pythonBootstrap} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} onInstallPython={installPython} onRemoveAll={removeRuntime} />
+            <RuntimePage capabilities={capabilities} message={message} provisionMessage={provisionMessage} onDismissProvisionMessage={() => setProvisionMessage("")} provision={runtimeProvision} pythonBootstrap={pythonBootstrap} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} onInstallPython={installPython} onRemoveAll={removeRuntime} onRemoveGroup={removeRuntimeGroup} />
           )}
 
           {section === "keys" && (

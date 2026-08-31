@@ -58,6 +58,14 @@ export function RemoveRuntime(): $CancellablePromise<{ [_ in string]?: any } | n
     return $Call.ByID(2762506059);
 }
 
+/**
+ * RemoveRuntimeGroup removes one managed optional-tool group without touching
+ * the required runtime, models, tasks, subtitles, or user settings.
+ */
+export function RemoveRuntimeGroup(target: string): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(3318269218, target);
+}
+
 export function ResumeTask(taskID: string): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(1056607311, taskID);
 }

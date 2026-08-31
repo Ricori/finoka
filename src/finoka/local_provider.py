@@ -221,10 +221,10 @@ def runtime_report(settings: FineSubSettings | None = None, provisioner: Runtime
         return {"id": stage_id, "label": label, "ready": not issues, "issues": issues}
 
     stages = [
-        stage("media", "媒体探测与音频准备", media_issues),
-        stage("raw-srt", "VAD、ASR 与原始字幕", asr_issues),
-        stage("final-srt", "LLM 纠错、翻译与最终字幕", llm_issues),
-        stage("knowledge", "知识库收集与更新", knowledge_issues),
+        stage("media", "媒体探测", media_issues),
+        stage("raw-srt", "生成原始字幕", asr_issues),
+        stage("final-srt", "纠错与翻译", llm_issues),
+        stage("knowledge", "知识库更新", knowledge_issues),
         stage("video-multimodal", "视频多模态纠错", llm_issues),
     ]
     return {
@@ -457,6 +457,19 @@ class LocalProvider:
             # A bare OSError reached the sidecar as an opaque HTTP 500, which the
             # desktop shell could only report as "Sidecar request failed".
             raise ProviderError("runtime_remove_failed", f"删除环境失败：{exc}", http_status=409) from exc
+
+    def remove_runtime_group(self, group: str) -> dict[str, Any]:
+        if self._provisioner is None:
+            raise ProviderError("runtime_unavailable", "FineSub runtime installer is unavailable", http_status=503)
+        with self._lock:
+            if any(process.poll() is None for process in self._processes.values()):
+                raise ProviderError("runtime_in_use", "有本地任务正在运行，请先停止任务再卸载工具", http_status=409)
+        try:
+            return self._provisioner.remove_tool_group(group)
+        except RuntimeProvisionError as exc:
+            raise ProviderError("runtime_remove_unavailable", str(exc), http_status=409) from exc
+        except OSError as exc:
+            raise ProviderError("runtime_remove_failed", f"卸载工具失败：{exc}", http_status=409) from exc
 
     def get_settings(self) -> dict[str, Any]:
         if self._settings is None:
