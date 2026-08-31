@@ -104,6 +104,34 @@ class WorkerAdapterTests(unittest.TestCase):
             self.assertEqual(set(manifest["artifacts"]), {"stable_json", "raw_srt"})
             self.assertEqual(len(manifest["artifacts"]["stable_json"]["sha256"]), 64)
 
+    def test_uncalibrated_vector_notice_is_dropped_but_siblings_still_speak(self) -> None:
+        # Driven through the engine's own `profile_warnings` rather than a
+        # hand-written string: the suppression matches on wording, so an
+        # upstream rewording has to fail here instead of quietly letting the
+        # line back into every task log.
+        from finesub.llm.routing.capabilities import profile_warnings
+        from finesub.llm.routing.profiles import parse_profile_id
+
+        vector = (
+            "correction_media=video,planning_media=video,"
+            "retrieval=none,difficulty=quality,continuity="
+        )
+
+        def emitted(profile_id: str) -> list[dict]:
+            messages = profile_warnings(parse_profile_id(profile_id))
+            self.assertTrue(messages, f"engine said nothing for {profile_id}")
+            output = io.StringIO()
+            reporter = worker.FinokaReporter()
+            with contextlib.redirect_stdout(output):
+                for message in messages:
+                    reporter.warning("routing-profile", message)
+            return [json.loads(line) for line in output.getvalue().splitlines()]
+
+        self.assertEqual(emitted(vector + "serial"), [])
+        parallel = emitted(vector + "parallel")
+        self.assertEqual([event["type"] for event in parallel], ["warning"])
+        self.assertIn("continuity=parallel", parallel[0]["payload"]["message"])
+
     def test_normalize_engine_device(self) -> None:
         self.assertEqual(worker._normalize_engine_device("cuda:0"), ("cuda", "0"))
         self.assertEqual(worker._normalize_engine_device("cuda:1"), ("cuda", "1"))

@@ -35,6 +35,20 @@ def emit(event_type: str, payload: Mapping[str, Any] | None = None) -> None:
     print(json.dumps({"type": event_type, "payload": dict(payload or {})}, ensure_ascii=False, separators=(",", ":")), flush=True)
 
 
+# The engine warns once per run when the switch vector is outside its six
+# measured combinations (finesub `capabilities.CALIBRATED_VECTORS`). Most of
+# Finoka's switch matrix is, so it fires on nearly every task -- and there is
+# nothing the user can do about it: `c` is derived by the same per-axis sum as
+# the measured vectors, and a window that does overrun its output envelope is
+# split in half and retried by the correction loop. Dropped rather than
+# downgraded, per product decision. The sibling `routing-profile` warnings --
+# continuity=parallel, and a vector whose measurement went stale -- still speak.
+# Matching on the text is deliberate: an upstream rewording lets the line back
+# in (noise, not breakage), and the vendor snapshot is hash-pinned, so a sync
+# surfaces the change as a diff.
+_UNCALIBRATED_VECTOR_NOTICE = "未标定：输出预算系数"
+
+
 class FinokaReporter:
     def planned(self, stages) -> None:
         return
@@ -49,6 +63,8 @@ class FinokaReporter:
         emit("log", {"message": f"{stage}: " + "，".join(f"{key} {value}" for key, value in metrics.items())})
 
     def warning(self, code: str, message: str, *, impact: str = "", action: str = "") -> None:
+        if code == "routing-profile" and _UNCALIBRATED_VECTOR_NOTICE in message:
+            return
         emit("warning", {"code": code, "message": message, "impact": impact, "action": action})
 
     def debug(self, message: str, fields=None) -> None:
