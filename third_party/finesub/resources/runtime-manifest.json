@@ -38,11 +38,11 @@
       "directory": "ffmpeg",
       "archive_type": "zip",
       "required_files": [
-        "ffmpeg-n9.0-latest-win64-lgpl-9.0/bin/ffmpeg.exe",
-        "ffmpeg-n9.0-latest-win64-lgpl-9.0/bin/ffprobe.exe"
+        "ffmpeg-n9.0-latest-win64-gpl-9.0/bin/ffmpeg.exe",
+        "ffmpeg-n9.0-latest-win64-gpl-9.0/bin/ffprobe.exe"
       ],
       "asset": {
-        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-9.0.zip",
+        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip",
         "digest_from": "github-release-api"
       }
     },

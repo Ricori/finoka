@@ -5,6 +5,7 @@ import type { Capabilities, TaskRequest } from "../providers/types.ts";
 import type { FineSubSettingsState } from "../bridge/settings.ts";
 import type { ExecutionMode } from "../app/types.ts";
 import { CustomSelect } from "./CustomSelect.tsx";
+import { routeServesMedia, type MediaCapability } from "./llmRouting.ts";
 import "./TranscriptionDialog.css";
 
 interface TranscriptionDialogProps {
@@ -34,7 +35,6 @@ const languageOptions = [
 ] as const;
 
 const LLM_KEY_HINT = "尚未配置模型提供商：请到设置里选择提供商与全局模型并保存，否则无法进行 LLM 纠错、翻译与知识处理。";
-const GEMINI_KEY_HINT = "需要 Gemini Key：音频与视频多模态纠错目前只有 Gemini 模型支持。";
 const RETRIEVAL_KEY_HINT = "需要 Exa、Tavily 或 Gemini 免费池 Key 才能进行本地联网检索。";
 const NATIVE_SEARCH_HINT = "需要 Gemini Key：模型原生检索依赖 Gemini 内置搜索。";
 
@@ -88,21 +88,43 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const finalOutput = request.target === "final-srt";
   const devices = localCapabilities?.devices ?? [];
 
-  const limitsFor = useCallback((target: ExecutionMode): KeyLimits => {
+  const limitsFor = useCallback((target: ExecutionMode, retrieval: TaskRequest["correction"]["retrieval"]): KeyLimits => {
     // 云端运行的凭据由 Nonoka Cloud 管理；读不到本地设置时也不做限制，避免误锁死。
     const keys = target === "local" ? settings : null;
     const gemini = !keys || keys.keys.some((key) => key.configured && (key.name === "GEMINI_FREE" || key.name === "GEMINI_PAID"));
     const video = (target === "local" ? localCapabilities : cloudCapabilities)?.features.video_multimodal === true;
+    // 音视频窗看的是「谁来答」，不是「有没有 Gemini Key」：本地 CLI 也能收音视频
+    // （agy 的 Gemini 3.7 Flash），而它不需要任何 Gemini Key。开着本地检索时每窗
+    // 还有一个查询轮，它跟着纠错参考走却用「窗口规划」那一格的模型，所以两格都
+    // 得能收——否则引擎会在开跑前的能力校验里直接拒掉整个任务。
+    const serves = (capability: MediaCapability) => {
+      if (!keys) return true;
+      if (!routeServesMedia(keys.modelRouting, "correction", capability, gemini)) return false;
+      return retrieval !== "local" || routeServesMedia(keys.modelRouting, "planning", capability, gemini);
+    };
     return {
       // 只认已保存的全局模型：装了 codex CLI、或在设置里选了却没保存，都不算配置好。
       llm: !keys || keys.llmReady,
       gemini,
       retrieval: !keys || keys.retrievalKeyConfigured,
-      audio: target === "local" && gemini,
-      video: video && gemini,
+      audio: target === "local" && serves("supportsAudio"),
+      video: video && serves("supportsVideo"),
     };
   }, [cloudCapabilities, localCapabilities, settings]);
-  const limits = useMemo(() => limitsFor(mode), [limitsFor, mode]);
+  const limits = useMemo(
+    () => limitsFor(mode, request.correction.retrieval),
+    [limitsFor, mode, request.correction.retrieval],
+  );
+
+  /** 音视频不可用时，说清是哪一格挡住的——两格用的可能不是同一个模型。 */
+  const mediaHint = useCallback((capability: MediaCapability): string => {
+    const label = capability === "supportsAudio" ? "音频" : "视频多模态";
+    if (!settings) return `当前模型不支持${label}。`;
+    if (!routeServesMedia(settings.modelRouting, "correction", capability, limits.gemini)) {
+      return `「纠错与翻译」当前使用的模型不支持${label}：请到设置里改用支持的模型（例如本地 Antigravity 的 Gemini 3.7 Flash），或配置 Gemini Key 由 Gemini 承担。`;
+    }
+    return `开启资料检索后每窗还有一个查询轮，它使用「窗口规划」的模型，而该模型不支持${label}：请把这一格也指到支持的模型，或把资料检索设为「不检索」。`;
+  }, [limits.gemini, settings]);
 
   const summary = useMemo(() => {
     const output = finalOutput ? "AI 纠错与翻译后的最终字幕" : "识别与断句后的原始字幕";
@@ -129,7 +151,8 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
     const ready = nextMode === "local" ? localReady : cloudAuthenticated;
     if (!ready) return;
     setMode(nextMode);
-    setRequest(withinLimits(requestFor(nextMode, entry, localCapabilities), limitsFor(nextMode)));
+    const next = requestFor(nextMode, entry, localCapabilities);
+    setRequest(withinLimits(next, limitsFor(nextMode, next.correction.retrieval)));
     setStep("settings");
   };
 
@@ -192,7 +215,7 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
 
             {finalOutput && <>
               <section className="transcription-section form-grid">
-                <label>纠错参考<CustomSelect value={request.correction.media} options={[{ value: "text", label: "仅识别文本" }, ...(mode === "local" ? [{ value: "audio" as const, label: "音频", disabled: !limits.audio, hint: limits.audio ? undefined : GEMINI_KEY_HINT }] : []), ...(supportsVideo ? [{ value: "video" as const, label: "视频多模态", disabled: !limits.video, hint: limits.video ? undefined : GEMINI_KEY_HINT }] : [])]} onChange={(media) => setRequest((current) => ({ ...current, correction: { ...current.correction, media } }))} /></label>
+                <label>纠错参考<CustomSelect value={request.correction.media} options={[{ value: "text", label: "仅识别文本" }, ...(mode === "local" ? [{ value: "audio" as const, label: "音频", disabled: !limits.audio, hint: limits.audio ? undefined : mediaHint("supportsAudio") }] : []), ...(supportsVideo ? [{ value: "video" as const, label: "视频多模态", disabled: !limits.video, hint: limits.video ? undefined : mediaHint("supportsVideo") }] : [])]} onChange={(media) => setRequest((current) => ({ ...current, correction: { ...current.correction, media } }))} /></label>
                 <label>处理质量<CustomSelect value={request.correction.difficulty} options={[{ value: "efficiency", label: "效率优先" }, { value: "intermediate", label: "均衡" }, { value: "quality", label: "质量优先" }]} onChange={(difficulty) => setRequest((current) => ({ ...current, correction: { ...current.correction, difficulty } }))} /></label>
                 <label>快速模式<CustomSelect value={request.correction.fast} options={[{ value: "auto", label: "自动" }, { value: "on", label: "开启" }, { value: "off", label: "关闭" }]} onChange={(fast) => setRequest((current) => ({ ...current, correction: { ...current.correction, fast } }))} /></label>
                 {mode === "local" && <label>资料检索<CustomSelect value={request.correction.retrieval} options={[{ value: "none", label: "不检索" }, { value: "local", label: "本地检索", disabled: !limits.retrieval, hint: limits.retrieval ? undefined : RETRIEVAL_KEY_HINT }, { value: "native", label: "模型原生检索", disabled: !limits.gemini, hint: limits.gemini ? undefined : NATIVE_SEARCH_HINT }]} onChange={(retrieval) => setRequest((current) => ({ ...current, correction: { ...current.correction, retrieval } }))} /></label>}

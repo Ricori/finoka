@@ -1,11 +1,36 @@
-Subject: [PATCH 6/6] Declare the video downloader's optional tools
+Subject: [PATCH 6/7] Declare the runtime tools Finoka needs, and the ffmpeg that runs them
 
-Reason: The desktop video downloader needs tools upstream's manifest does not
-declare, and all of them are optional: without them the downloader still runs,
-it is just slower and fails on anything but short videos. Finoka has no resource
-system of its own -- every managed binary it can find lives under
-`finesub/runtime/<id>/`, resolved by `managedtools` -- so they have to be
-declared here to be installable at all.
+Reason: Finoka has no resource system of its own -- every managed binary it can
+find lives under `finesub/runtime/<id>/`, resolved by `managedtools` -- so a tool
+has to be declared here to be installable at all. Two separate corrections to the
+packaged manifest, both about which binary lands on the user's machine.
+
+**The ffmpeg variant.** The manifest pins BtbN's **lgpl** build, which is
+configured `--disable-libx264 --disable-libx265`, while every clip the engine
+encodes asks for `libx264` -- `VIDEO_ENCODER_ARGS` (the video window clips,
+Gemini REST path included), `transcode_video_for_agy`, and
+`containerize_audio_for_agy`, which wraps an audio window in an MP4 with one
+black frame because agy rejects a bare audio MIME type. So the moment a run uses
+anything but text as its correction reference, ffmpeg answers:
+
+  [vost#0:0] Unknown encoder 'libx264'
+  Error opening output files: Encoder not found
+
+Switching the variant rather than the encoder keeps every clip byte-identical to
+what the engine was written and calibrated for. libopenh264 is present in the
+lgpl build but takes a bitrate rather than `-crf`, has no `-tune stillimage`, and
+would silently change what the model sees; a runtime encoder probe would do the
+same, differently on each machine, against the reproducibility `describe_ffmpeg`
+exists for. The GPL variant comes from the same release under the same
+digest-from-the-release-API rule, onto the user's own machine at provisioning
+time -- Finoka redistributes no ffmpeg binary, and invoking one as a subprocess
+is not derivation. Changing `required_files` is also what re-provisions an
+existing lgpl install: `status()` grades a version dir by those paths, so the old
+directory reads as missing and is replaced.
+
+**The video downloader's optional tools.** All three are optional: without them
+the downloader still runs, it is just slower and fails on anything but short
+videos.
 
   aria2c         Multi-connection fetch. Pure speed; the built-in downloader
                  works without it.
@@ -30,12 +55,29 @@ and corresponding source accordingly.
 Every asset is pinned by size and sha256. aria2c's binary and node's sit one
 directory down inside their archives, so `required_files` names those paths.
 
-Removal: Delete once upstream declares these tools in its own manifest.
+Removal: Delete the ffmpeg half once upstream ships an encoder the lgpl build can
+run or pins the GPL variant itself; delete the rest once upstream declares these
+three tools in its own manifest.
 
 diff --git a/resources/runtime-manifest.json b/resources/runtime-manifest.json
-index f9c1836..702ab08 100644
+index f9c1836..64ce291 100644
 --- a/resources/runtime-manifest.json
 +++ b/resources/runtime-manifest.json
+@@ -38,11 +38,11 @@
+       "directory": "ffmpeg",
+       "archive_type": "zip",
+       "required_files": [
+-        "ffmpeg-n9.0-latest-win64-lgpl-9.0/bin/ffmpeg.exe",
+-        "ffmpeg-n9.0-latest-win64-lgpl-9.0/bin/ffprobe.exe"
++        "ffmpeg-n9.0-latest-win64-gpl-9.0/bin/ffmpeg.exe",
++        "ffmpeg-n9.0-latest-win64-gpl-9.0/bin/ffprobe.exe"
+       ],
+       "asset": {
+-        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-9.0.zip",
++        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip",
+         "digest_from": "github-release-api"
+       }
+     },
 @@ -90,6 +90,52 @@
          "size": 9303247,
          "sha256": "4e1d215bec6f2f48f8271673a1339d289bf8650a155b88a6210174bd133e6eec"

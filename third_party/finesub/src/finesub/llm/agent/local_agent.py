@@ -3436,6 +3436,9 @@ class AgyLocalAgentDriver(LocalAgentDriver):
         self._tool_slot_lock = threading.Condition()
         self._tool_slots_in_use: set[int] = set()
         self._tool_slot_local = threading.local()
+        # Whether this CLI takes `--add-dir`; set by the probe off `--help`.
+        # See `_workspace_arguments` for what the flag is doing here.
+        self._supports_add_dir = False
 
     @property
     def agy_config(self) -> AgyDriverConfig:
@@ -3516,6 +3519,40 @@ class AgyLocalAgentDriver(LocalAgentDriver):
                 record_path, json.dumps(record, ensure_ascii=False, indent=2) + "\n"
             )
 
+    def _workspace_arguments(self, roots: Sequence[Path]) -> list[str]:
+        """`--add-dir` for every directory this call is allowed to read.
+
+        agy 1.1.20 grants workspace-scoped reads by itself and prompts for
+        everything else -- and a prompt is fatal headless: `-p` soft-denies the
+        tool and ends the turn with no assistant message, which reaches the
+        router as a transient failure and drops the whole chain onto the next
+        target. The files FineSub hands the model live *outside* the registered
+        project (the tool protocol's assignment root, the native project's
+        sibling capsules), so without this the read is denied before the guard
+        hook is ever consulted.
+
+        This widens agy's *permission* view only. The read boundary is still
+        the project's PreToolUse hook, which denies every native tool but
+        `view_file` and every path outside the roots written for this call --
+        and a hook denial, unlike a permission prompt, comes back to the model
+        as a tool error the turn survives.
+
+        Skipped on a CLI whose `--help` does not list the flag: an unknown flag
+        is a pre-flight failure, and those classify as transient too.
+        """
+
+        if not self._supports_add_dir:
+            return []
+        arguments: list[str] = []
+        seen: set[str] = set()
+        for root in roots:
+            resolved = str(Path(root).resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            arguments.extend(("--add-dir", resolved))
+        return arguments
+
     def _tool_argv(
         self,
         capsule: AgentCapsule,
@@ -3556,10 +3593,13 @@ class AgyLocalAgentDriver(LocalAgentDriver):
         # The files this call's `view_file` may open: the assignment root
         # (its blocks). Rewritten every invocation, like the server entry,
         # so a slot never carries a previous call's roots.
+        view_roots = [
+            Path(str(item)).resolve() for item in mcp_server.get("view_roots") or ()
+        ]
         write_atomic(
             paths["view_roots"],
             json.dumps(
-                [str(Path(str(item)).resolve()) for item in mcp_server.get("view_roots") or ()],
+                [str(root) for root in view_roots],
                 ensure_ascii=False,
                 indent=2,
             )
@@ -3592,6 +3632,9 @@ class AgyLocalAgentDriver(LocalAgentDriver):
             project_id,
             "--agent",
             AGY_TOOL_AGENT_NAME,
+            # The blocks are files under the assignment root, which is not in
+            # the registered project: without this agy denies reading them.
+            *self._workspace_arguments(view_roots),
             "--sandbox",
             "--print-timeout",
             f"{self.config.timeout_seconds}s",
@@ -3667,6 +3710,7 @@ class AgyLocalAgentDriver(LocalAgentDriver):
             and "--new-project" in help_text
             and "--agent" in help_text
         )
+        self._supports_add_dir = "--add-dir" in help_text
         error = "" if available else "Antigravity probe command failed"
         if available and structured_events and can_restrict_tools:
             try:
@@ -4130,6 +4174,13 @@ class AgyLocalAgentDriver(LocalAgentDriver):
             project_id,
             "--agent",
             AGY_NATIVE_AGENT_NAME if native_search else AGY_AGENT_NAME,
+            # The native project is rooted *below* the domain its guard
+            # bounds reads to, so its capsules are outside its own
+            # workspace; the media project is that domain and adds
+            # nothing.
+            *self._workspace_arguments(
+                [domain_root] if native_search else []
+            ),
             "--sandbox",
             "--print-timeout",
             f"{self.config.timeout_seconds}s",

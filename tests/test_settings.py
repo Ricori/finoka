@@ -236,11 +236,14 @@ class FineSubSettingsTests(unittest.TestCase):
             correction, _ = routes.resolve_binding(
                 routes.active_preset_id, "correction-text", "quality"
             )
-            self.assertEqual(correction.target_ids[0], "local-codex-completion-gpt-5_6-sol")
-            # The API models stay behind it: a local agent cannot serve an
-            # audio or video window, and the fallback is what keeps those
-            # routable.
-            self.assertGreater(len(correction.target_ids), 1)
+            # Alone: a selected local CLI runs on the user's own
+            # subscription, so the packaged API tail is not a fallback
+            # they asked for. A window this CLI cannot serve now fails
+            # its capability check naming the CLI, instead of quietly
+            # continuing on a Gemini tier that may have no key at all.
+            self.assertEqual(
+                correction.target_ids, ("local-codex-completion-gpt-5_6-sol",)
+            )
 
     def test_local_agy_route_binds_the_packaged_agent_target(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
@@ -285,7 +288,9 @@ class FineSubSettingsTests(unittest.TestCase):
             correction, _ = routes.resolve_binding(
                 routes.active_preset_id, "correction-text", "quality"
             )
-            self.assertEqual(correction.target_ids[0], "local-agy-media-gemini-3_7-flash")
+            self.assertEqual(
+                correction.target_ids, ("local-agy-media-gemini-3_7-flash",)
+            )
 
     def test_local_agy_opus_route_binds_its_own_target(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
@@ -427,6 +432,42 @@ class FineSubSettingsTests(unittest.TestCase):
                 item for item in snapshot["baseUrls"] if item["name"] == "OPENAI_BASE_URL"
             )
             self.assertFalse(official["customized"])
+
+    def test_api_provider_keeps_the_packaged_tail_behind_it(self) -> None:
+        """Only a local CLI drops the fallback.
+
+        A compat endpoint is text-only, so the packaged candidates behind it
+        are what keeps an audio or video window routable at all. The
+        no-fallback rule is about running on somebody's own CLI subscription,
+        not about pinning in general.
+        """
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "OPENAI_COMPAT_API_KEY": "compat-secret",
+                    "OPENAI_COMPAT_BASE_URL": "https://vendor.example/v1",
+                    "LLM_DEFAULT_PROVIDER": "openai-compat",
+                    "LLM_DEFAULT_MODEL": "vendor-large",
+                }
+            )
+
+            from finesub.config import clear_config_cache
+            from finesub.llm.routing.model_catalog import default_model_catalog
+            from finesub.llm.routing.model_routes import default_model_routes
+
+            clear_config_cache()
+            default_model_catalog.cache_clear()
+            default_model_routes.cache_clear()
+            routes = default_model_routes()
+            correction, _ = routes.resolve_binding(
+                routes.active_preset_id, "correction-text", "quality"
+            )
+            self.assertGreater(len(correction.target_ids), 1)
 
     def test_compat_provider_without_a_base_url_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(

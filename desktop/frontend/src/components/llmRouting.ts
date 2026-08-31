@@ -1,4 +1,4 @@
-import type { FineSubModelProvider, FineSubModelProviderID, FineSubModelRoute } from "../bridge/settings.ts";
+import type { FineSubModelProvider, FineSubModelProviderID, FineSubModelRoute, FineSubModelRoutingState } from "../bridge/settings.ts";
 
 export function routeSettingName(routeID: string, field: "provider" | "model") {
   return routeID === "default"
@@ -40,4 +40,34 @@ export function pickModelForProvider(options: {
       : (provider.defaultModel || provider.models[0]?.id || "");
   }
   return candidate;
+}
+
+/** 音视频窗要求模型具备的能力位，与设置快照里的字段同名。 */
+export type MediaCapability = "supportsAudio" | "supportsVideo";
+
+/** 某个任务分组实际由哪个提供商与模型承担：任务级覆盖优先，否则用全局默认。 */
+export function routeForTaskGroup(routing: FineSubModelRoutingState, routeID: string): FineSubModelRoute {
+  const task = routing.taskRoutes.find((item) => item.id === routeID)?.route;
+  return task && task.provider && task.model ? task : routing.defaultRoute;
+}
+
+/** 这一格能不能承担音频或视频窗。
+ *
+ * 本地 CLI 后面没有兜底——引擎侧选定本地 CLI 后就不再挂 API 梯队，所以只看
+ * 它自己在打包清单里声明的能力。API 提供商后面仍然跟着打包的 Gemini 候选，
+ * 因此手填模型（没有能力声明）或选中的模型本身不支持时，配了 Gemini Key 就
+ * 仍然可行——由兜底承担。
+ */
+export function routeServesMedia(
+  routing: FineSubModelRoutingState,
+  routeID: string,
+  capability: MediaCapability,
+  geminiConfigured: boolean,
+): boolean {
+  const route = routeForTaskGroup(routing, routeID);
+  if (!route.provider || !route.model) return false;
+  const provider = routing.providers.find((item) => item.id === route.provider);
+  if (!provider) return false;
+  const declared = provider.models.find((item) => item.id === route.model)?.[capability] === true;
+  return provider.requiresKey ? declared || geminiConfigured : declared;
 }

@@ -163,6 +163,12 @@ class PurelyAdditiveTests(unittest.TestCase):
                 "src/finesub/llm/routing/model_catalog.psv",
                 "src/finesub/llm/routing/model_routes.toml",
             ],
+            # Local-only ground: the driver that launches a CLI on the
+            # user's machine. No container ever spawns one, so the two
+            # sides still run the same code on every path the cloud takes.
+            "0007-agy-workspace-read-grant.patch": [
+                "src/finesub/llm/agent/local_agent.py",
+            ],
         }
         for name in names[1:]:
             with self.subTest(patch=name):

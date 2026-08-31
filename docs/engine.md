@@ -64,9 +64,11 @@ third_party/finesub/
 | :--- | :--- | :--- | :--- |
 | `0001-split-vad-prefix-and-qwen-pass.patch` | `src/finesub` | 云端三容器架构需要将纯 CPU 的 VAD 前缀与 Qwen 收尾独立调度执行 | 上游支持分步调度，或不再拆分容器 |
 | `0002-retry-directory-publish-rename.patch` | `src/finesub_bootstrap` | Windows 下防病毒扫描或读取句柄导致 `os.replace` 偶发报错，引入带退避的有界重试 | 上游合并原子重命名的重试逻辑 |
-| `0003-desktop-model-routing.patch` | `src/finesub` | 读取桌面端首选 LLM 目标与 Gemini Base URL 自定义配置 | 上游提供原生 Base URL 与目标覆盖接口 |
+| `0003-desktop-model-routing.patch` | `src/finesub` | 读取桌面端首选 LLM 目标与 Gemini Base URL 自定义配置。API 提供商的选定目标前置于打包组之上（保留可处理音视频的兜底）；选定**本地 CLI** 时不保留任何 API 兜底——它跑在用户自己的订阅上，静默改走 Gemini 既不是用户要的，也会在没有 Gemini Key 时报出与真实原因无关的错误。同 tier 的打包成员保留（同一个 CLI，agy 的联网孪生目标据此仍可达）；该 CLI 无法胜任的任务改为在能力校验阶段直接报错并点名 CLI | 上游提供原生 Base URL 与目标覆盖接口 |
 | `0004-subprocess-text-encoding-and-msvc-include.patch` | `src/finesub` | 非 UTF-8 ANSI 代码页（如 GBK）下 `subprocess(text=True)` 读 ffmpeg/ffprobe 的 UTF-8 输出会抛 `UnicodeDecodeError`；`cl.exe` 在 PATH 但 `INCLUDE` 缺 `<array>` 时 AOTI 会跳过 `vcvars64.bat` 激活 | 上游显式指定 UTF-8 解码并检查 MSVC include 就绪 |
 | `0005-codex-terra-model.patch` | `src/finesub` | Codex CLI 提供 `gpt-5.6-terra`，但打包目录只记录了 luna 与 sol；`LOCAL_CODEX` 的目录行不会自动生成 target（`AUTO_TARGET_LOCAL_AGENT_PROFILES` 仅含 dsh），桌面端因此无目标可指。quality_score 由 owner 评定为 80（介于 sol 90 与 luna 70 之间），其余能力列沿用同族 luna 的实测值，待 terra 单独实测后替换 | 上游在打包目录中收录 terra |
+| `0006-runtime-tool-manifest.patch` | `resources/runtime-manifest.json` | 两处对打包清单的更正。①清单钉的是 BtbN 的 **lgpl** 构建（`--disable-libx264`），而引擎所有切片都用 `libx264` 编码——视频窗切片、agy 的视频转码，以及把音频窗封成单帧 MP4 的 `containerize_audio_for_agy`；只要纠错参考不是纯文本就会报 `Unknown encoder 'libx264'`，改用同一 release 的 gpl 构建可让切片与引擎的标定保持一致，ffmpeg 由用户机器在预置阶段自行下载，Finoka 不分发该二进制。②桌面端视频下载器需要 aria2c、node 与 pot-provider，上游清单未声明；Finoka 没有独立的资源系统，只能在此声明才可安装 | ffmpeg 部分：上游改用 lgpl 构建可运行的编码器或自行钉 gpl 变体；其余：上游清单收录这三项工具 |
+| `0007-agy-workspace-read-grant.patch` | `src/finesub` | agy 1.1.20 起只自动放行工作区内的读取，工作区外一律弹权限确认；headless 无法确认，`-p` 会软拒绝并结束回合，驱动判为 transient，链路一路回退到没有 Key 的 Gemini 付费池并报出误导性的 `Provider GEMINI_PAID is disabled`。工具协议与联网检索两条 agy 路径交给模型的文件都在其项目工作区之外，用 `--add-dir` 把这些目录并入工作区；读取边界仍由项目内的 PreToolUse 钩子把守 | 上游为 agy 项目授予其所交付目录的读取权限 |
 
 ### 3.2 补丁栈测试约束
 - **正反向重放**：`tests/test_finesub_patch_stack.py` 会从当前 vendor 逆序撤销所有 patch，比对是否与 `BASELINE_FILES.json` 一致；随后重新正序应用，比对是否与 `FILES.json` 完全一致。

@@ -1133,6 +1133,27 @@ def load_model_routes(
             existing = (
                 model_groups[base_group_id].target_ids if base_group_id else ()
             )
+            # A pinned local CLI does not fall back onto an API model.
+            # The packaged tail is there so a text-only *API* provider
+            # still has a media-capable candidate behind it; behind a
+            # local agent it means a run the user pointed at their own
+            # CLI subscription quietly continues on Gemini instead --
+            # and with no Gemini key configured the call dies naming a
+            # tier nobody chose ("Provider GEMINI_PAID is disabled")
+            # rather than saying what the CLI did. Packaged members on
+            # the same tier stay: they are the same CLI, and they are
+            # how an entitlement twin (agy's search-declaring target)
+            # remains reachable for a retrieval=native call.
+            pinned_target = targets[target_id]
+            if pinned_target.backend == "local_agent":
+                pinned_tier = facts[pinned_target.fact_id].provider_tier
+                existing = tuple(
+                    member
+                    for member in existing
+                    if targets[member].backend == "local_agent"
+                    and facts[targets[member].fact_id].provider_tier
+                    == pinned_tier
+                )
             members = tuple(dict.fromkeys((target_id, *existing)))
             group_id = f"finoka-route:{task_group_id}"
             model_groups[group_id] = ModelGroup(

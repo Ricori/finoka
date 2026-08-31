@@ -88,8 +88,7 @@ export function KaraokeModal() {
       <button className="x-close" title="关闭" onClick={close}>✕</button>
       <div className="fx-heading">
         <div><h3>K 轴（逐字时间）</h3>
-          <p>逐字特效按 K 轴决定每个字什么时候出现。自动 K 轴按中间产物的词边界切段，
-            一个词一段、整词一起亮；词内的字级时间转写并不提供，编出来反而更难看。</p></div>
+          <p>逐字特效按 K 轴决定每个字什么时候出现。自动 K 轴按中间产物的词边界切段。</p></div>
       </div>
 
       <div className="kx-bar">
