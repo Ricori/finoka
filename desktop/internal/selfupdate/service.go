@@ -62,6 +62,7 @@ type Service struct {
 	root       string
 	status     Status
 	busy       bool
+	tracking   bool
 	editorOpen func() bool
 }
 
@@ -97,17 +98,35 @@ func Attach(s *Service, app *application.App) error {
 		if !ok {
 			return
 		}
-		s.mu.Lock()
-		s.status.Stage = "download"
-		s.status.Done = progress.Written
-		s.status.Total = progress.Total
-		status := s.status
-		s.mu.Unlock()
-		s.publish(status)
+		s.trackProgress(func(status *Status) {
+			status.Stage = "download"
+			status.Done = progress.Written
+			status.Total = progress.Total
+		})
 	})
-	app.Event.On(wailsupdater.EventVerifying, func(_ *application.CustomEvent) { s.setStage("verify", false) })
-	app.Event.On(wailsupdater.EventInstalling, func(_ *application.CustomEvent) { s.setStage("unpack", false) })
+	app.Event.On(wailsupdater.EventVerifying, func(_ *application.CustomEvent) {
+		s.trackProgress(func(status *Status) { status.Stage = "verify" })
+	})
+	app.Event.On(wailsupdater.EventInstalling, func(_ *application.CustomEvent) {
+		s.trackProgress(func(status *Status) { status.Stage = "unpack" })
+	})
 	return nil
+}
+
+// trackProgress applies a lifecycle event from the updater. Wails dispatches
+// listeners on their own goroutine, so an event can land after the download it
+// describes has already returned and check has settled on a terminal stage;
+// outside that window the event is stale and must not move the status.
+func (s *Service) trackProgress(mutate func(*Status)) {
+	s.mu.Lock()
+	if !s.tracking {
+		s.mu.Unlock()
+		return
+	}
+	mutate(&s.status)
+	status := s.status
+	s.mu.Unlock()
+	s.publish(status)
 }
 
 // Start begins the background check loop. editorOpen reports whether an editor
@@ -179,11 +198,16 @@ func (s *Service) check(ctx context.Context, installIfReady bool) {
 	mandatory := releaseMandatory(release, Version)
 	s.mu.Lock()
 	s.status = Status{Mandatory: mandatory, Version: release.Version, Stage: "download", Total: release.Artifact.Size}
+	s.tracking = true
 	status := s.status
 	s.mu.Unlock()
 	s.publish(status)
 
-	if err := app.Updater.DownloadAndInstall(ctx); err != nil {
+	err = app.Updater.DownloadAndInstall(ctx)
+	s.mu.Lock()
+	s.tracking = false
+	s.mu.Unlock()
+	if err != nil {
 		s.retryOrIdle(installIfReady)
 		return
 	}
