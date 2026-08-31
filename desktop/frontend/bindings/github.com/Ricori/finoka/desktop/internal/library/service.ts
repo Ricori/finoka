@@ -35,6 +35,10 @@ export function CancelExport(id: string): $CancellablePromise<void> {
     return $Call.ByID(2000436365, id);
 }
 
+export function CancelTranscode(id: string): $CancellablePromise<void> {
+    return $Call.ByID(563424138, id);
+}
+
 export function ClearVideoCache(): $CancellablePromise<$models.CacheStatus> {
     return $Call.ByID(1254380933);
 }
@@ -137,4 +141,12 @@ export function SpectrogramTile(id: string, start: number, duration: number): $C
 
 export function ThumbnailDataURL(id: string): $CancellablePromise<string> {
     return $Call.ByID(1977355932, id);
+}
+
+/**
+ * TranscodeToH264 creates a browser-compatible H.264/AAC cache copy for
+ * codecs such as HEVC, AV1, and 10-bit video that Chromium may not decode.
+ */
+export function TranscodeToH264(id: string): $CancellablePromise<$models.TranscodeResult> {
+    return $Call.ByID(1132573717, id);
 }

@@ -15,5 +15,6 @@ export type {
     ImportResult,
     LegacyMigrationResult,
     LegacyMigrationStatus,
-    SpectrogramTileResult
+    SpectrogramTileResult,
+    TranscodeResult
 } from "./models.js";

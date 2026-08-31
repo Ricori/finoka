@@ -72,3 +72,8 @@ export interface SpectrogramTileResult {
     "width": number;
     "height": number;
 }
+
+export interface TranscodeResult {
+    "ok": boolean;
+    "url": string;
+}

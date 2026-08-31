@@ -89,25 +89,26 @@ type thumbnailer interface {
 }
 
 type Service struct {
-	mu           sync.RWMutex
-	indexPath    string
-	root         string
-	thumbnailDir string
-	cacheDir     string
-	cachePath    string
-	entries      []Entry
-	prober       prober
-	thumbnailer  thumbnailer
-	app          *application.App
-	home         *application.WebviewWindow
-	editor       *application.WebviewWindow
-	media        *loopbackMediaServer
-	bundledFonts map[string][]byte
-	legacyRoot   string
-	cacheMu      sync.Mutex
-	cacheConfig   CacheConfig
-	activeMedia   string
-	exportCancels map[string]context.CancelFunc
+	mu               sync.RWMutex
+	indexPath        string
+	root             string
+	thumbnailDir     string
+	cacheDir         string
+	cachePath        string
+	entries          []Entry
+	prober           prober
+	thumbnailer      thumbnailer
+	app              *application.App
+	home             *application.WebviewWindow
+	editor           *application.WebviewWindow
+	media            *loopbackMediaServer
+	bundledFonts     map[string][]byte
+	legacyRoot       string
+	cacheMu          sync.Mutex
+	cacheConfig      CacheConfig
+	activeMedia      string
+	exportCancels    map[string]context.CancelFunc
+	transcodeCancels map[string]context.CancelFunc
 }
 
 func New(dataDirectory string) (*Service, error) {
@@ -120,17 +121,18 @@ func newService(dataDirectory string, tools commandMediaTools) (*Service, error)
 		return nil, fmt.Errorf("resolve media library directory: %w", err)
 	}
 	service := &Service{
-		root:         root,
-		indexPath:    filepath.Join(root, "library.json"),
-		thumbnailDir: filepath.Join(root, "thumbnails"),
-		cacheDir:     filepath.Join(root, "videos"),
-		cachePath:    filepath.Join(root, "cache.json"),
-		prober:       tools,
-		thumbnailer:  tools,
-		entries:       []Entry{},
-		legacyRoot:    defaultLegacyRoot(),
-		cacheConfig:   defaultCacheConfig(),
-		exportCancels: map[string]context.CancelFunc{},
+		root:             root,
+		indexPath:        filepath.Join(root, "library.json"),
+		thumbnailDir:     filepath.Join(root, "thumbnails"),
+		cacheDir:         filepath.Join(root, "videos"),
+		cachePath:        filepath.Join(root, "cache.json"),
+		prober:           tools,
+		thumbnailer:      tools,
+		entries:          []Entry{},
+		legacyRoot:       defaultLegacyRoot(),
+		cacheConfig:      defaultCacheConfig(),
+		exportCancels:    map[string]context.CancelFunc{},
+		transcodeCancels: map[string]context.CancelFunc{},
 	}
 	if err := os.MkdirAll(service.thumbnailDir, 0o755); err != nil {
 		return nil, err

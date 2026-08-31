@@ -34,6 +34,8 @@ export const mediaLibrary = {
   exportVideo: LibraryService.ExportVideo,
   exportVideoRange: LibraryService.ExportVideoRange,
   cancelExport: LibraryService.CancelExport,
+  transcodeToH264: LibraryService.TranscodeToH264,
+  cancelTranscode: LibraryService.CancelTranscode,
   spectrogramTile: LibraryService.SpectrogramTile,
   revealInFolder: LibraryService.RevealInFolder,
   legacyMigrationStatus: LibraryService.LegacyMigrationStatus,

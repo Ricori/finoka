@@ -24,6 +24,7 @@ export function showVideoFallback(collapsed: boolean, msgText?: string) {
 
 export function showPlaybackError(message: string) {
   showVideoFallback(false, message);
+  videoStore.set({ canTranscode: true });
 }
 
 export async function setupVideo() {
@@ -49,9 +50,26 @@ export async function attachChosen() {
 }
 
 export async function transcodeToH264() {
-  toast("当前版本尚未提供编辑器内转码，请先在外部转换为 H.264。", true);
+  videoStore.set({
+    transcoding: true,
+    transcodePct: "",
+    warn: "",
+    usePath: null,
+    fallbackOpen: true,
+    collapsed: false,
+  });
+  try {
+    const result = await mediaLibrary.transcodeToH264(getVid());
+    videoStore.set({ transcoding: false, transcodePct: "", canTranscode: false, badge: null });
+    mountVideo(result.url);
+    toast("转码完成，已存入缓存目录");
+  } catch (error) {
+    const message = errText(error);
+    videoStore.set({ transcoding: false, transcodePct: "", badge: null });
+    if (!message.includes("已取消")) toast("转码失败：" + message, true);
+  }
 }
 
 export function cancelTranscode() {
-  videoStore.set({ transcoding: false, transcodePct: "" });
+  void mediaLibrary.cancelTranscode(getVid());
 }
