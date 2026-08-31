@@ -10,10 +10,39 @@ export interface Contributions {
     "tools": ToolContribution[] | null;
 }
 
+/**
+ * DownloadLog is one line of yt-dlp output on its way to the plugin page. The
+ * page shows the log because a download that takes minutes is otherwise a bar
+ * with no explanation of what it is waiting on.
+ */
+export interface DownloadLog {
+    "line": string;
+}
+
 export interface DownloadedMedia {
     "platform": string;
     "outputPath": string;
     "media": MediaSummary;
+}
+
+export interface DownloaderSettings {
+    "cookiesPresent": boolean;
+    "cookieCount": number;
+    "cookiesUpdated"?: string;
+
+    /**
+     * POTReady means every piece of the PO token path is installed. Missing
+     * names the runtime resources still absent, by their install id, so the page
+     * can tell the user what to install rather than just that something failed.
+     */
+    "potReady": boolean;
+    "missing": string[] | null;
+
+    /**
+     * DownloadRunning lets a freshly mounted page re-attach to a download that
+     * started before it existed.
+     */
+    "downloadRunning": boolean;
 }
 
 export interface ExportedArtifact {
@@ -33,6 +62,13 @@ export interface InstalledPlugin {
     "permissions"?: string[] | null;
     "contributes": Contributions;
     "enabled": boolean;
+
+    /**
+     * System marks a first-party plugin that ships inside the Finoka binary.
+     * The flag is derived from where the plugin is installed, never from the
+     * manifest, so a sideloaded package cannot promote itself.
+     */
+    "system": boolean;
 }
 
 export interface MediaSummary {

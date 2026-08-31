@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from finoka.provision import CANCELLED_MESSAGE, DONE_MESSAGES, OPTIONAL_TOOLS, RuntimeProvisionError, RuntimeProvisioner, parse_model_install_event
+from finoka.provision import CANCELLED_MESSAGE, DONE_MESSAGES, OPTIONAL_TOOLS, TOOL_GROUPS, RuntimeProvisionError, RuntimeProvisioner, parse_model_install_event
 
 
 VENDOR = Path(__file__).resolve().parents[1] / "third_party" / "finesub"
@@ -168,7 +168,9 @@ def test_model_installer_events_are_validated_before_updating_ui() -> None:
 
 
 def test_optional_tools_are_explicit_install_targets() -> None:
-    assert OPTIONAL_TOOLS == ("git", "yt-dlp", "tokcount")
+    assert OPTIONAL_TOOLS == ("git", "yt-dlp", "tokcount", "aria2c", "node", "pot-provider")
+    assert TOOL_GROUPS["video-tools"] == ("yt-dlp", "aria2c", "node", "pot-provider")
+    assert all(tool in OPTIONAL_TOOLS for tool in TOOL_GROUPS["video-tools"])
     assert all(tool in DONE_MESSAGES for tool in OPTIONAL_TOOLS)
 
 

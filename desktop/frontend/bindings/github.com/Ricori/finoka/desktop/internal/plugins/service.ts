@@ -10,11 +10,44 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * CancelDownload interrupts the running download. Killing the process is what
+ * actually stops it: yt-dlp has no gentler protocol, and the context it runs
+ * under is already the timeout's, so cancelling that covers both paths.
+ */
+export function CancelDownload(pluginID: string): $CancellablePromise<void> {
+    return $Call.ByID(1179173450, pluginID);
+}
+
+export function ClearCookies(pluginID: string): $CancellablePromise<$models.DownloaderSettings> {
+    return $Call.ByID(2834511644, pluginID);
+}
+
+/**
+ * ClearDownloadLog empties the retained log. It clears the host's buffer, not
+ * just the page's view: the page re-fetches on every mount, so wiping only the
+ * DOM would bring the whole log back the next time the user navigated away and
+ * returned.
+ */
+export function ClearDownloadLog(pluginID: string): $CancellablePromise<void> {
+    return $Call.ByID(3187234109, pluginID);
+}
+
+/**
  * Document returns the stored EditDocument for a media entry. The plugin names
  * the media by the id media.list handed it, never by path.
  */
 export function Document(pluginID: string, mediaID: string): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(2177955241, pluginID, mediaID);
+}
+
+/**
+ * DownloadLogLines returns the running -- or most recently finished -- run's
+ * output, so a page can render the history it missed. It survives past the end
+ * of a run deliberately: coming back after a download finished should still show
+ * what happened, and the buffer is cleared when the next one starts.
+ */
+export function DownloadLogLines(pluginID: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3038065417, pluginID);
 }
 
 /**
@@ -48,6 +81,14 @@ export function List(): $CancellablePromise<$models.InstalledPlugin[] | null> {
     return $Call.ByID(100861768);
 }
 
+/**
+ * LoadDownloaderSettings reports what the downloader is configured with. The
+ * cookie jar is summarised, never returned.
+ */
+export function LoadDownloaderSettings(pluginID: string): $CancellablePromise<$models.DownloaderSettings> {
+    return $Call.ByID(1574118078, pluginID);
+}
+
 export function MediaList(pluginID: string): $CancellablePromise<$models.MediaSummary[] | null> {
     return $Call.ByID(3561990828, pluginID);
 }
@@ -67,6 +108,10 @@ export function PickAndInstall(): $CancellablePromise<$models.InstalledPlugin> {
  */
 export function RunYTDLP(pluginID: string, rawURL: string, pluginArgs: string[] | null): $CancellablePromise<$models.DownloadedMedia> {
     return $Call.ByID(2793227616, pluginID, rawURL, pluginArgs);
+}
+
+export function SaveCookies(pluginID: string, content: string): $CancellablePromise<$models.DownloaderSettings> {
+    return $Call.ByID(1413208172, pluginID, content);
 }
 
 /**

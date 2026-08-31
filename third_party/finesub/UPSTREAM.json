@@ -1,10 +1,10 @@
 {
   "archive_sha256": "c927e0f103d4a7cb9a8733a4e23c333bad6ecbb418d98aaa6dce8a383544cea8",
   "commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
-  "content_sha256": "71341ce57a7ded9b1a32cc64d1a301b094f0f9a362de0c0d22efdf465cf04154",
+  "content_sha256": "193300b928de2aa50fa45746e7a7deab044a7ad1b90492878ae00a4c5dc5d246",
   "engine_bundle_id": "finesub-0.4.2+8a33092a40ab",
   "engine_version": "0.4.2",
-  "files_manifest_sha256": "1e483460b661368d2080d27c319119c0017b61413d44ff78cfdf714a351d7172",
+  "files_manifest_sha256": "16cca97da79f0d9bdb22fdd7b872c52604c2ac56f03d01666a7f4ddb555da1fa",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
@@ -25,11 +25,15 @@
     {
       "path": "0005-codex-terra-model.patch",
       "sha256": "02da2e6c98b245402b52284105fe587b81c1fcf85898605c99b095528fd5a980"
+    },
+    {
+      "path": "0006-add-optional-tools.patch",
+      "sha256": "392588df2ac0b85d3a7376d5c7b8c9e1400e777bbe102cf64668b815616bbc92"
     }
   ],
   "ref": "v0.4.2",
   "repository": "https://github.com/caca2331/finesub",
-  "runtime_manifest_sha256": "4c423f4a27cc45c3dc2eb57786f64b34a8652be662d274feb49f587d22815348",
+  "runtime_manifest_sha256": "d21e66e6a1f574ee03f7a60279af4d73a9bdf379104c1b83f2b3480abb3ce6b1",
   "sync_schema": 1,
   "synced_at": "2026-08-26T08:02:23Z"
 }

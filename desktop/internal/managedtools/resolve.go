@@ -137,6 +137,70 @@ func FindYTDLP(dataDirectory string) (YTDLP, error) {
 	}, nil
 }
 
+// potProviderDirectory holds both halves of the PO token provider. Upstream
+// versions the yt-dlp plugin and the generator together, so Finoka ships them as
+// one bundle: the two resolvers below point at the same directory and differ
+// only in the file each needs to find.
+const potProviderDirectory = "pot-provider"
+
+// FindPOTPlugin resolves the unpacked bgutil PO token plugin. It is a yt-dlp
+// plugin package rather than a tool: yt-dlp discovers it by importing
+// `yt_dlp_plugins` off sys.path, so the caller adds this directory to
+// PYTHONPATH instead of executing anything in it.
+func FindPOTPlugin(dataDirectory string) (string, error) {
+	notInstalled := errors.New("the PO Token provider is not installed; install it from 运行环境 first")
+	root := filepath.Join(dataDirectory, "finesub", "runtime", potProviderDirectory)
+	version := activeVersion(filepath.Join(root, "current.json"))
+	if version == "" {
+		return "", notInstalled
+	}
+	packageRoot := filepath.Join(root, version)
+	// The same file the runtime manifest declares as the resource's required
+	// file, so provisioner and host agree on what "installed" means.
+	marker := filepath.Join(packageRoot, "yt_dlp_plugins", "extractor", "getpot_bgutil_http.py")
+	if info, err := os.Stat(marker); err != nil || !info.Mode().IsRegular() {
+		return "", notInstalled
+	}
+	return packageRoot, nil
+}
+
+// FindPOTServer resolves the PO token generation bundle. The provider's own
+// backend cannot be expressed as a single pinned archive upstream -- it needs an
+// npm install with a native module -- so Finoka installs a prebuilt bundle and
+// points yt-dlp's plugin at this directory with `server_home`. Script mode is
+// deliberate: it spawns the generator per call, so a desktop install carries no
+// long-running daemon and no listening port.
+func FindPOTServer(dataDirectory string) (string, error) {
+	notInstalled := errors.New("the PO Token provider is not installed; install it from 运行环境 first")
+	root := filepath.Join(dataDirectory, "finesub", "runtime", potProviderDirectory)
+	version := activeVersion(filepath.Join(root, "current.json"))
+	if version == "" {
+		return "", notInstalled
+	}
+	home := filepath.Join(root, version)
+	// The generator the plugin actually invokes; the manifest declares the same
+	// file, so provisioner and host agree on what "installed" means.
+	if info, err := os.Stat(filepath.Join(home, "build", "generate_once.js")); err != nil || !info.Mode().IsRegular() {
+		return "", notInstalled
+	}
+	return home, nil
+}
+
+// AddPythonPath puts directory at the front of the environment's PYTHONPATH,
+// creating the entry when the command carries none. yt-dlp's own wheel already
+// arrives this way, so a plugin package has to join it rather than replace it.
+func AddPythonPath(environment []string, directory string) []string {
+	const key = "PYTHONPATH="
+	for index, entry := range environment {
+		if strings.HasPrefix(entry, key) {
+			existing := strings.TrimPrefix(entry, key)
+			environment[index] = key + directory + string(os.PathListSeparator) + existing
+			return environment
+		}
+	}
+	return append(environment, pythonPath(directory))
+}
+
 // pythonPath prepends the unpacked wheel to any PYTHONPATH already inherited
 // from the environment rather than replacing it.
 func pythonPath(packageRoot string) string {

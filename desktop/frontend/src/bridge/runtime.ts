@@ -8,7 +8,7 @@ export interface RuntimeItem {
   source?: "managed" | "system";
 }
 
-export type RuntimeInstallTarget = "media" | "runtime" | "models" | "all" | "git" | "yt-dlp" | "tokcount";
+export type RuntimeInstallTarget = "media" | "runtime" | "models" | "all" | "git" | "yt-dlp" | "tokcount" | "aria2c" | "node" | "pot-provider" | "video-tools";
 
 export interface RuntimeProvisionState {
   schema: 1;

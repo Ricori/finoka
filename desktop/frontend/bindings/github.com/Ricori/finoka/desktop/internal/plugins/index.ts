@@ -9,7 +9,9 @@ export {
 export type {
     Change,
     Contributions,
+    DownloadLog,
     DownloadedMedia,
+    DownloaderSettings,
     ExportedArtifact,
     InstalledPlugin,
     MediaSummary,

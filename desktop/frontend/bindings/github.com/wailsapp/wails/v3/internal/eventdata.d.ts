@@ -23,6 +23,7 @@ declare module "@wailsio/runtime" {
             "home:refresh": boolean;
             "library:changed": library$0.Entry[] | null;
             "plugins:changed": plugins$0.Change;
+            "plugins:download-log": plugins$0.DownloadLog;
             "update:ready": { [_ in string]?: string } | null;
             "update:status": selfupdate$0.Status;
         }

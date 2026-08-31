@@ -189,7 +189,7 @@ nav svg {
 
 .quiet-button:disabled {
   opacity: .55;
-  cursor: wait;
+  cursor: none;
 }
 
 .runtime-banner {
@@ -942,6 +942,18 @@ dd {
 
 .asset-group-heading strong {
   font-size: 12px;
+}
+
+/* 组标题带整组安装按钮时，文字要自己成一列，否则 space-between 会把三个孩子摊开 */
+.asset-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.asset-group-action {
+  flex: 0 0 auto;
 }
 
 .asset-group-heading strong::before {

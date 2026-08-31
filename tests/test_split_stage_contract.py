@@ -58,6 +58,19 @@ def _touched_paths(patch: Path) -> list[str]:
     )
 
 
+#: Installer files that live outside the bootstrap package. The rule below is
+#: about engine divergence, and `resources/runtime-manifest.json` is not engine
+#: code: it is the catalog the installer downloads binaries from, its only
+#: reader in the vendor tree is `src/finesub_bootstrap/shell.py`, and no
+#: container ever runs it. Listed file by file rather than by directory so a
+#: future `resources/` entry has to be classified on its own merits.
+INSTALLER_PLUMBING_FILES = frozenset({"resources/runtime-manifest.json"})
+
+
+def _is_installer_plumbing(path: str) -> bool:
+    return path.startswith("src/finesub_bootstrap/") or path in INSTALLER_PLUMBING_FILES
+
+
 #: Everything the split adds. A cloud container imports these by name, and the
 #: patch's whole job is to put them there.
 ADDED_NAMES = (
@@ -125,7 +138,9 @@ class PurelyAdditiveTests(unittest.TestCase):
         The cloud is meant to run upstream code. A patch under ``src/finesub``
         is a second thing local and cloud no longer share, so it has to be
         justified in ``docs/engine.md`` before it is added here. One
-        under ``src/finesub_bootstrap`` is not: no container ever runs it.
+        under ``src/finesub_bootstrap`` is not: no container ever runs it, and
+        neither is the installer's resource catalog (see
+        ``INSTALLER_PLUMBING_FILES``).
         """
 
         upstream = json.loads((VENDOR / "UPSTREAM.json").read_text(encoding="utf-8"))
@@ -154,7 +169,7 @@ class PurelyAdditiveTests(unittest.TestCase):
                 outside = [
                     path
                     for path in _touched_paths(PATCH_ROOT / name)
-                    if not path.startswith("src/finesub_bootstrap/")
+                    if not _is_installer_plumbing(path)
                 ]
                 if name in engine_patches:
                     self.assertEqual(outside, engine_patches[name])

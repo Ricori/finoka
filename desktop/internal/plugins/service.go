@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Ricori/finoka/desktop/internal/library"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -67,6 +68,10 @@ type Manifest struct {
 type InstalledPlugin struct {
 	Manifest
 	Enabled bool `json:"enabled"`
+	// System marks a first-party plugin that ships inside the Finoka binary.
+	// The flag is derived from where the plugin is installed, never from the
+	// manifest, so a sideloaded package cannot promote itself.
+	System bool `json:"system"`
 }
 
 type Change struct {
@@ -84,17 +89,35 @@ type currentPointer struct {
 }
 
 type Service struct {
-	mu            sync.RWMutex
-	mediaJobMu    sync.Mutex
-	dataDirectory string
-	pluginsRoot   string
-	dataRoot      string
-	registryPath  string
-	registry      registry
-	app           *application.App
-	home          *application.WebviewWindow
-	media         mediaLibrary
-	documents     documentStore
+	mu         sync.RWMutex
+	mediaJobMu sync.Mutex
+	// downloadActive tracks a running yt-dlp download so a page that was
+	// unmounted mid-download can find out it is still going. The iframe is
+	// destroyed whenever the user navigates away, taking every bit of page state
+	// with it, so the Go side has to be the one that remembers.
+	downloadActive atomic.Bool
+	// downloadCancel interrupts the running yt-dlp. Guarded by its own mutex
+	// rather than `mu`, because cancelling must not queue behind whatever else
+	// holds the service lock -- the point of the button is that it acts at once.
+	downloadCancelMu  sync.Mutex
+	downloadCancel    context.CancelFunc
+	downloadCancelled atomic.Bool
+	// downloadLogLines retains the current run's output. The page renders the log
+	// into the iframe's DOM, which navigation destroys, and the log events only
+	// carry what arrives next -- so without this a page that comes back mid-run
+	// shows a log that starts in the middle of nowhere.
+	downloadLogMu    sync.Mutex
+	downloadLogLines []string
+	dataDirectory    string
+	pluginsRoot      string
+	systemRoot       string
+	dataRoot         string
+	registryPath     string
+	registry         registry
+	app              *application.App
+	home             *application.WebviewWindow
+	media            mediaLibrary
+	documents        documentStore
 }
 
 // mediaLibrary names exactly the library calls plugin capabilities are built
@@ -110,6 +133,7 @@ type mediaLibrary interface {
 
 func init() {
 	application.RegisterEvent[Change]("plugins:changed")
+	application.RegisterEvent[DownloadLog]("plugins:download-log")
 }
 
 func New(dataDirectory string, libraries ...mediaLibrary) (*Service, error) {
@@ -120,6 +144,7 @@ func New(dataDirectory string, libraries ...mediaLibrary) (*Service, error) {
 	service := &Service{
 		dataDirectory: root,
 		pluginsRoot:   filepath.Join(root, "plugins"),
+		systemRoot:    filepath.Join(root, "system-plugins"),
 		dataRoot:      filepath.Join(root, "plugin-data"),
 		registryPath:  filepath.Join(root, registryName),
 		registry:      registry{Schema: 1, Enabled: map[string]bool{}},
@@ -130,10 +155,18 @@ func New(dataDirectory string, libraries ...mediaLibrary) (*Service, error) {
 	if err := os.MkdirAll(service.pluginsRoot, 0o755); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(service.systemRoot, 0o755); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(service.dataRoot, 0o755); err != nil {
 		return nil, err
 	}
 	if err := service.loadRegistry(); err != nil {
+		return nil, err
+	}
+	// Built-in tools are published before the first List so they are mounted on
+	// a cold data directory without the user installing anything.
+	if err := service.ensureSystemPlugins(); err != nil {
 		return nil, err
 	}
 	return service, nil
@@ -206,6 +239,10 @@ func (s *Service) Install(path string) (InstalledPlugin, error) {
 	}
 
 	s.mu.Lock()
+	if _, system := s.pluginHomeLocked(manifest.ID); system {
+		s.mu.Unlock()
+		return InstalledPlugin{}, errors.New("this id belongs to a built-in system plugin")
+	}
 	destination := filepath.Join(s.pluginsRoot, manifest.ID, "versions", manifest.Version)
 	if _, statErr := os.Stat(destination); statErr == nil {
 		s.mu.Unlock()
@@ -257,7 +294,7 @@ func (s *Service) SetEnabled(id string, enabled bool) (InstalledPlugin, error) {
 		return InstalledPlugin{}, errors.New("invalid plugin id")
 	}
 	s.mu.Lock()
-	manifest, _, err := s.installedManifestLocked(id)
+	manifest, _, system, err := s.installedManifestLocked(id)
 	if err != nil {
 		s.mu.Unlock()
 		return InstalledPlugin{}, err
@@ -273,7 +310,7 @@ func (s *Service) SetEnabled(id string, enabled bool) (InstalledPlugin, error) {
 		s.mu.Unlock()
 		return InstalledPlugin{}, err
 	}
-	result := InstalledPlugin{Manifest: manifest, Enabled: enabled}
+	result := InstalledPlugin{Manifest: manifest, Enabled: enabled, System: system}
 	s.mu.Unlock()
 	kind := "disabled"
 	if enabled {
@@ -293,9 +330,14 @@ func (s *Service) Uninstall(id string, removeData bool) error {
 		s.mu.Unlock()
 		return errors.New("invalid plugin directory")
 	}
-	if _, _, err := s.installedManifestLocked(id); err != nil {
+	_, _, system, err := s.installedManifestLocked(id)
+	if err != nil {
 		s.mu.Unlock()
 		return err
+	}
+	if system {
+		s.mu.Unlock()
+		return errors.New("system plugins are built into Finoka and can only be disabled")
 	}
 	if err := os.RemoveAll(pluginRoot); err != nil {
 		s.mu.Unlock()
@@ -328,12 +370,12 @@ func (s *Service) PageHTML(pluginID, toolID string) (string, error) {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.registry.Enabled[pluginID] {
-		return "", errors.New("plugin is disabled")
-	}
-	manifest, versionRoot, err := s.installedManifestLocked(pluginID)
+	manifest, versionRoot, system, err := s.installedManifestLocked(pluginID)
 	if err != nil {
 		return "", err
+	}
+	if !s.enabledLocked(pluginID, system) {
+		return "", errors.New("plugin is disabled")
 	}
 	var page string
 	for _, tool := range manifest.Contributes.Tools {
@@ -365,46 +407,80 @@ func (s *Service) PageHTML(pluginID, toolID string) (string, error) {
 }
 
 func (s *Service) listLocked() []InstalledPlugin {
-	entries, err := os.ReadDir(s.pluginsRoot)
-	if err != nil {
-		return []InstalledPlugin{}
-	}
-	result := make([]InstalledPlugin, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() || !pluginIDPattern.MatchString(entry.Name()) {
+	result := make([]InstalledPlugin, 0, 8)
+	seen := map[string]bool{}
+	// System first: pluginHomeLocked resolves that tree first too, so visiting
+	// it first keeps a shadowing user directory from producing a second card.
+	for _, root := range []string{s.systemRoot, s.pluginsRoot} {
+		entries, err := os.ReadDir(root)
+		if err != nil {
 			continue
 		}
-		manifest, _, manifestErr := s.installedManifestLocked(entry.Name())
-		if manifestErr != nil {
-			continue
+		for _, entry := range entries {
+			if !entry.IsDir() || !pluginIDPattern.MatchString(entry.Name()) || seen[entry.Name()] {
+				continue
+			}
+			manifest, _, system, manifestErr := s.installedManifestLocked(entry.Name())
+			if manifestErr != nil {
+				continue
+			}
+			seen[manifest.ID] = true
+			result = append(result, InstalledPlugin{
+				Manifest: manifest,
+				Enabled:  s.enabledLocked(manifest.ID, system),
+				System:   system,
+			})
 		}
-		result = append(result, InstalledPlugin{Manifest: manifest, Enabled: s.registry.Enabled[manifest.ID]})
 	}
 	sort.Slice(result, func(i, j int) bool {
+		if result[i].System != result[j].System {
+			return result[i].System
+		}
 		return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
 	})
 	return result
 }
 
-func (s *Service) installedManifestLocked(id string) (Manifest, string, error) {
-	pluginRoot := filepath.Join(s.pluginsRoot, id)
+// pluginHomeLocked resolves which tree owns an id. System plugins are looked up
+// first so a user package can never shadow a built-in one, and the answer is
+// what every trust decision downstream is based on.
+func (s *Service) pluginHomeLocked(id string) (root string, system bool) {
+	candidate := filepath.Join(s.systemRoot, id)
+	if info, err := os.Stat(filepath.Join(candidate, currentName)); err == nil && info.Mode().IsRegular() {
+		return candidate, true
+	}
+	return filepath.Join(s.pluginsRoot, id), false
+}
+
+// enabledLocked reports whether a plugin's entry points are mounted. System
+// plugins ship switched on, so an id the registry has never recorded counts as
+// enabled; user plugins stay off until Install writes their entry.
+func (s *Service) enabledLocked(id string, system bool) bool {
+	if enabled, recorded := s.registry.Enabled[id]; recorded {
+		return enabled
+	}
+	return system
+}
+
+func (s *Service) installedManifestLocked(id string) (Manifest, string, bool, error) {
+	pluginRoot, system := s.pluginHomeLocked(id)
 	var pointer currentPointer
 	data, err := os.ReadFile(filepath.Join(pluginRoot, currentName))
 	if err != nil || json.Unmarshal(data, &pointer) != nil || !versionPattern.MatchString(pointer.Current) {
-		return Manifest{}, "", errors.New("plugin installation is incomplete")
+		return Manifest{}, "", system, errors.New("plugin installation is incomplete")
 	}
 	versionRoot := filepath.Join(pluginRoot, "versions", pointer.Current)
 	manifest, err := readManifest(versionRoot)
 	if err != nil {
-		return Manifest{}, "", err
+		return Manifest{}, "", system, err
 	}
 	if manifest.ID != id || manifest.Version != pointer.Current {
-		return Manifest{}, "", errors.New("plugin manifest does not match its installation")
+		return Manifest{}, "", system, errors.New("plugin manifest does not match its installation")
 	}
 	if err := validateManifest(manifest, versionRoot); err != nil {
-		return Manifest{}, "", err
+		return Manifest{}, "", system, err
 	}
-	return manifest, versionRoot, nil
+	return manifest, versionRoot, system, nil
 }
 
 func validateManifest(manifest Manifest, root string) error {
@@ -431,6 +507,7 @@ func validateManifest(manifest Manifest, root string) error {
 		"document.write":       true,
 		"subtitle.export":      true,
 		"tools.yt-dlp":         true,
+		"tools.cookies":        true,
 		"ffmpeg.extract-audio": true,
 	}
 	seenPermissions := map[string]bool{}

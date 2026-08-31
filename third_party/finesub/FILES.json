@@ -1,5 +1,5 @@
 {
-  "content_sha256": "71341ce57a7ded9b1a32cc64d1a301b094f0f9a362de0c0d22efdf465cf04154",
+  "content_sha256": "193300b928de2aa50fa45746e7a7deab044a7ad1b90492878ae00a4c5dc5d246",
   "files": [
     {
       "bytes": 1734,
@@ -32,9 +32,9 @@
       "sha256": "dc458d5e113e4e840852d79b60176272876546ec493f8a6086db387d39ddca42"
     },
     {
-      "bytes": 3222,
+      "bytes": 4693,
       "path": "resources/runtime-manifest.json",
-      "sha256": "4c423f4a27cc45c3dc2eb57786f64b34a8652be662d274feb49f587d22815348"
+      "sha256": "d21e66e6a1f574ee03f7a60279af4d73a9bdf379104c1b83f2b3480abb3ce6b1"
     },
     {
       "bytes": 57868,

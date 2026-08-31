@@ -2,6 +2,25 @@
 
 Finoka 插件在主页左侧的“工具”分组中贡献入口。插件代码、持久数据和缓存相互分离，因此插件可以独立启用、停用、升级和卸载。
 
+## 系统插件与用户插件
+
+插件分两种来源，格式完全相同（同一份 manifest、同一套权限、同样的沙箱页面），只有安装位置不同：
+
+| | 系统插件 | 用户插件 |
+| --- | --- | --- |
+| 来源 | 编译进 Finoka 二进制，启动时发布到 `system-plugins/<id>/` | 用户选择 `.finoka-plugin` 安装到 `plugins/<id>/` |
+| 默认状态 | 启用 | 安装后启用 |
+| 停用 | 可以 | 可以 |
+| 卸载 | 不可以，属于程序的一部分 | 可以 |
+| yt-dlp 参数集 | 更宽（见下） | 保守集合 |
+
+要点：
+
+- **信任由安装位置决定，不看 manifest。** 插件无法通过在 manifest 里写任何字段把自己变成系统插件。
+- 系统插件的 id 被占用，用户安装同 id 的包会被拒绝，因此没有“冒名顶替拿到更宽权限”的路径。
+- 系统插件同样要通过完整的 manifest 校验；不合法的内置包会在启动时报错，而不是静默上线。
+- 发布按**内容摘要**进行，不看版本号：内置包的字节完全由构建决定，只认版本号的话，改了页面却忘了升版本就会一直用旧副本，而且完全没有提示。摘要变了就重新解压并切换 `current.json`，旧版本随后清理。用户停用过的系统插件，升级后仍保持停用。
+
 ## 插件包
 
 `.finoka-plugin` 是一个 ZIP 文件，根目录必须包含 `finoka-plugin.json`。manifest 和所有页面都必须位于压缩包根目录之下；绝对路径、`..`、符号链接和重复文件会被拒绝。
@@ -70,6 +89,13 @@ Rename-Item .\hello-tool.zip hello-tool.finoka-plugin
 
 工具页面通过 `<iframe sandbox="allow-scripts">` 加载，没有同源权限，也不能访问 Wails bindings。API v1 页面必须是自包含 HTML：CSS 和 JavaScript 应内联，图片可使用 `data:` 或 `blob:`。宿主会注入 CSP，默认禁用网络、外部脚本和本地文件访问。
 
+宿主**不给页面套面板**：iframe 被撑满整个工作区，边框、圆角、底色、内边距全部由插件页自己画，要不要卡片、要几张、怎么分区都由插件决定。因此页面要自己负责两件事：
+
+- **背景**。`html`/`body` 留透明就能让宿主的工作区底色透上来；但如果同时写死了 `color-scheme`，页面比工作区短的那一截会被浏览器用该配色的默认画布涂成一块死色（深色下就是纯黑）。要么跟着主题切 `color-scheme`，要么自己铺满底色。
+- **主题**。插件页是独立文档，读不到宿主的 CSS 变量，需要自己抄一份色板，并在收到 `host.getInfo` / `host.info` 的 `theme` 时切换。原生控件（`<select>` 的箭头和下拉面板）跟的是 `color-scheme`，别忘了一起切，否则浅色主题里下拉是一块突兀的深色。
+
+内置的 `dev.finoka.youtube-downloader` 就是按这个写的，可以直接抄。
+
 宿主注入：
 
 ```js
@@ -98,7 +124,7 @@ window.finoka.post("host.getInfo", {});
 - `subtitle.save`：需要 `subtitle.export` 权限。参数 `{ fileName, content }`，宿主弹保存对话框并落盘，返回最终路径；用户取消时返回空串。扩展名只接受 `.ass` 和 `.srt`，目录由对话框决定。
 - `media.exportVideo`：需要 `media.export-video` 权限。参数 `{ mediaId, ass, fileName?, t0?, t1?, height? }`，宿主用托管的 FFmpeg 把 ASS 压制进视频，返回 `{ path, format, size }`。编码参数（CRF 21、preset medium、AAC 192k）由宿主固定，`height` 只能是 0（原分辨率）或 240–4320。压制期间宿主会向页面推送 `media.progress` 消息（`{ done, total }`，单位秒）。
 - `ffmpeg.extractAudio`：需要 `ffmpeg.extract-audio` 权限。参数为 `{ mediaId, format }`，其中格式只能是 `wav`、`flac`、`mp3` 或 `m4a`。Finoka 负责解析输入、选择输出位置、构造 FFmpeg 参数和原子发布结果。
-- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Finoka 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。yt-dlp 以 Python wheel 形式安装，因此该能力同时依赖 Finoka 的 Python 运行时。
+- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Finoka 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。yt-dlp 以 Python wheel 形式安装，因此该能力同时依赖 Finoka 的 Python 运行时。下载单次上限 20 分钟，超时会结束子进程并报错，避免卡住的分片服务器一直占着媒体任务锁。下载期间宿主向页面推送 `download.progress` 消息（`{ done, total }`，`total` 恒为 100，即百分比），节流到 400ms 一条。
 
 字幕文档能力有几条固定规则：
 
@@ -114,7 +140,89 @@ window.finoka.post("host.getInfo", {});
 - `--merge-output-format mp4`、`--remux-video mp4`
 - `-N` / `--concurrent-fragments`：`1`、`2`、`4` 或 `8`
 
-输出参数、FFmpeg 路径和 URL 由宿主追加。`--exec`、Cookie、配置文件、外部下载器和任意输出路径等参数会被拒绝。
+系统插件在此基础上额外允许（用户插件用这些参数会被拒绝）：
+
+- `-f` / `--format`：最高 1440p、最高 2160p 两种 selector
+- `-N` / `--concurrent-fragments`：`16`
+- `--no-part`：直接写最终文件名，配合多连接下载（它本来就是乱序写盘）
+
+此外，系统插件调用时如果能找到 `aria2c`，宿主会自动追加 `--downloader dash,m3u8,http:<aria2c>` 和 `--downloader-args aria2c:-x 16 -s 16 -k 1M` 走多连接下载。aria2c 是「运行环境」里的**可选工具**，装了就加速，没装就用 yt-dlp 自带的下载器，只是慢一些 —— 它不是下载功能的前置条件。外部下载器不开放给用户插件，否则等于在沙箱后面多放一个独立配置的网络客户端。
+
+### YouTube 的四道门禁
+
+YouTube 按顺序设了四道关卡，**缺任何一道，失败都会在更早的关卡上暴露出来** —— 这就是为什么单独加任何一样都看不出效果：
+
+| 门禁 | 宿主提供的东西 | 缺了会怎样 |
+| --- | --- | --- |
+| 已登录会话 | `--cookies`（用户在插件页粘贴） | 只剩 `android_vr` 兜底客户端 |
+| GVS PO token | PO Token 插件 + 服务地址 | `mweb` 报 “requires a GVS PO Token” |
+| n challenge | `--js-runtimes` + `--remote-components ejs:github` | 「n challenge solving failed」，格式残缺 |
+| 客户端 | `youtube:player_client=mweb` | 前三样齐了才该切；否则 `mweb` 一个格式都不给 |
+
+四样齐备后，实测可以完整下载先前一直失败的长视频。凑不齐时宿主不会强切 `mweb`：没有 cookies 和 token 时 `android_vr` 至少还能列出格式，短视频仍下得动。
+
+几条容易走弯路的地方，都实测过：
+
+- **单独加 cookies 会更糟**：`android_vr` 会从「能列出格式」变成 0 格式，把唯一能用的兜底路径也弄坏。
+- **`--remote-components ejs:github` 单独用是空转的**，它需要 JS 运行时才能执行；但四样齐备后它是承重的一环，不能撤。
+- **aria2c 与成功率无关**，只影响速度；它会把同一个 403 包装成 `exit code 22`。
+
+### PO Token 服务（本地安装）
+
+token 由一个外部 provider 生成，它分两半：yt-dlp 插件，和真正干活的生成端。上游只发布插件（8KB wheel），**从不发布构建好的生成端** —— 后者需要 `npm ci` 加原生 `canvas`，没法表达成单个 pinned 压缩包。
+
+所以这三样都作为**可选工具**装在用户机上，全部走「单压缩包 + sha256」的既有模型：
+
+| 资源 id | 是什么 | 来源 |
+| --- | --- | --- |
+| `pot-provider` | yt-dlp 插件 **和** token 生成端 | **需自行构建发布**，见下 |
+| `node` | JavaScript 运行时 | Node.js 官方 win-x64 zip |
+
+插件和生成端上游是**配套版本**，拆成两个独立 pin 的资源会给「版本漂移」留口子，所以打成同一个包：解压出的目录同时是 `PYTHONPATH` 和 `server_home` 指向的地方，两个解析器各查各的标志文件。
+
+这几样在「运行环境」里合并显示为一个 **视频下载工具** 分组（连同 yt-dlp、aria2c），可以整组一次装完 —— 单独装其中一样没有意义。安装目标 `video-tools` 会逐个装组员，清单里还没声明的成员（例如尚未发布的 `pot-provider`）跳过而不是让整组失败。
+
+装齐后宿主走 **script 模式**（`youtubepot-bgutilscript:server_home=…`）：生成端按需 spawn 一次，桌面端**不常驻进程、不开监听端口**。三样缺任何一个，宿主就不追加这些参数、也不切 `mweb`，下载退回默认客户端 —— 短视频仍然能下。
+
+`pot-provider` 需要自行构建后发布，再把 URL / `size` / `sha256` 填进清单。步骤是在上游仓库对应 tag 的 `server/` 目录里：
+
+```bash
+npm ci && npx tsc && npm prune --omit=dev
+```
+
+然后把 `build/`、裁剪后的 `node_modules/`，以及同一份检出里 `plugin/yt_dlp_plugins/` 的插件代码打进同一个 zip —— 两半必须来自同一个 tag，上游是配套版本。
+
+两点必须注意：
+
+- **bgutil-ytdlp-pot-provider 是 GPL-3.0。** 再分发构建产物需要随包附上许可证与对应源码，脚本因此把 `LICENSE` 和 `src/`、`package.json`、`package-lock.json`、`tsconfig.json` 一并打进包里。
+- **产物是平台绑定的。** `canvas` 是原生模块，Windows x64 上构建的包只能给 Windows x64，正好与清单声明的平台一致。
+
+### Cookie 的处理
+
+`tools.cookies` 对所有插件开放，声明了就能用。撑住这一点的不是「谁在申请」，而是这个接口的形状：
+
+- **按插件隔离**：jar 存在各自的 `plugin-data/<id>/` 下，插件之间互不可见
+- **只写不读**：页面能存能清能查状态，但永远拿不回内容
+- **沙箱无网**：CSP `connect-src 'none'`，插件页发不出请求
+
+所以窃取这条路是堵死的。残余风险是「插件用你主动粘贴进去的会话去下载」，而这受限于 `validateVideoURL` 的站点白名单和保存对话框选定的落盘位置。
+
+对页面来说 cookie 是**只写**的。页面能保存新的、清除已有的、查询「配没配、几条」，但永远读不回来；把凭据递进沙箱 iframe 不会让编辑流程多出任何能力。宿主侧以 `0600` 存在 `plugin-data/<id>/cookies.txt`，只有 yt-dlp 读它。
+
+页面可用的方法：`downloader.settings`、`downloader.saveCookies`、`downloader.clearCookies`、`downloader.cancel`。保存时会校验是不是 Netscape 格式，避免把「粘错了」变成几分钟后的下载失败；`downloader.settings` 还会回报 PO Token 还差哪些组件，以及**当前是否有下载在跑**。
+
+### 下载的状态归宿主管
+
+插件页是 iframe，用户切走页面就会被销毁，页面自己的状态一点都留不下。所以运行中的下载由 Go 侧持有，页面只是附着上去：
+
+- `downloader.settings` 的 `downloadRunning` 让**重新挂载的页面**接管进度条并禁用下载按钮，而不是显示成空闲、诱导用户再点一次（那样只会撞上「已有任务在运行」）。
+- 宿主推 `download.progress`（百分比，节流 400ms）、`download.log`（yt-dlp 逐行输出）、`download.finished`（收尾）。收尾事件是必要的：真正的结果由 `rpc.result` 回给发起的那个 frame，而它可能已经不存在了。
+- 事件只能带来「此刻之后」的内容，所以宿主还**留存**本轮日志（最近 200 行），页面挂载时用 `downloader.log` 取回。没有这一步，切回来的日志会从半路开始。留存会跨越任务结束，下一次下载开始时才清空 —— 任务跑完后再切回来，仍然看得到它是怎么跑完的。
+- `downloader.cancel` 直接结束子进程 —— yt-dlp 没有更温和的协议。取消按「用户主动取消」处理：返回空结果而非错误（与取消保存对话框同形），并清掉那个残缺的输出文件。
+
+日志行超过 500 字符会被截断：aria2c 报错会把整条签名后的媒体 URL 打出来，一千多字符，会把日志里所有能看的东西挤出视野。
+
+输出参数、FFmpeg 路径和 URL 由宿主追加。`--exec`、Cookie、配置文件和任意输出路径等参数一律拒绝。
 
 带返回值的调用应传入请求 ID：
 
@@ -136,6 +244,8 @@ API v1 暂不执行插件原生进程，也不开放任意 FFmpeg 参数或媒�
 FinokaData/
 ├─ plugins/<id>/current.json
 ├─ plugins/<id>/versions/<version>/
+├─ system-plugins/<id>/current.json
+├─ system-plugins/<id>/versions/<version>/
 ├─ plugin-data/<id>/
 └─ plugin-registry.json
 ```
@@ -143,8 +253,13 @@ FinokaData/
 - 安装先解压到 staging，完整校验后再原子发布。
 - 安装新版本通过 `current.json` 切换活动版本。
 - 停用只隐藏菜单入口，代码和数据仍保留。
-- 卸载可以选择保留或删除 `plugin-data/<id>`。
+- 卸载可以选择保留或删除 `plugin-data/<id>`；系统插件不能卸载。
+- `plugin-registry.json` 只记录用户显式改过的开关。系统插件没有记录时算启用，用户插件没有记录时算停用。
 - 插件变化通过 `plugins:changed` 事件同步到所有前端状态。
+
+内置的系统插件：
+
+- `desktop/internal/plugins/system/dev.finoka.youtube-downloader`：下载公开的 YouTube/Twitch 视频并自动导入媒体库，带进度条，可选画质到 2160p、并发分片到 16；装了可选工具 aria2c 时自动走多连接加速。
 
 可运行示例：
 

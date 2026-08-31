@@ -10,6 +10,8 @@ import (
 	"github.com/Ricori/finoka/desktop/internal/library"
 )
 
+const newlineForTest = "\n"
+
 const testManifest = `{
   "id": "dev.finoka.hello",
   "name": "Hello tools",
@@ -106,7 +108,7 @@ func TestInstallEnablePageAndUninstall(t *testing.T) {
 	if installed.ID != "dev.finoka.hello" || !installed.Enabled || len(installed.Contributes.Tools) != 1 {
 		t.Fatalf("unexpected installed plugin: %#v", installed)
 	}
-	listed := service.List()
+	listed := userPlugins(service.List())
 	if len(listed) != 1 || listed[0].Version != "1.2.3" {
 		t.Fatalf("unexpected plugin list: %#v", listed)
 	}
@@ -126,7 +128,7 @@ func TestInstallEnablePageAndUninstall(t *testing.T) {
 	if err := service.Uninstall("dev.finoka.hello", false); err != nil {
 		t.Fatal(err)
 	}
-	if len(service.List()) != 0 {
+	if len(userPlugins(service.List())) != 0 {
 		t.Fatal("uninstalled plugin is still listed")
 	}
 	if _, err := os.Stat(filepath.Join(root, "plugin-data", "dev.finoka.hello", "settings.json")); err != nil {
@@ -223,7 +225,7 @@ func TestInstallNewVersionSwitchesCurrent(t *testing.T) {
 	if _, err := service.Install(second); err != nil {
 		t.Fatal(err)
 	}
-	listed := service.List()
+	listed := userPlugins(service.List())
 	if len(listed) != 1 || listed[0].Version != "2.0.0" {
 		t.Fatalf("new version was not activated: %#v", listed)
 	}
@@ -370,7 +372,7 @@ func TestYTDLPArgumentsUseClosedSafeSet(t *testing.T) {
 		"--remux-video", "mp4",
 		"-N", "4",
 	}
-	if err := validateYTDLPArguments(allowed); err != nil {
+	if err := validateYTDLPArguments(allowed, false); err != nil {
 		t.Fatalf("safe yt-dlp arguments were rejected: %v", err)
 	}
 	blocked := [][]string{
@@ -382,10 +384,73 @@ func TestYTDLPArgumentsUseClosedSafeSet(t *testing.T) {
 		{"-N", "64"},
 	}
 	for _, arguments := range blocked {
-		if err := validateYTDLPArguments(arguments); err == nil {
+		if err := validateYTDLPArguments(arguments, false); err == nil {
 			t.Fatalf("unsafe yt-dlp arguments were accepted: %#v", arguments)
 		}
+		if err := validateYTDLPArguments(arguments, true); err == nil {
+			t.Fatalf("unsafe yt-dlp arguments were accepted for a system plugin: %#v", arguments)
+		}
 	}
+	// The wider set is reachable from built-ins only.
+	trusted := [][]string{
+		{"-f", "bv*[height<=2160]+ba/b[height<=2160]"},
+		{"-f", "bv*[height<=1440]+ba/b[height<=1440]"},
+		{"-N", "16"},
+		{"--no-part"},
+	}
+	for _, arguments := range trusted {
+		if err := validateYTDLPArguments(arguments, true); err != nil {
+			t.Fatalf("built-in yt-dlp arguments were rejected: %#v: %v", arguments, err)
+		}
+		if err := validateYTDLPArguments(arguments, false); err == nil {
+			t.Fatalf("built-in-only arguments were accepted for a UI plugin: %#v", arguments)
+		}
+	}
+}
+
+func TestDownloadFailureExplainsTheForbiddenCase(t *testing.T) {
+	// yt-dlp's own spelling and aria2c's wrapped exit code are the same refusal,
+	// and the plugin page must not depend on which downloader happened to run.
+	spellings := []string{
+		"[download] 0.9% of 1.02GiB" + newlineForTest + "ERROR: unable to download video data: HTTP Error 403: Forbidden",
+		"[#efe8d4 0B/0B CN:1 DL:0B] errorCode=22 The response status is not successful. status=403" +
+			newlineForTest + "ERROR: aria2c exited with code 22",
+	}
+	for _, output := range spellings {
+		explained := explainDownloadFailure(output)
+		if explained != forbiddenDownloadHelp {
+			t.Fatalf("403 was not explained: %q", explained)
+		}
+	}
+}
+
+func TestDownloadFailureKeepsActionableDetailBounded(t *testing.T) {
+	// A real failed run is mostly progress redraws and very long signed URLs;
+	// only the ERROR lines are worth putting in front of a user.
+	noise := strings.Repeat("[download]  12.3% of 1.02GiB at 8.00MiB/s ETA 02:04"+newlineForTest, 400)
+	explained := explainDownloadFailure(noise + "ERROR: Requested format is not available")
+	if !strings.Contains(explained, "Requested format is not available") {
+		t.Fatalf("actionable line was dropped: %q", explained)
+	}
+	if strings.Contains(explained, "[download]") {
+		t.Fatalf("progress noise reached the message: %q", explained)
+	}
+	if count := len([]rune(explained)); count > 500 {
+		t.Fatalf("message is unbounded at %d runes", count)
+	}
+	if explainDownloadFailure("") == "" {
+		t.Fatal("an empty log still needs a message")
+	}
+}
+
+func userPlugins(list []InstalledPlugin) []InstalledPlugin {
+	result := []InstalledPlugin{}
+	for _, plugin := range list {
+		if !plugin.System {
+			result = append(result, plugin)
+		}
+	}
+	return result
 }
 
 func TestDocumentCapabilitiesFollowDeclaredPermissions(t *testing.T) {

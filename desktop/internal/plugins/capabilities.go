@@ -1,14 +1,20 @@
 package plugins
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Ricori/finoka/desktop/internal/library"
 	"github.com/Ricori/finoka/desktop/internal/managedtools"
@@ -28,6 +34,13 @@ type ExportedArtifact struct {
 	Path   string `json:"path"`
 	Format string `json:"format"`
 	Size   int64  `json:"size"`
+}
+
+// DownloadLog is one line of yt-dlp output on its way to the plugin page. The
+// page shows the log because a download that takes minutes is otherwise a bar
+// with no explanation of what it is waiting on.
+type DownloadLog struct {
+	Line string `json:"line"`
 }
 
 type DownloadedMedia struct {
@@ -153,7 +166,8 @@ func (s *Service) ExportAudio(pluginID, mediaID, format string) (ExportedArtifac
 // public YouTube and Twitch URLs. The host still owns tool resolution, the
 // output path, FFmpeg wiring and the final media-library import.
 func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (DownloadedMedia, error) {
-	if err := s.requirePermission(pluginID, "tools.yt-dlp"); err != nil {
+	system, err := s.requireTrustedPermission(pluginID, "tools.yt-dlp")
+	if err != nil {
 		return DownloadedMedia{}, err
 	}
 	if err := s.requirePermission(pluginID, "media.import"); err != nil {
@@ -163,13 +177,21 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 	if err != nil {
 		return DownloadedMedia{}, err
 	}
-	if err := validateYTDLPArguments(pluginArgs); err != nil {
+	if err := validateYTDLPArguments(pluginArgs, system); err != nil {
 		return DownloadedMedia{}, err
 	}
 	if !s.mediaJobMu.TryLock() {
 		return DownloadedMedia{}, errors.New("another plugin media job is already running")
 	}
 	defer s.mediaJobMu.Unlock()
+	// Mirrors the lock's lifetime exactly, so a page that reloads mid-download
+	// can ask whether one is running instead of guessing from its own state --
+	// which it no longer has, the iframe having been torn down.
+	s.downloadActive.Store(true)
+	defer func() {
+		s.downloadActive.Store(false)
+		s.emitDownloadEnd()
+	}()
 
 	s.mu.RLock()
 	media, app, home := s.media, s.app, s.home
@@ -217,21 +239,88 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 		"--merge-output-format", "mp4",
 		"--remux-video", "mp4",
 	)
+
+	// The three pieces below only work together, which is why none of them is
+	// conditional on its own merits. YouTube gates in this order: a signed-in
+	// session makes formats visible at all, a GVS PO token makes their URLs
+	// durable, and solving the "n" challenge needs a JavaScript runtime plus the
+	// EJS solver. Miss any one and the failure surfaces at an earlier gate, which
+	// is what makes each piece look useless when tried by itself.
+	environment := append([]string(nil), ytDLP.Environment...)
+	cookies := s.cookiesFor(pluginID)
+	if cookies != "" {
+		args = append(args, "--cookies", cookies)
+	}
+	potReady := false
+	if potPlugin, pluginErr := managedtools.FindPOTPlugin(s.dataDirectory); pluginErr == nil {
+		if potServer, serverErr := managedtools.FindPOTServer(s.dataDirectory); serverErr == nil {
+			// yt-dlp finds the provider by importing `yt_dlp_plugins`; without this
+			// it reports "PO Token Providers: none" and no token is ever requested.
+			environment = managedtools.AddPythonPath(environment, potPlugin)
+			// Script mode: the generator is spawned per call, so nothing stays
+			// resident and no port is opened on the user's machine.
+			args = append(args, "--extractor-args", "youtubepot-bgutilscript:server_home="+potServer)
+			potReady = true
+		}
+	}
+	if runtimeArgs := jsRuntimeArgs(s.dataDirectory); len(runtimeArgs) > 0 {
+		args = append(args, runtimeArgs...)
+		args = append(args, "--remote-components", "ejs:github")
+	}
+	if cookies != "" && potReady {
+		// Only worth forcing once the session and the token are both in hand:
+		// without them mweb returns no formats at all, while the default
+		// android_vr fallback at least lists some.
+		args = append(args, "--extractor-args", "youtube:player_client=mweb")
+	}
+	// Multi-connection fetching, as the reference downloader does it: aria2c
+	// pulls a long VOD far faster than yt-dlp's own HTTP downloader. Finoka does
+	// not manage the binary, so this stays optional — without it the built-in
+	// downloader still completes, just more slowly. Only built-in plugins get
+	// it, because handing an external downloader to sideloaded pages would put
+	// a second, separately configured network client behind the sandbox.
+	if system {
+		if aria2c, lookupErr := managedtools.Find(s.dataDirectory, "aria2c"); lookupErr == nil {
+			args = append(args,
+				"--downloader", "dash,m3u8,http:"+aria2c,
+				"--downloader-args", "aria2c:-x 16 -s 16 -k 1M",
+			)
+		}
+	}
 	args = append(args, "-o", output, normalizedURL)
-	command := exec.Command(ytDLP.Executable, args...)
-	if len(ytDLP.Environment) > 0 {
-		command.Env = append(os.Environ(), ytDLP.Environment...)
+	// A stalled fragment server can wedge yt-dlp indefinitely, and it holds the
+	// single media-job lock while it does, so every download is bounded.
+	downloadContext, cancelDownload := context.WithTimeout(context.Background(), ytDLPDownloadTimeout)
+	defer cancelDownload()
+	// Published so CancelDownload can reach this run. Cleared on the way out so a
+	// later cancel cannot fire at a process that has already gone.
+	s.downloadCancelled.Store(false)
+	s.resetDownloadLog()
+	s.downloadCancelMu.Lock()
+	s.downloadCancel = cancelDownload
+	s.downloadCancelMu.Unlock()
+	defer func() {
+		s.downloadCancelMu.Lock()
+		s.downloadCancel = nil
+		s.downloadCancelMu.Unlock()
+	}()
+	command := exec.CommandContext(downloadContext, ytDLP.Executable, args...)
+	if len(environment) > 0 {
+		command.Env = append(os.Environ(), environment...)
 	}
 	configurePluginCommand(command)
-	outputLog := newTailBuffer(8_000)
-	command.Stdout = &outputLog
-	command.Stderr = &outputLog
-	if err := command.Run(); err != nil {
-		detail := strings.TrimSpace(outputLog.String())
-		if detail == "" {
-			detail = err.Error()
+	if err := s.streamDownload(command, pluginID); err != nil {
+		if s.downloadCancelled.Load() {
+			// Shaped like cancelling the save dialog: nothing went wrong, there is
+			// just nothing to import. The half-written file is ours -- we chose the
+			// path and passed --no-part -- so it does not outlive the run.
+			_ = os.Remove(output)
+			return DownloadedMedia{}, nil
 		}
-		return DownloadedMedia{}, fmt.Errorf("yt-dlp download failed: %s", detail)
+		if errors.Is(downloadContext.Err(), context.DeadlineExceeded) {
+			return DownloadedMedia{}, fmt.Errorf("yt-dlp download exceeded the %s limit and was stopped", ytDLPDownloadTimeout)
+		}
+		return DownloadedMedia{}, err
 	}
 	info, err := os.Stat(output)
 	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
@@ -255,25 +344,303 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 	return DownloadedMedia{Platform: platform, OutputPath: output, Media: entrySummary}, nil
 }
 
-func (s *Service) requirePermission(pluginID, permission string) error {
-	if !pluginIDPattern.MatchString(pluginID) {
-		return errors.New("invalid plugin id")
+// jsRuntimeArgs points yt-dlp at a JavaScript engine so the EJS solver can run.
+// yt-dlp enables only deno by default, so an installed node has to be named
+// explicitly; the path is passed too, since the engine need not be on PATH.
+func jsRuntimeArgs(dataDirectory string) []string {
+	for _, runtime := range []string{"deno", "node"} {
+		if executable, err := managedtools.Find(dataDirectory, runtime); err == nil {
+			return []string{"--js-runtimes", runtime + ":" + executable}
+		}
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if !s.registry.Enabled[pluginID] {
-		return errors.New("plugin is disabled")
-	}
-	manifest, _, err := s.installedManifestLocked(pluginID)
+	return nil
+}
+
+// ytDLPDownloadTimeout bounds one download end to end.
+const ytDLPDownloadTimeout = 20 * time.Minute
+
+// drainGrace bounds how long output draining may outlive the process itself.
+const drainGrace = 2 * time.Second
+
+// downloadProgressInterval throttles what reaches the renderer. yt-dlp rewrites
+// its progress line constantly and an HLS video has thousands of fragments, so
+// forwarding every line would flood the event bus to redraw the same bar.
+const downloadProgressInterval = 400 * time.Millisecond
+
+var downloadProgressPattern = regexp.MustCompile(`^\[download\]\s+([0-9.]+)%`)
+
+// streamDownload runs yt-dlp while reading its output live rather than
+// buffering everything until exit. A slow download and a hung one look
+// identical otherwise, so percentages are forwarded as they arrive while the
+// bounded tail is still kept for the failure message.
+func (s *Service) streamDownload(command *exec.Cmd, jobID string) error {
+	reader, writer, err := os.Pipe()
 	if err != nil {
 		return err
 	}
-	for _, granted := range manifest.Permissions {
-		if granted == permission {
-			return nil
+	command.Stdout = writer
+	command.Stderr = writer
+	if err := command.Start(); err != nil {
+		_ = writer.Close()
+		_ = reader.Close()
+		return err
+	}
+	// The child holds its own descriptor; dropping ours is what lets the
+	// scanner below observe EOF once yt-dlp exits.
+	_ = writer.Close()
+	outputLog := newTailBuffer(8_000)
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+		var lastProgress time.Time
+		for scanner.Scan() {
+			line := scanner.Text()
+			_, _ = outputLog.Write([]byte(line + "\n"))
+			match := downloadProgressPattern.FindStringSubmatch(line)
+			if match == nil {
+				// Ordinary output -- extraction notices, warnings, errors. Low volume,
+				// and the part a user can actually act on, so it always goes through.
+				s.emitDownloadLog(line)
+				continue
+			}
+			if time.Since(lastProgress) < downloadProgressInterval {
+				continue
+			}
+			percent, parseErr := strconv.ParseFloat(match[1], 64)
+			if parseErr != nil {
+				continue
+			}
+			lastProgress = time.Now()
+			s.emitDownloadProgress(jobID, percent)
+			// The same line carries speed and ETA, which the bar cannot show.
+			s.emitDownloadLog(line)
+		}
+	}()
+	waitErr := command.Wait()
+	// yt-dlp's own children — aria2c above all — inherit this pipe, so a killed
+	// or timed-out download can exit while a grandchild still holds the write
+	// end. Waiting on EOF alone would then hang here holding the media job lock,
+	// which is precisely what the timeout exists to prevent. Give the drain a
+	// moment to end on its own, then force it by dropping the read end.
+	select {
+	case <-drained:
+	case <-time.After(drainGrace):
+	}
+	_ = reader.Close()
+	<-drained
+	if waitErr != nil {
+		detail := strings.TrimSpace(outputLog.String())
+		if detail == "" {
+			detail = waitErr.Error()
+		}
+		return errors.New(explainDownloadFailure(detail))
+	}
+	s.emitDownloadProgress(jobID, 100)
+	return nil
+}
+
+// forbiddenDownloadHelp explains the one failure users actually hit. YouTube
+// strips the formats of every client that would hand out durable media URLs
+// unless the request carries a proof-of-origin token, which yt-dlp cannot mint
+// on its own -- it has no native PO token component, only the EJS pieces that
+// solve signatures. What is left is the android_vr fallback, whose URLs serve a
+// few percent of a sustained transfer and are then revoked. Short videos finish
+// inside that window; anything longer does not.
+const forbiddenDownloadHelp = "YouTube refused the download with HTTP 403. " +
+	"It hands out media URLs that stop working partway through a transfer unless the request " +
+	"carries a proof-of-origin (PO) token, which yt-dlp cannot generate by itself, so in practice " +
+	"only short videos finish. This is not a network, FFmpeg, or aria2c problem, and retrying rarely helps."
+
+// explainDownloadFailure turns a failed run into something a user can act on.
+// The raw tail is thousands of characters of aria2c retry notices and signed
+// googlevideo URLs, which buries the one line that carries the reason.
+func explainDownloadFailure(output string) string {
+	trimmed := strings.TrimSpace(output)
+	// aria2c reports the same rejection as its own exit code, so both spellings
+	// have to count as the 403 or the message depends on which downloader ran.
+	if strings.Contains(trimmed, "HTTP Error 403") || strings.Contains(trimmed, "status=403") {
+		return forbiddenDownloadHelp
+	}
+	return "yt-dlp download failed: " + downloadFailureDetail(trimmed)
+}
+
+// downloadFailureDetail keeps the actionable part of the log: the ERROR lines
+// when yt-dlp emitted any, otherwise the tail, always bounded so a wall of
+// progress redraws cannot reach the plugin page.
+func downloadFailureDetail(output string) string {
+	var lines, failures []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lines = append(lines, line)
+		if strings.Contains(line, "ERROR:") {
+			failures = append(failures, line)
 		}
 	}
-	return fmt.Errorf("plugin does not have %s permission", permission)
+	if len(failures) > 0 {
+		lines = failures
+	}
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	detail := strings.Join(lines, "; ")
+	// Trimmed by runes: the log carries Chinese from Finoka-managed tools, and
+	// slicing bytes would hand the UI a broken character.
+	if runes := []rune(detail); len(runes) > 400 {
+		detail = string(runes[len(runes)-400:])
+	}
+	return detail
+}
+
+// CancelDownload interrupts the running download. Killing the process is what
+// actually stops it: yt-dlp has no gentler protocol, and the context it runs
+// under is already the timeout's, so cancelling that covers both paths.
+func (s *Service) CancelDownload(pluginID string) error {
+	if _, err := s.requireTrustedPermission(pluginID, "tools.yt-dlp"); err != nil {
+		return err
+	}
+	s.downloadCancelMu.Lock()
+	cancel := s.downloadCancel
+	s.downloadCancelMu.Unlock()
+	if cancel == nil {
+		return errors.New("no download is running")
+	}
+	// Set before cancelling, so the run cannot finish and read a stale false.
+	s.downloadCancelled.Store(true)
+	cancel()
+	return nil
+}
+
+// downloadLogRetained bounds what is kept. It matches the page's own limit, so a
+// reattached page ends up with exactly the log it would have had.
+const downloadLogRetained = 200
+
+func (s *Service) resetDownloadLog() {
+	s.downloadLogMu.Lock()
+	s.downloadLogLines = nil
+	s.downloadLogMu.Unlock()
+}
+
+func (s *Service) recordDownloadLog(line string) {
+	s.downloadLogMu.Lock()
+	defer s.downloadLogMu.Unlock()
+	s.downloadLogLines = append(s.downloadLogLines, line)
+	if len(s.downloadLogLines) > downloadLogRetained {
+		// Re-sliced into a fresh array so the dropped head can be collected
+		// instead of being pinned by the slice's backing store for the whole run.
+		s.downloadLogLines = append([]string(nil), s.downloadLogLines[len(s.downloadLogLines)-downloadLogRetained:]...)
+	}
+}
+
+// DownloadLogLines returns the running -- or most recently finished -- run's
+// output, so a page can render the history it missed. It survives past the end
+// of a run deliberately: coming back after a download finished should still show
+// what happened, and the buffer is cleared when the next one starts.
+func (s *Service) DownloadLogLines(pluginID string) ([]string, error) {
+	if _, err := s.requireTrustedPermission(pluginID, "tools.yt-dlp"); err != nil {
+		return nil, err
+	}
+	s.downloadLogMu.Lock()
+	defer s.downloadLogMu.Unlock()
+	return append([]string{}, s.downloadLogLines...), nil
+}
+
+// ClearDownloadLog empties the retained log. It clears the host's buffer, not
+// just the page's view: the page re-fetches on every mount, so wiping only the
+// DOM would bring the whole log back the next time the user navigated away and
+// returned.
+func (s *Service) ClearDownloadLog(pluginID string) error {
+	if _, err := s.requireTrustedPermission(pluginID, "tools.yt-dlp"); err != nil {
+		return err
+	}
+	s.resetDownloadLog()
+	return nil
+}
+
+// emitDownloadLog forwards one line. Long lines are trimmed: aria2c reports a
+// failure with the whole signed media URL, well over a thousand characters,
+// which would push everything readable out of the page's log view.
+func (s *Service) emitDownloadLog(line string) {
+	line = strings.TrimRight(line, "\r")
+	if strings.TrimSpace(line) == "" {
+		return
+	}
+	if runes := []rune(line); len(runes) > 500 {
+		line = string(runes[:500]) + "…"
+	}
+	s.recordDownloadLog(line)
+	s.mu.RLock()
+	app := s.app
+	s.mu.RUnlock()
+	if app != nil {
+		app.Event.Emit("plugins:download-log", DownloadLog{Line: line})
+	}
+}
+
+// emitDownloadEnd tells any listening page the download is over, whatever the
+// outcome. The rpc.result that carries the actual result goes to the frame that
+// asked, and that frame is gone if the user navigated away; without this a
+// reattached page would sit on a progress bar that never finishes.
+func (s *Service) emitDownloadEnd() {
+	s.mu.RLock()
+	app := s.app
+	s.mu.RUnlock()
+	if app == nil {
+		return
+	}
+	app.Event.Emit("media:progress", library.MediaProgress{Stage: "download-end", Done: 100, Total: 100})
+}
+
+// emitDownloadProgress reuses the media:progress channel the editor export
+// already publishes on, so the plugin page host keeps a single progress relay
+// instead of growing one per capability. The stage tells them apart.
+func (s *Service) emitDownloadProgress(jobID string, percent float64) {
+	s.mu.RLock()
+	app := s.app
+	s.mu.RUnlock()
+	if app == nil {
+		return
+	}
+	app.Event.Emit("media:progress", library.MediaProgress{
+		ID:    jobID,
+		Stage: "download",
+		Done:  math.Min(math.Max(percent, 0), 100),
+		Total: 100,
+	})
+}
+
+func (s *Service) requirePermission(pluginID, permission string) error {
+	_, err := s.requireTrustedPermission(pluginID, permission)
+	return err
+}
+
+// requireTrustedPermission checks a capability grant and additionally reports
+// whether the caller is a built-in system plugin. Trust comes from the install
+// location alone (see pluginHomeLocked), so a sideloaded package cannot reach
+// the wider limits by declaring anything in its manifest.
+func (s *Service) requireTrustedPermission(pluginID, permission string) (bool, error) {
+	if !pluginIDPattern.MatchString(pluginID) {
+		return false, errors.New("invalid plugin id")
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	manifest, _, system, err := s.installedManifestLocked(pluginID)
+	if err != nil {
+		return false, err
+	}
+	if !s.enabledLocked(pluginID, system) {
+		return false, errors.New("plugin is disabled")
+	}
+	for _, granted := range manifest.Permissions {
+		if granted == permission {
+			return system, nil
+		}
+	}
+	return system, fmt.Errorf("plugin does not have %s permission", permission)
 }
 
 func audioFormat(format string) (extension, label string, args []string, err error) {
@@ -311,7 +678,12 @@ func validateVideoURL(raw string) (platform, normalized string, err error) {
 	return platform, parsed.String(), nil
 }
 
-func validateYTDLPArguments(arguments []string) error {
+// validateYTDLPArguments keeps plugin-supplied arguments inside a closed set.
+// The set widens for built-in plugins rather than opening up per flag: they
+// ship with Finoka and are reviewed with it, so the taller formats and the
+// 16-way fragment concurrency that pair with aria2c are reachable there while
+// sideloaded pages stay on the conservative set.
+func validateYTDLPArguments(arguments []string, system bool) error {
 	if len(arguments) > 32 {
 		return errors.New("yt-dlp command contains too many arguments")
 	}
@@ -320,6 +692,14 @@ func validateYTDLPArguments(arguments []string) error {
 		"bv*[height<=1080]+ba/b[height<=1080]": true,
 		"bv*[height<=720]+ba/b[height<=720]":   true,
 	}
+	fragmentValues := map[string]bool{"1": true, "2": true, "4": true, "8": true}
+	fragmentLimits := "1, 2, 4, or 8"
+	if system {
+		formatValues["bv*[height<=1440]+ba/b[height<=1440]"] = true
+		formatValues["bv*[height<=2160]+ba/b[height<=2160]"] = true
+		fragmentValues["16"] = true
+		fragmentLimits = "1, 2, 4, 8, or 16"
+	}
 	for index := 0; index < len(arguments); index++ {
 		argument := arguments[index]
 		if argument == "" || len(argument) > 512 {
@@ -327,6 +707,13 @@ func validateYTDLPArguments(arguments []string) error {
 		}
 		switch argument {
 		case "--no-playlist", "--newline", "--embed-metadata":
+			continue
+		case "--no-part":
+			// Writing straight to the final name suits the multi-connection
+			// downloader, which fills the file out of order anyway.
+			if !system {
+				return fmt.Errorf("yt-dlp argument %q is only allowed for built-in plugins", argument)
+			}
 			continue
 		case "-f", "--format", "--merge-output-format", "--remux-video", "-N", "--concurrent-fragments":
 			if index+1 >= len(arguments) {
@@ -344,8 +731,8 @@ func validateYTDLPArguments(arguments []string) error {
 					return errors.New("yt-dlp demo output format must be mp4")
 				}
 			case "-N", "--concurrent-fragments":
-				if value != "1" && value != "2" && value != "4" && value != "8" {
-					return errors.New("yt-dlp concurrent fragments must be 1, 2, 4, or 8")
+				if !fragmentValues[value] {
+					return errors.New("yt-dlp concurrent fragments must be " + fragmentLimits)
 				}
 			}
 		default:

@@ -1171,7 +1171,7 @@ export default function App() {
           <button className={section === "plugins" ? "active" : ""} title="插件管理" onClick={() => setSection("plugins")}>
             <NavIcon kind="plugins" />
             <span className="nav-text">插件管理</span>
-            {plugins.length > 0 && <small className="nav-count">{plugins.length}</small>}
+            {/* {plugins.length > 0 && <small className="nav-count">{plugins.length}</small>} */}
           </button>
         </nav>
         <span className="nav-label management-label">管理</span>

@@ -38,7 +38,11 @@ const assetStateLabels: Record<RuntimeItem["state"], string> = {
   failed: "安装失败",
 };
 
-const optionalToolIds = new Set(["git", "yt-dlp", "tokcount"]);
+const optionalToolIds = new Set(["git", "yt-dlp", "tokcount", "aria2c", "node", "pot-provider"]);
+
+// 这几样单独装没有意义：yt-dlp 下载，aria2c 提速，node 与 pot-provider 一起
+// 提供 YouTube 要的 PO token。所以它们作为一件事呈现，也作为一件事安装。
+const videoToolIds = new Set(["yt-dlp", "aria2c", "node", "pot-provider"]);
 
 const stageOrder: Record<string, number> = {
   preparing: 0,
@@ -151,6 +155,9 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
   const assets = [provision?.runtime, ...(provision?.resources ?? []), ...(provision?.models ?? [])]
     .filter((item): item is RuntimeItem => item !== undefined && item.id !== "ffmpeg" && item.id !== "ffprobe");
   const optionalTools = assets.filter((item) => optionalToolIds.has(item.id));
+  const videoTools = optionalTools.filter((item) => videoToolIds.has(item.id));
+  const otherTools = optionalTools.filter((item) => !videoToolIds.has(item.id));
+  const videoToolsReady = videoTools.length > 0 && videoTools.every((item) => item.state === "ready");
   const requiredAssets = assets.filter((item) => !optionalToolIds.has(item.id));
   const readyAssets = requiredAssets.filter((item) => item.state === "ready");
   const pendingAssets = requiredAssets.filter((item) => item.state !== "ready");
@@ -282,11 +289,38 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             </div>
           </section>
         )}
-        {optionalTools.length > 0 && (
+        {videoTools.length > 0 && (
+          <section className="asset-group optional">
+            <div className="asset-group-heading">
+              <div className="asset-group-title">
+                <strong>视频下载工具</strong>
+                <small>下载 YouTube 视频所需</small>
+              </div>
+              <button
+                className="quiet-button asset-group-action"
+                disabled={jobRunning || videoToolsReady}
+                onClick={() => onInstall("video-tools")}
+              >
+                {jobRunning && job?.target === "video-tools" ? "正在安装…" : videoToolsReady ? "已安装" : "安装全部"}
+              </button>
+            </div>
+            <div className="asset-grid">
+              {videoTools.map((item) => <AssetTile
+                item={item}
+                key={`${item.id}:${item.version ?? ""}`}
+                optional
+                busy={jobRunning}
+                installing={jobRunning && job.target === item.id}
+                onInstall={() => onInstall(item.id as RuntimeInstallTarget)}
+              />)}
+            </div>
+          </section>
+        )}
+        {otherTools.length > 0 && (
           <section className="asset-group optional">
             <div className="asset-group-heading"><strong>可选工具</strong><small>按需使用，不影响任务运行</small></div>
             <div className="asset-grid">
-              {optionalTools.map((item) => <AssetTile
+              {otherTools.map((item) => <AssetTile
                 item={item}
                 key={`${item.id}:${item.version ?? ""}`}
                 optional

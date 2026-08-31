@@ -15,9 +15,41 @@ interface PluginManagerPageProps {
 }
 
 export function PluginManagerPage(props: PluginManagerPageProps) {
-  const { plugins, busy, message, onInstall, onToggle, onUninstall, onOpenTool, onDismissMessage } = props;
+  const { plugins, busy, message, onInstall, onToggle, onUninstall, onDismissMessage } = props;
   const [pendingUninstall, setPendingUninstall] = useState<{ plugin: InstalledPlugin; removeData: boolean } | null>(null);
   const uninstallBusy = pendingUninstall !== null && busy === pendingUninstall.plugin.id;
+  const systemPlugins = plugins.filter((plugin) => plugin.system);
+  const userPlugins = plugins.filter((plugin) => !plugin.system);
+
+  const renderCard = (plugin: InstalledPlugin) => {
+    const working = busy === plugin.id;
+    return (
+      <article className={`panel plugin-card ${plugin.enabled ? "" : "disabled"}`} key={plugin.id}>
+        <div className="plugin-card-mark">{plugin.name.trim().charAt(0).toUpperCase() || "P"}</div>
+        <div className="plugin-card-copy">
+          <div className="plugin-card-title">
+            <h3>{plugin.name}</h3>
+            <span>v{plugin.version}{!plugin.system && ` · ${plugin.publisher || plugin.id}`}</span>
+            {plugin.system && <i className="system">内置</i>}
+            <i className={plugin.enabled ? "enabled" : ""}>{plugin.enabled ? "已启用" : "已停用"}</i>
+          </div>
+          <p>{plugin.description || `${plugin.contributes.tools?.length ?? 0} 个工具`}</p>
+          {(plugin.permissions?.length ?? 0) > 0 && (
+            <div className="plugin-permissions" title="插件申请的宿主能力">
+              {plugin.permissions?.map((permission) => <span key={permission}>{permissionLabel(permission)}</span>)}
+            </div>
+          )}
+        </div>
+        <div className="plugin-card-actions">
+          <button className="quiet-button" disabled={working} onClick={() => void onToggle(plugin)}>{working ? "请稍候…" : plugin.enabled ? "停用" : "启用"}</button>
+          {/* 内置插件是程序的一部分，卸载没有意义，只能停用。 */}
+          {!plugin.system && (
+            <button className="danger-text-button" disabled={working} onClick={() => setPendingUninstall({ plugin, removeData: false })}>卸载</button>
+          )}
+        </div>
+      </article>
+    );
+  };
 
   const confirmUninstall = async () => {
     if (!pendingUninstall) return;
@@ -39,7 +71,15 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
         </button>
       </article>
 
-      {plugins.length === 0 ? (
+      {systemPlugins.length > 0 && (
+        <>
+          <h3 className="plugin-group-title">内置插件</h3>
+          <div className="plugin-card-list">{systemPlugins.map(renderCard)}</div>
+        </>
+      )}
+
+      <h3 className="plugin-group-title">已安装的插件<small>你自己安装的 .finoka-plugin 包</small></h3>
+      {userPlugins.length === 0 ? (
         <article className="panel plugin-empty">
           <span className="plugin-empty-icon">◇</span>
           <h3>还没有安装插件</h3>
@@ -47,41 +87,7 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
           <button className="quiet-button" disabled={busy !== ""} onClick={() => void onInstall()}>选择插件包</button>
         </article>
       ) : (
-        <div className="plugin-card-list">
-          {plugins.map((plugin) => {
-            const working = busy === plugin.id;
-            return (
-              <article className={`panel plugin-card ${plugin.enabled ? "" : "disabled"}`} key={plugin.id}>
-                <div className="plugin-card-mark">{plugin.name.trim().charAt(0).toUpperCase() || "P"}</div>
-                <div className="plugin-card-copy">
-                  <div className="plugin-card-title">
-                    <h3>{plugin.name}</h3>
-                    <span>v{plugin.version}</span>
-                    <i className={plugin.enabled ? "enabled" : ""}>{plugin.enabled ? "已启用" : "已停用"}</i>
-                  </div>
-                  <p>{plugin.description || `${plugin.contributes.tools?.length ?? 0} 个工具`}</p>
-                  <small>{plugin.publisher || plugin.id}{plugin.license ? ` · ${plugin.license}` : ""}</small>
-                  {(plugin.permissions?.length ?? 0) > 0 && (
-                    <div className="plugin-permissions" title="插件申请的宿主能力">
-                      {plugin.permissions?.map((permission) => <span key={permission}>{permissionLabel(permission)}</span>)}
-                    </div>
-                  )}
-                  {plugin.enabled && (plugin.contributes.tools?.length ?? 0) > 0 && (
-                    <div className="plugin-tool-chips">
-                      {plugin.contributes.tools?.map((tool) => (
-                        <button key={tool.id} onClick={() => onOpenTool(plugin.id, tool.id)}>{tool.title} →</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="plugin-card-actions">
-                  <button className="quiet-button" disabled={working} onClick={() => void onToggle(plugin)}>{working ? "请稍候…" : plugin.enabled ? "停用" : "启用"}</button>
-                  <button className="danger-text-button" disabled={working} onClick={() => setPendingUninstall({ plugin, removeData: false })}>卸载</button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        <div className="plugin-card-list">{userPlugins.map(renderCard)}</div>
       )}
 
       {pendingUninstall && (
@@ -119,7 +125,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   "document.read": "读取字幕文档",
   "document.write": "修改字幕文档",
   "subtitle.export": "导出字幕文件",
-  "tools.yt-dlp": "执行受控的 yt-dlp 命令",
+  "tools.yt-dlp": "使用受控的 yt-dlp",
+  "tools.cookies": "保存登录 Cookie",
   "ffmpeg.extract-audio": "使用 FFmpeg 导出音频",
 };
 

@@ -66,6 +66,12 @@ export function PluginPageHost({ mounted, theme, onOpenManager, onOpenLibrary, o
       "media.list": () => desktopPlugins.mediaList(plugin),
       "ffmpeg.extractAudio": (params) => desktopPlugins.exportAudio(plugin, text(params.mediaId), text(params.format)),
       "tools.runYtDLP": (params) => desktopPlugins.runYTDLP(plugin, text(params.url), strings(params.args)),
+      "downloader.settings": () => desktopPlugins.downloaderSettings(plugin),
+      "downloader.saveCookies": (params) => desktopPlugins.saveCookies(plugin, text(params.content)),
+      "downloader.clearCookies": () => desktopPlugins.clearCookies(plugin),
+      "downloader.cancel": () => desktopPlugins.cancelDownload(plugin),
+      "downloader.log": () => desktopPlugins.downloadLog(plugin),
+      "downloader.clearLog": () => desktopPlugins.clearDownloadLog(plugin),
       "document.read": readDocument,
       "document.save": (params) => desktopPlugins.saveDocument(plugin, text(params.mediaId), params.document),
       "subtitle.ass": async (params) => {
@@ -115,14 +121,23 @@ export function PluginPageHost({ mounted, theme, onOpenManager, onOpenLibrary, o
     return () => window.removeEventListener("message", receive);
   }, [handlers, info, onOpenLibrary, onOpenManager, onOpenRuntime]);
 
-  // 压制导出要跑几分钟，插件页面自己看不到 Wails 事件；转发进度它才能画进度条。
+  // 压制导出和视频下载都要跑几分钟，插件页面自己看不到 Wails 事件；转发进度它才能画进度条。
+  // 两条都走 media:progress，用 stage 区分，宿主这里只有一个转发器。
   useEffect(() => Events.On("media:progress", (event) => {
     const progress = event.data as { id?: string; stage?: string; done?: number; total?: number };
-    if (progress?.stage !== "export" || !progress.total) return;
+    const method = PROGRESS_METHODS[progress?.stage ?? ""];
+    if (!method || !progress.total) return;
     post(frame.current, {
-      method: "media.progress",
+      method,
       result: { done: progress.done ?? 0, total: progress.total },
     });
+  }), []);
+
+  // 下载日志：几分钟的任务光有进度条说明不了它卡在哪一步，把 yt-dlp 的输出转发过去。
+  useEffect(() => Events.On("plugins:download-log", (event) => {
+    const entry = event.data as { line?: string };
+    if (!entry?.line) return;
+    post(frame.current, { method: "download.log", result: { line: entry.line } });
   }), []);
 
   useEffect(() => {
@@ -154,6 +169,15 @@ export function PluginPageHost({ mounted, theme, onOpenManager, onOpenLibrary, o
     </section>
   );
 }
+
+/** Wails 进度事件的 stage → 插件页面收到的方法名 */
+const PROGRESS_METHODS: Record<string, string> = {
+  export: "media.progress",
+  download: "download.progress",
+  // 下载结束也走这条：真正的结果由 rpc.result 回给发起的那个 frame，而用户切走
+  // 页面后那个 frame 已经不在了，没有这条收尾事件，重新挂载的页面会一直停在进度条上。
+  "download-end": "download.finished",
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
