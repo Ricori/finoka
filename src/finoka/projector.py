@@ -265,6 +265,7 @@ def project_edit_document(
             "ja": {"hidden": False, "style": "JP"},
             "zh": {"hidden": False, "style": "CN"},
         },
+        "effects": [],
         "projection": {"schema": 1, "mode": mode},
     }
 

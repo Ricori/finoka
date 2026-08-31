@@ -12,7 +12,9 @@ import { ensureBlkWin, relayout, setDuration, syncZoomRange, viewStore } from ".
 import { playStore } from "../store/playStore";
 import { clampN, errText } from "../utils";
 import { unknownStyles } from "./assBuild";
-import { initSubtitles, preloadSubtitles } from "./subtitles";
+import { migrateLegacyFadeBindings, normalizeEffectBindings } from "../../subtitles/effects";
+import { normalizeKaraoke } from "../../subtitles/karaoke";
+import { initSubtitles, preloadSubtitles, refreshFontMetrics } from "./subtitles";
 import { setupVideo, showVideoFallback } from "./videoSource";
 import { resetAutoGain } from "./wave";
 import { resetHistory } from "./history";
@@ -30,6 +32,8 @@ function mapSegs(items: unknown[]): Seg[] {
       zh: value.zh || "",
     };
     if (Array.isArray(value.words) && value.words.length) segment.words = value.words;
+    const karaoke = normalizeKaraoke(value.k);
+    if (karaoke.length) segment.k = karaoke;
     if (value.low_conf) segment.low_conf = true;
     return segment;
   }).sort((left, right) => left.t0 - right.t0);
@@ -41,7 +45,10 @@ function mapSegs(items: unknown[]): Seg[] {
 
 function resetTransientState() {
   resetHistory();
-  modalStore.set({ bootDone: false, closeOpen: false, tplOpen: false, trkPop: null, clipTip: null });
+  modalStore.set({
+    bootDone: false, closeOpen: false, tplOpen: false, effectsOpen: false, karaokeOpen: false,
+    trkPop: null, clipTip: null,
+  });
   ctxStore.set({ menu: null });
   askStore.set({ dialog: null });
   toastStore.set({ msg: "", show: false, sticky: false, ok: false, onClick: null });
@@ -73,11 +80,18 @@ export async function runBootSequence() {
     setLoadedDocument(data);
 
     const segs = mapSegs(data.subtitles);
+    const fadeMs = (value: unknown) => Math.min(60_000, Math.max(0, Math.round(Number(value) || 0)));
     const tracks: Track[] = (data.tracks ?? []).map((track, index) => ({
       id: track.id || `t${Date.now().toString(36)}${index}`,
       name: track.name || `轨道 ${index + 1}`,
-      ja: { hidden: !!track.ja?.hidden, style: track.ja?.style || null },
-      zh: { hidden: !!track.zh?.hidden, style: track.zh?.style || null },
+      ja: {
+        hidden: !!track.ja?.hidden, style: track.ja?.style || null,
+        fadeInMs: fadeMs(track.ja?.fadeInMs), fadeOutMs: fadeMs(track.ja?.fadeOutMs),
+      },
+      zh: {
+        hidden: !!track.zh?.hidden, style: track.zh?.style || null,
+        fadeInMs: fadeMs(track.zh?.fadeInMs), fadeOutMs: fadeMs(track.zh?.fadeOutMs),
+      },
       hja: clampN(Number(track.hja), ROW_MIN, ROW_MAX, ROW_H0),
       hzh: clampN(Number(track.hzh), ROW_MIN, ROW_MAX, ROW_H0),
       segs: mapSegs(track.segs),
@@ -89,9 +103,22 @@ export async function runBootSequence() {
     };
     const trackMeta = {
       name: sourceMeta.name || "默认轨",
-      ja: { hidden: !!sourceMeta.ja?.hidden, style: sourceMeta.ja?.style || "JP" },
-      zh: { hidden: !!sourceMeta.zh?.hidden, style: sourceMeta.zh?.style || "CN" },
+      ja: {
+        hidden: !!sourceMeta.ja?.hidden, style: sourceMeta.ja?.style || "JP",
+        fadeInMs: fadeMs(sourceMeta.ja?.fadeInMs), fadeOutMs: fadeMs(sourceMeta.ja?.fadeOutMs),
+      },
+      zh: {
+        hidden: !!sourceMeta.zh?.hidden, style: sourceMeta.zh?.style || "CN",
+        fadeInMs: fadeMs(sourceMeta.zh?.fadeInMs), fadeOutMs: fadeMs(sourceMeta.zh?.fadeOutMs),
+      },
     };
+    const effectSource = { tracks, trackMeta };
+    const effects = migrateLegacyFadeBindings(normalizeEffectBindings(data.effects), effectSource);
+    // 旧字段只用于一次迁移；内存与下一次保存都只认统一 effects。
+    for (const lane of [trackMeta.ja, trackMeta.zh, ...tracks.flatMap(track => [track.ja, track.zh])]) {
+      delete lane.fadeInMs;
+      delete lane.fadeOutMs;
+    }
 
     docStore.set({
       rev: data.rev || 0,
@@ -100,6 +127,7 @@ export async function runBootSequence() {
       segs,
       tracks,
       trackMeta,
+      effects,
       knowledgeBase: "",
       canLearnKnowledge: false,
       knowledgeLearning: { status: "idle" },
@@ -116,6 +144,7 @@ export async function runBootSequence() {
     bumpDoc();
     initSubtitles((text) => videoStore.set({ subBusy: text }))
       .catch((error) => toast("字幕预览渲染器加载失败：" + errText(error)));
+    void refreshFontMetrics();
     relayout();
     syncZoomRange();
     ensureBlkWin(true);

@@ -6,12 +6,12 @@ import type { SubtitleSource } from '../../subtitles/types';
 
 /**
  * 编辑器这一侧的入口：把 docStore 里那份就地可变的文档喂给 src/subtitles 的拼装管线，
- * 拼出与 vod/api/edit.py::edit_export_ass 逐字相同的 ASS，交给 libass 渲染，
+ * 拼出交给 libass 的 ASS；普通字幕和特效模板都在 src/subtitles 的公共管线里生成，
  * 于是预览、导出和插件宿主拿到的字幕只差「谁来渲染」。
  */
 export const docSource = (): SubtitleSource => {
-  const { segs, tracks, trackMeta } = docStore.get();
-  return { segs, tracks, trackMeta };
+  const { segs, tracks, trackMeta, effects } = docStore.get();
+  return { segs, tracks, trackMeta, effects };
 };
 
 export const outputLines = (): OutputLine[] => outputLinesOf(docSource(), getStyleSheet());

@@ -215,6 +215,21 @@ func documentPayload(document map[string]any) (map[string]any, error) {
 		}
 		payload["track_meta"] = meta
 	}
+	if raw, present := document["effects"]; present && raw != nil {
+		items, listed := raw.([]any)
+		if !listed {
+			return nil, errors.New("document effects must be a list")
+		}
+		if len(items) > 10_000 {
+			return nil, errors.New("document effects exceeds 10000 bindings")
+		}
+		for _, item := range items {
+			if _, valid := item.(map[string]any); !valid {
+				return nil, errors.New("document effect must be an object")
+			}
+		}
+		payload["effects"] = items
+	}
 	if raw, present := document["title"]; present && raw != nil {
 		title, valid := raw.(string)
 		if !valid || len([]rune(title)) > maxTitleRunes {

@@ -14,6 +14,8 @@ import { VideoStage } from './components/VideoStage';
 import { AskModal } from './components/modals/AskModal';
 import { CloseModal } from './components/modals/CloseModal';
 import { ExportModal } from './components/modals/ExportModal';
+import { EffectsModal } from './components/modals/EffectsModal';
+import { KaraokeModal } from './components/modals/KaraokeModal';
 import { TemplateModal } from './components/modals/TemplateModal';
 import { useDesktopEvents } from './hooks/useDesktopEvents';
 import { useShortcuts } from './hooks/useShortcuts';
@@ -93,6 +95,8 @@ export function EditorApp() {
       <AskModal />
       <TemplateModal />
       <ExportModal />
+      <EffectsModal />
+      <KaraokeModal />
       <TrackPopover />
       <ContextMenu />
       <ClipTip />

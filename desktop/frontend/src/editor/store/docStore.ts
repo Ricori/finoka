@@ -2,7 +2,7 @@ import { createStore } from '../../home/lib/createStore';
 import { TRACK_PALETTE } from '../constants';
 import { trackNameOf } from '../../subtitles/build';
 import { resolveStyle, styleRgb } from '../ass';
-import type { Lang, Peaks, Seg, Ti, Track, TrackMeta } from '../types';
+import type { Lang, Peaks, Seg, SubtitleEffectBinding, Ti, Track, TrackMeta } from '../types';
 
 export interface KnowledgeLearningState {
   status: "idle" | "queued" | "running" | "done" | "error";
@@ -20,6 +20,7 @@ interface DocState {
   segs: Seg[];              // 默认轨（AI 转写+翻译）
   tracks: Track[];          // 自定义轨（说话人/注释）
   trackMeta: TrackMeta | null;   // 默认轨展示元数据（存服务端）
+  effects: SubtitleEffectBinding[];  // 统一特效模板绑定
   knowledgeBase: string;    // 本视频转写时选择的知识库
   canLearnKnowledge: boolean;
   knowledgeLearning: KnowledgeLearningState;
@@ -31,7 +32,7 @@ interface DocState {
 }
 
 export const docStore = createStore<DocState>({
-  segs: [], tracks: [], trackMeta: null,
+  segs: [], tracks: [], trackMeta: null, effects: [],
   knowledgeBase: "", canLearnKnowledge: false, knowledgeLearning: { status: "idle" },
   rev: 0, title: "", videoFp: null, peaks: null, version: 0,
 });

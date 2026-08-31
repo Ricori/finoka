@@ -1,8 +1,12 @@
+import type { KaraokeUnit, SubtitleEffectBinding } from '../subtitles/types.ts';
+
 export interface EditSegment {
   t0: number;
   t1: number;
   ja: string;
   zh: string;
+  /** 逐字（K 轴）时间，只描述原文 */
+  k?: KaraokeUnit[];
   words?: unknown[];
   low_conf?: boolean;
 }
@@ -10,6 +14,10 @@ export interface EditSegment {
 export interface LaneMeta {
   hidden: boolean;
   style: string | null;
+  /** @deprecated 旧版轨道渐变；载入后迁移到 effects。 */
+  fadeInMs?: number;
+  /** @deprecated 旧版轨道渐变；载入后迁移到 effects。 */
+  fadeOutMs?: number;
 }
 
 export interface EditTrack {
@@ -32,6 +40,7 @@ export interface EditDocument {
   subtitles: EditSegment[];
   tracks: EditTrack[];
   track_meta: { name: string; ja: LaneMeta; zh: LaneMeta };
+  effects?: SubtitleEffectBinding[];
   projection: { schema: 1; mode: "stable" | "final" };
   created_at?: string;
   updated_at?: string;

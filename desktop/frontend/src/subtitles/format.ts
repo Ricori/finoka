@@ -31,3 +31,9 @@ export function srtTs(sec: number): string {
   const s = Math.floor(ms / 1000); ms -= s * 1000;
   return `${p2(h)}:${p2(m)}:${p2(s)},${String(ms).padStart(3, "0")}`;
 }
+
+/** #rrggbb → ASS 的 &HBBGGRR&；空串/不合法返回 null（调用方据此不写颜色标签） */
+export function assColorFromHex(hex: string | null | undefined): string | null {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec((hex || "").trim());
+  return m ? `&H${m[3]}${m[2]}${m[1]}&`.toUpperCase() : null;
+}

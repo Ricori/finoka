@@ -147,6 +147,7 @@ class DocumentStore:
                 current = self.read(video_id)
                 incoming["tracks"] = copy.deepcopy(current.get("tracks", []))
                 incoming["track_meta"] = copy.deepcopy(current.get("track_meta", incoming.get("track_meta")))
+                incoming["effects"] = copy.deepcopy(current.get("effects", incoming.get("effects", [])))
                 incoming["rev"] = int(current.get("rev", 0)) + 1
                 incoming["created_at"] = current.get("created_at", incoming["created_at"])
                 self._snapshot(directory, current)
@@ -166,6 +167,7 @@ class DocumentStore:
         subtitles: list[dict[str, Any]],
         tracks: list[dict[str, Any]] | None = None,
         track_meta: Mapping[str, Any] | None = None,
+        effects: list[dict[str, Any]] | None = None,
         title: str | None = None,
     ) -> dict[str, Any]:
         with self._lock(video_id):
@@ -180,6 +182,8 @@ class DocumentStore:
                 updated["tracks"] = copy.deepcopy(tracks)
             if track_meta is not None:
                 updated["track_meta"] = copy.deepcopy(dict(track_meta))
+            if effects is not None:
+                updated["effects"] = copy.deepcopy(effects)
             if title is not None:
                 updated["title"] = title
             updated["rev"] = actual + 1

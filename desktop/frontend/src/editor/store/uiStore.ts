@@ -91,13 +91,16 @@ interface ModalState {
   trkPop: { target: TrackPopTarget; rect: DOMRect } | null;
   closeOpen: boolean;      // 关闭确认
   tplOpen: boolean;        // ASS 模板
+  effectsOpen: boolean;    // 特效字幕管理
+  karaokeOpen: boolean;    // K 轴（逐字时间）面板
   bootDone: boolean;       // 加载遮罩是否撤掉
   /** 切片提示气泡 */
   clipTip: { clip: Clip; x: number; y: number } | null;
 }
 
 export const modalStore = createStore<ModalState>({
-  trkPop: null, closeOpen: false, tplOpen: false, bootDone: false, clipTip: null,
+  trkPop: null, closeOpen: false, tplOpen: false, effectsOpen: false, karaokeOpen: false,
+  bootDone: false, clipTip: null,
 });
 
 export const openTrackPop = (target: TrackPopTarget, anchor: Element) =>

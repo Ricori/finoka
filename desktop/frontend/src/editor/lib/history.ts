@@ -27,6 +27,7 @@ export function resetHistory() {
 function cloneSegs(arr: Seg[]): Seg[] {
   return arr.map(s => {
     const o: Seg = { t0: s.t0, t1: s.t1, ja: s.ja, zh: s.zh };
+    if (s.k) o.k = s.k;               // K 轴同样只被整体替换，浅引用即可
     if (s.words) o.words = s.words;   // words 只被整体替换、不原地改，浅引用即可
     if (s.low_conf) o.low_conf = true;
     return o;
@@ -43,6 +44,15 @@ export function snapshot(): Snapshot {
       ja: { ...tr.ja }, zh: { ...tr.zh },   // 隐藏/绑样式也随快照还原
       segs: cloneSegs(tr.segs),
     })) as Track[],
+    trackMeta: d.trackMeta ? {
+      ...d.trackMeta,
+      ja: { ...d.trackMeta.ja }, zh: { ...d.trackMeta.zh },
+    } : null,
+    effects: d.effects.map(effect => ({
+      ...effect,
+      target: { ...effect.target },
+      params: { ...effect.params },
+    })),
     curTrack: sel.curTrack, sel: sel.sel, t: playStore.get().t,
   };
 }
@@ -67,7 +77,12 @@ export function commitPending() {
 
 // 撤销与重做只差「从哪个栈弹、把当前状态压进哪个栈」，共用一个还原过程
 function applySnap(snap: Snapshot) {
-  docStore.set({ segs: snap.segs, tracks: snap.tracks || [] });
+  docStore.set({
+    segs: snap.segs,
+    tracks: snap.tracks || [],
+    trackMeta: snap.trackMeta ?? null,
+    effects: snap.effects ?? [],
+  });
   const curTrack = Math.min(snap.curTrack != null ? snap.curTrack : -1, snap.tracks.length - 1);
   restoreSelection(curTrack, -1);
   const sel = Math.min(snap.sel, curSegs().length - 1);

@@ -601,6 +601,9 @@ class LocalProvider:
     def save_document(self, video_id: str, value: Mapping[str, Any]) -> dict[str, Any]:
         if not _safe_component(video_id) or not isinstance(value, Mapping):
             raise ProviderError("invalid_document", "Invalid document payload")
+        raw_effects = value.get("effects")
+        if raw_effects is not None and not isinstance(raw_effects, list):
+            raise ProviderError("invalid_document", "Document effects must be a list")
         try:
             return self.documents.save(
                 video_id,
@@ -608,6 +611,7 @@ class LocalProvider:
                 subtitles=list(value.get("subtitles") or []),
                 tracks=list(value.get("tracks") or []),
                 track_meta=value.get("track_meta") if isinstance(value.get("track_meta"), Mapping) else None,
+                effects=list(raw_effects or []),
                 title=str(value["title"]) if "title" in value else None,
             )
         except RevisionConflict as exc:

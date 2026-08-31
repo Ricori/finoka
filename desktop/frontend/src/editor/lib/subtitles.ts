@@ -1,17 +1,32 @@
 import { ASS_EVENTS_HEAD, ASS_SCRIPT_INFO } from '../constants';
 import { getPlayRes } from '../ass';
 import { playStore } from '../store/playStore';
-import { buildAss } from './assBuild';
+import { buildAss, outputLines } from './assBuild';
+import { getStyleMap } from '../ass';
+import { loadFontMetrics } from '../../subtitles/metrics';
 import { subCanvas, video } from './media';
 import JASSUB from "jassub";
 import workerUrl from "jassub/dist/worker/worker.js?worker&url";
 import webViewWorkerUrl from "../vendor/jassub-worker.js?url";
 import wasmUrl from "jassub/dist/wasm/jassub-worker-modern.wasm?url";
 
-const bundledFontUrls = [
-  new URL("fonts/FZZhunYuan.woff2", document.baseURI).href,
-  new URL("fonts/JingNanBoBoHei.woff2", document.baseURI).href,
-];
+const fontUrl = (file: string) => new URL(`fonts/${file}`, document.baseURI).href;
+
+/** 随包字体的族名别名 → 文件。libass 靠 fonts[] 拿到它们，canvas 量度量则要按名注册 */
+const BUNDLED_FONT_FILES: Record<string, string> = {
+  "方正准圆_gbk": "FZZhunYuan.woff2",
+  "方正准圆": "FZZhunYuan.woff2",
+  "fz-zhunyuan-gbk": "FZZhunYuan.woff2",
+  "荆南波波黑": "JingNanBoBoHei.woff2",
+  "jingnanbobohei": "JingNanBoBoHei.woff2",
+};
+
+const bundledFontUrl = (name: string): string | null => {
+  const file = BUNDLED_FONT_FILES[name.trim().toLowerCase()];
+  return file ? fontUrl(file) : null;
+};
+
+const bundledFontUrls = [fontUrl("FZZhunYuan.woff2"), fontUrl("JingNanBoBoHei.woff2")];
 
 const isWebView2 = !!(window as Window & { chrome?: { webview?: unknown } }).chrome?.webview;
 
@@ -73,6 +88,20 @@ export function syncSubs() {
     jassub.renderer.setTrack(ass).catch(() => { });
   }
   drawSubs();
+}
+
+/**
+ * 逐字特效自己复算排版坐标，得按字体的真实度量来（见 src/subtitles/metrics.ts）。
+ * 字体是异步就绪的，量到之前先用兜底比例，就绪后重排一次预览。
+ */
+export async function refreshFontMetrics() {
+  const styleMap = getStyleMap();
+  const fonts = new Set<string>();
+  for (const line of outputLines()) {
+    const style = styleMap[line.style];
+    if (style?.font) fonts.add(String(style.font).trim());
+  }
+  if (await loadFontMetrics(fonts, bundledFontUrl).catch(() => false)) syncSubs();
 }
 
 // 文本框逐字输入也会改字幕内容，但每敲一个字符就 setTrack 等于让 libass 把整份 ASS

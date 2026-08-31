@@ -3,11 +3,17 @@
 
 export type Lang = "ja" | "zh";
 
+export type {
+  KaraokeUnit, SubtitleEffectBinding, SubtitleEffectParam, SubtitleEffectTarget,
+} from '../subtitles/types.ts';
+
 export interface Seg {
   t0: number;
   t1: number;
   ja: string;
   zh: string;
+  /** 逐字（K 轴）时间，只描述原文；见 src/subtitles/karaoke.ts */
+  k?: import('../subtitles/types.ts').KaraokeUnit[];
   words?: unknown[];
   low_conf?: boolean;
 }
@@ -16,6 +22,10 @@ export interface Seg {
 export interface LaneMeta {
   hidden: boolean;
   style: string | null;
+  /** @deprecated 旧版轨道渐变；载入后迁移到 effects。 */
+  fadeInMs?: number;
+  /** @deprecated 旧版轨道渐变；载入后迁移到 effects。 */
+  fadeOutMs?: number;
 }
 
 /** 自定义轨（说话人/注释），与默认轨同构的双 lane */
@@ -68,6 +78,8 @@ export type CtxItem = "-" | { label: string; onClick: () => void; danger?: boole
 export interface Snapshot {
   segs: Seg[];
   tracks: Track[];
+  trackMeta: TrackMeta | null;
+  effects: import('../subtitles/types.ts').SubtitleEffectBinding[];
   curTrack: number;
   sel: number;
   t: number;

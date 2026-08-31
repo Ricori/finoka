@@ -144,14 +144,20 @@ class DocumentStoreTests(unittest.TestCase):
             store = DocumentStore(temp)
             created = store.create("video-1", self.projection())
             track = {"id": "manual", "name": "Speaker", "segs": [{"t0": 1, "t1": 2, "ja": "x", "zh": ""}]}
+            effects = [{
+                "id": "fade-all", "templateId": "fade", "enabled": True,
+                "target": {"scope": "all"}, "params": {"inMs": 200, "outMs": 200},
+            }]
             store.save(
                 "video-1",
                 expected_rev=created["rev"],
                 subtitles=created["subtitles"],
                 tracks=[track],
+                effects=effects,
             )
             replaced = store.create("video-1", self.projection(), replace_default=True)
             self.assertEqual(replaced["tracks"], [track])
+            self.assertEqual(replaced["effects"], effects)
             self.assertEqual(replaced["rev"], 2)
 
 

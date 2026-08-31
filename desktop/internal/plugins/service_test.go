@@ -511,6 +511,7 @@ func TestSaveDocumentKeepsOnlyWritableFields(t *testing.T) {
 		"video_id":  "somewhere-else",
 		"subtitles": []any{map[string]any{"t0": float64(1), "t1": float64(2), "ja": "こんにちは", "zh": "你好", "words": []any{}}},
 		"tracks":    []any{map[string]any{"id": "t1", "name": "注释", "segs": []any{}}},
+		"effects":   []any{map[string]any{"id": "fade", "templateId": "fade", "target": map[string]any{"scope": "all"}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -525,11 +526,15 @@ func TestSaveDocumentKeepsOnlyWritableFields(t *testing.T) {
 	if _, present := segment["words"]; !present {
 		t.Fatal("segment fields the plugin did not understand should survive a round trip")
 	}
+	if len(documents.saved["effects"].([]any)) != 1 {
+		t.Fatalf("effect bindings should survive a plugin round trip: %#v", documents.saved)
+	}
 	for _, broken := range []map[string]any{
 		{"subtitles": []any{}},
 		{"rev": float64(7), "subtitles": []any{map[string]any{"t0": float64(2), "t1": float64(1)}}},
 		{"rev": float64(7), "subtitles": []any{map[string]any{"t0": float64(0), "t1": float64(1), "zh": float64(9)}}},
 		{"rev": float64(7), "subtitles": "not-a-list"},
+		{"rev": float64(7), "subtitles": []any{}, "effects": "not-a-list"},
 	} {
 		if _, err := service.SaveDocument("dev.finoka.hello", "media-1", broken); err == nil {
 			t.Fatalf("malformed document was accepted: %#v", broken)

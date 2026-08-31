@@ -39,6 +39,7 @@ export function markDirty() {
 
 const packSeg = (s: Seg, _i: number): Seg => {
   const o: Seg = { t0: round3(s.t0), t1: round3(s.t1), ja: s.ja, zh: s.zh };
+  if (s.k?.length) o.k = s.k.map(u => ({ t0: round3(u.t0), t1: round3(u.t1), text: u.text }));
   if (s.words) o.words = s.words;
   if (s.low_conf) o.low_conf = true;
   return o;
@@ -48,6 +49,10 @@ function savePayload() {
   const d = docStore.get();
   const base = getLoadedDocument();
   if (!base) throw new Error("编辑文档尚未加载");
+  const packLane = (lane: { hidden: boolean; style: string | null }) => ({
+    hidden: !!lane.hidden,
+    style: lane.style || null,
+  });
   return {
     ...base,
     rev: d.rev,
@@ -55,16 +60,19 @@ function savePayload() {
     subtitles: d.segs.map(packSeg),
     tracks: d.tracks.map(tr => ({
       id: tr.id, name: tr.name,
-      ja: { hidden: !!tr.ja.hidden, style: tr.ja.style || null },
-      zh: { hidden: !!tr.zh.hidden, style: tr.zh.style || null },
+      ja: packLane(tr.ja),
+      zh: packLane(tr.zh),
       hja: tr.hja || ROW_H0, hzh: tr.hzh || ROW_H0,
       segs: tr.segs.map(packSeg),
     })),
-    track_meta: d.trackMeta ?? {
-      name: "默认轨",
-      ja: { hidden: false, style: "JP" },
-      zh: { hidden: false, style: "CN" },
+    track_meta: d.trackMeta ? {
+      name: d.trackMeta.name,
+      ja: packLane(d.trackMeta.ja),
+      zh: packLane(d.trackMeta.zh),
+    } : {
+      name: "默认轨", ja: { hidden: false, style: "JP" }, zh: { hidden: false, style: "CN" },
     },
+    effects: d.effects,
   };
 }
 

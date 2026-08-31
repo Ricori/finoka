@@ -81,14 +81,14 @@ export function TrackPopover() {
           onBlur={e => renameTarget(e.target.value.trim(), styleTarget)} />
       </div>
       {/* 默认轨 lane：只绑当前语言的样式 */}
-      <div style={{ display: isTrack || isJa ? undefined : "none" }}>
-        <label>字幕样式</label>
+      <div className="tp-lane" style={{ display: isTrack || isJa ? undefined : "none" }}>
+        <label>{isTrack ? "日语字幕样式" : "字幕样式"}</label>
         <StyleSelect id="tp-style-ja" allowNone={isTrack} lang="ja"
           value={isTrack ? tr!.ja.style : (trackMeta?.ja.style ?? null)}
           onPick={v => bindStyle("ja", v, styleTarget)} />
       </div>
-      <div style={{ display: isTrack || !isJa ? undefined : "none" }}>
-        <label>字幕样式</label>
+      <div className="tp-lane" style={{ display: isTrack || !isJa ? undefined : "none" }}>
+        <label>{isTrack ? "中文译文样式" : "字幕样式"}</label>
         <StyleSelect id="tp-style-zh" allowNone={isTrack} lang="zh"
           value={isTrack ? tr!.zh.style : (trackMeta?.zh.style ?? null)}
           onPick={v => bindStyle("zh", v, styleTarget)} />

@@ -11,6 +11,7 @@ import { viewRange, viewStore } from '../store/viewStore';
 import { pushHistory } from './history';
 import { seek } from './playback';
 import { syncSubs, syncSubsSoon } from './subtitles';
+import { removeEffectsForTrack } from './effects';
 import type { Lang, Seg } from '../types';
 
 /**
@@ -88,6 +89,8 @@ export function splitAtPlayhead() {
   pushHistory();
   const b: Seg = { t0: t, t1: s.t1, ja: s.ja, zh: s.zh };
   if (s.words) b.words = s.words.map(w => ({ ...(w as object) }));
+  // 两侧都留同一句原文，K 轴也跟着整份留下：字数没变，逐字特效照旧对得上
+  if (s.k) b.k = s.k.map(u => ({ ...u }));
   if (s.low_conf) b.low_conf = true;
   s.t1 = t;
   arr.splice(sel + 1, 0, b);
@@ -105,6 +108,9 @@ export function mergeNext() {
   a.t1 = b.t1; a.ja += b.ja; a.zh += b.zh;
   if (a.words && b.words) a.words = a.words.concat(b.words);
   else delete a.words;
+  // K 轴同理：只有两句都有才拼得出覆盖整句的逐字时间
+  if (a.k && b.k) a.k = a.k.concat(b.k);
+  else delete a.k;
   if (b.low_conf) a.low_conf = true;
   arr.splice(sel + 1, 1);
   refreshAll(); markDirty();
@@ -261,6 +267,7 @@ export async function deleteTrack(ti: number) {
   });
   if (!okDel || docStore.get().tracks[ti] !== tr) return;   // 取消，或等待期间轨道已变动
   pushHistory();
+  removeEffectsForTrack(tr.id);
   tracks.splice(ti, 1);
   const { curTrack } = selStore.get();
   if (curTrack === ti) selStore.set({ curTrack: -1, sel: -1 });

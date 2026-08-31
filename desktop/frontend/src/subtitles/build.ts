@@ -1,16 +1,29 @@
 import { ASS_EVENTS_HEAD } from './constants.ts';
-import { assNm, assSec, assTs, assTx, srtTs } from './format.ts';
+import { DEFAULT_EFFECT_TRACK_ID, resolveLaneEffects } from './effects.ts';
+import { assColorFromHex, assNm, assSec, assTs, assTx, srtTs } from './format.ts';
+import { karaokeTimeline } from './karaoke.ts';
+import { glyphAdvancePx, lineHeightPx } from './metrics.ts';
 import { assHeadOf, resolveStyleIn } from './styles.ts';
 import type { StyleSheet } from './styles.ts';
-import type { Lang, LaneMeta, SubtitleSegment, SubtitleSource } from './types.ts';
+import type {
+  AssStyle, Lang, LaneMeta, SubtitleEffectBinding, SubtitleSegment, SubtitleSource,
+} from './types.ts';
 
 /**
- * 文档 → ASS/SRT 的拼装管线，与 vod/api/edit.py::edit_export_ass / edit_export_srt
- * 逐字相同（改一处必须同步改另一处）。编辑器拿 docStore 的就地可变文档喂进来，
+ * 文档 → ASS/SRT 的拼装管线。无特效时继续与旧服务端导出口径一致；特效绑定则只在
+ * 这一条公共管线里展开。编辑器拿 docStore 的就地可变文档喂进来，
  * 插件宿主拿服务端读回的 EditDocument 喂进来，于是插件拿到的字幕与编辑器导出的
  * 那份、以及 libass 正在预览的那份，是同一条代码路径出的结果。
  */
-export interface OutputLine { arr: SubtitleSegment[]; lang: Lang; style: string; name: string }
+export interface OutputLine {
+  arr: SubtitleSegment[];
+  lang: Lang;
+  style: string;
+  name: string;
+  meta: LaneMeta;
+  trackId: string;
+  effects: SubtitleEffectBinding[];
+}
 
 /** ti：-1 = 默认轨，否则自定义轨下标 */
 export function trackNameOf(source: SubtitleSource, ti: number): string {
@@ -25,20 +38,278 @@ export function trackNameOf(source: SubtitleSource, ti: number): string {
  */
 export function outputLinesOf(source: SubtitleSource, sheet: StyleSheet): OutputLine[] {
   const out: OutputLine[] = [];
-  const add = (arr: SubtitleSegment[], lang: Lang, style: string | null, name: string) => {
-    if (style) out.push({ arr, lang, style: resolveStyleIn(sheet, style, lang), name });
+  const add = (arr: SubtitleSegment[], lang: Lang, meta: LaneMeta, name: string, trackId: string) => {
+    if (meta.style) out.push({
+      arr, lang, meta, trackId,
+      style: resolveStyleIn(sheet, meta.style, lang), name,
+      effects: resolveLaneEffects(source.effects, trackId, lang),
+    });
   };
   const meta = source.trackMeta;
   if (meta) {
-    if (!meta.zh.hidden) add(source.segs, "zh", meta.zh.style, trackNameOf(source, -1));
-    if (!meta.ja.hidden) add(source.segs, "ja", meta.ja.style, trackNameOf(source, -1));
+    if (!meta.zh.hidden) add(source.segs, "zh", meta.zh, trackNameOf(source, -1), DEFAULT_EFFECT_TRACK_ID);
+    if (!meta.ja.hidden) add(source.segs, "ja", meta.ja, trackNameOf(source, -1), DEFAULT_EFFECT_TRACK_ID);
   }
   source.tracks.forEach((tr, ti) => {
-    if (!tr.zh.hidden) add(tr.segs, "zh", tr.zh.style, trackNameOf(source, ti));
-    if (!tr.ja.hidden) add(tr.segs, "ja", tr.ja.style, trackNameOf(source, ti));
+    const trackId = tr.id || `track-${ti + 1}`;
+    if (!tr.zh.hidden) add(tr.segs, "zh", tr.zh, trackNameOf(source, ti), trackId);
+    if (!tr.ja.hidden) add(tr.segs, "ja", tr.ja, trackNameOf(source, ti), trackId);
   });
   return out;
 }
+
+/** 只让程序生成受控的 ASS 覆写标签，普通字幕文本仍由 assTx 转义花括号。 */
+const legacyFadeTag = (meta: LaneMeta): string => {
+  const ms = (value: unknown) => Math.min(60_000, Math.max(0, Math.round(Number(value) || 0)));
+  const fadeIn = ms(meta.fadeInMs), fadeOut = ms(meta.fadeOutMs);
+  return fadeIn || fadeOut ? `{\\fad(${fadeIn},${fadeOut})}` : "";
+};
+
+const param = (binding: SubtitleEffectBinding, key: string, fallback: number): number => {
+  const value = Number(binding.params[key]);
+  return Number.isFinite(value) ? value : fallback;
+};
+
+/** 颜色参数 → `\1c&HBBGGRR&` 这样的覆写；留空（跟随样式）时返回空串，不写标签 */
+const colorParam = (binding: SubtitleEffectBinding, key: string, tag: string): string => {
+  const raw = binding.params[key];
+  const color = assColorFromHex(typeof raw === "string" ? raw : "");
+  return color ? `\\${tag}${color}` : "";
+};
+
+function transformTag(line: OutputLine): string {
+  const fade = line.effects.find(effect => effect.templateId === "fade");
+  if (!fade) return legacyFadeTag(line.meta);
+  const fadeIn = Math.max(0, Math.round(param(fade, "inMs", 200)));
+  const fadeOut = Math.max(0, Math.round(param(fade, "outMs", 200)));
+  return fadeIn || fadeOut ? `{\\fad(${fadeIn},${fadeOut})}` : "";
+}
+
+interface BuiltEvent { layer: number; t0: number; t1: number; text: string }
+
+const rint = (value: number) => Math.round(value);
+
+function hashSeed(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededRandom(seed: number): () => number {
+  let state = seed || 0x6d2b79f5;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+interface PositionedGlyph { glyph: string; x: number; y: number; order: number; total: number }
+
+/**
+ * libass 不暴露排版坐标，逐字特效只能自己复算一遍。字宽和行高的口径见
+ * src/subtitles/metrics.ts：Fontsize 描述的是「asc+desc」而不是 em，早先按 em 估的
+ * 那版每个字宽出 14%、行距宽出 18%，整行就是这么被撑开的。
+ *
+ * 返回顺序与 karaokeGlyphs 完全一致（都只数可见字形），于是 order 可以直接索引 K 轴。
+ */
+function positionedGlyphs(text: string, style: AssStyle, sheet: StyleSheet): PositionedGlyph[] {
+  const rawLines = text.replace(/\r/g, "").split("\n");
+  const visibleTotal = rawLines.reduce((count, line) =>
+    count + Array.from(line).filter(glyph => !/^\s$/u.test(glyph)).length, 0);
+  const result: PositionedGlyph[] = [];
+  let order = 0;
+  const lineHeight = lineHeightPx(style.size, style.scy);
+  const blockHeight = Math.max(lineHeight, rawLines.length * lineHeight);
+  const verticalGroup = Math.ceil(style.align / 3);
+  let blockTop = sheet.playRes.y - style.mv - blockHeight;
+  if (verticalGroup === 2) blockTop = (sheet.playRes.y - blockHeight) / 2;
+  else if (verticalGroup === 3) blockTop = style.mv;
+
+  rawLines.forEach((line, lineIndex) => {
+    const glyphs = Array.from(line);
+    const widths = glyphs.map(glyph => glyphAdvancePx(style.font, style.size, style.sp, style.scx, glyph));
+    const lineWidth = widths.reduce((sum, width) => sum + width, 0);
+    const horizontal = ((style.align - 1) % 3) + 1;
+    // libass 是在 [MarginL, PlayResX-MarginR] 之间居中，不是在整幅画面里居中
+    let left = style.ml;
+    if (horizontal === 2) left = style.ml + (sheet.playRes.x - style.ml - style.mr - lineWidth) / 2;
+    else if (horizontal === 3) left = sheet.playRes.x - style.mr - lineWidth;
+    let cursor = left;
+    glyphs.forEach((glyph, glyphIndex) => {
+      const width = widths[glyphIndex];
+      if (!/^\s$/u.test(glyph)) {
+        result.push({
+          glyph,
+          x: cursor + width / 2,
+          y: blockTop + lineIndex * lineHeight + lineHeight / 2,
+          order: order++,
+          total: visibleTotal,
+        });
+      }
+      cursor += width;
+    });
+  });
+  return result;
+}
+
+/** 逐字特效共用的准备：字形坐标 + 每个字自己的起止时间 */
+function glyphTimeline(line: OutputLine, segment: SubtitleSegment, style: AssStyle, sheet: StyleSheet) {
+  const sourceText = (segment[line.lang] || "").trim();
+  const glyphs = positionedGlyphs(sourceText, style, sheet);
+  if (!glyphs.length) return null;
+  // K 轴只描述原文：译文轴（以及原文改过、K 轴对不上了）一律退回按字数均分
+  const stored = line.lang === "ja" ? segment.k : undefined;
+  return { sourceText, glyphs, timeline: karaokeTimeline(sourceText, segment.t0, segment.t1, stored) };
+}
+
+const PARTICLE_SHAPE = "m 0 0 l 7 8 l 0 16 l 8 9 l 16 16 l 9 8 l 16 0 l 8 7";
+
+/** 每字每粒子一条稳定随机序列：同一份文档反复导出得到同一份画面 */
+const particleRandom = (line: OutputLine, segment: SubtitleSegment, text: string,
+  order: number, index: number) =>
+  seededRandom(hashSeed(`${line.trackId}|${line.lang}|${segment.t0}|${text}|${order}|${index}`));
+
+function particleEvents(line: OutputLine, segment: SubtitleSegment, style: AssStyle,
+  sheet: StyleSheet, binding: SubtitleEffectBinding): BuiltEvent[] {
+  const prepared = glyphTimeline(line, segment, style, sheet);
+  if (!prepared) return [];
+  const { sourceText, glyphs } = prepared;
+  const cueDuration = Math.max(.01, segment.t1 - segment.t0);
+  const staggerMs = Math.max(0, param(binding, "staggerMs", 80));
+  const enterMs = Math.max(50, param(binding, "enterMs", 300));
+  const scaleFrom = Math.max(10, param(binding, "scaleFrom", 70));
+  const count = Math.min(25, Math.max(0, Math.round(param(binding, "particleCount", 10))));
+  const particleDurationMs = Math.max(100, param(binding, "particleDurationMs", 900));
+  const scatter = Math.max(0, param(binding, "scatterPx", 180));
+  const events: BuiltEvent[] = [];
+
+  for (const glyph of glyphs) {
+    const requestedOffset = glyph.order * staggerMs / 1000;
+    const distributedOffset = cueDuration * glyph.order / Math.max(1, glyph.total);
+    const start = segment.t0 + Math.min(requestedOffset, distributedOffset);
+    const remainingMs = Math.max(10, (segment.t1 - start) * 1000);
+    const actualEnter = Math.min(enterMs, remainingMs);
+    const startScx = rint(style.scx * scaleFrom / 100);
+    const startScy = rint(style.scy * scaleFrom / 100);
+    const mainTag = `{\\an5\\pos(${rint(glyph.x)},${rint(glyph.y)})`
+      + `\\fscx${startScx}\\fscy${startScy}\\blur4\\alpha&H80&`
+      + `\\t(0,${rint(actualEnter)},\\fscx${rint(style.scx)}\\fscy${rint(style.scy)}\\blur0\\alpha&H00&)}`;
+    events.push({ layer: 2, t0: start, t1: segment.t1, text: transformTag(line) + mainTag + assTx(glyph.glyph) });
+
+    const particleEnd = Math.min(segment.t1, start + particleDurationMs / 1000);
+    const actualParticleMs = Math.max(10, (particleEnd - start) * 1000);
+    for (let index = 0; index < count; index++) {
+      const random = particleRandom(line, segment, sourceText, glyph.order, index);
+      const angle = random() * Math.PI * 2;
+      const distance = scatter * (.35 + random() * .65);
+      const dx = Math.cos(angle) * distance;
+      const dy = Math.sin(angle) * distance * .55;
+      const rotation = rint(random() * 720 - 360);
+      const targetRotation = rotation + rint(random() * 1440 - 720);
+      const particleScale = rint(35 + random() * 45);
+      const particleTag = `{\\an5\\move(${rint(glyph.x)},${rint(glyph.y)},${rint(glyph.x + dx)},${rint(glyph.y + dy)},0,${rint(actualParticleMs)})`
+        + `\\bord1\\shad0\\blur2\\fscx${particleScale}\\fscy${particleScale}\\frz${rotation}`
+        + `\\t(0,${rint(actualParticleMs)},\\fscx10\\fscy10\\frz${targetRotation})`
+        + `\\fad(0,${rint(Math.min(250, actualParticleMs))})\\p1}m 0 0 l 4 5 l 0 10 l 5 5 l 10 10 l 6 5 l 10 0 l 5 4`;
+      events.push({ layer: 1, t0: start, t1: particleEnd, text: particleTag });
+    }
+  }
+  return events;
+}
+
+/**
+ * K 轴逐字粒子。照着 Aegisub 的 Lullamoon 模板那套做法来：
+ *
+ * - 整行在句首**之前**逐字淡入（`50*(syl.i-$syln)`），到自己的音节才脉冲放大，
+ *   音节结束后再停留一小会儿淡出。所以整行一开始就读得到，不是一个个蹦出来。
+ * - 碎片是**保持大小**的星形，不是缩成一点的尘：起始 ≈90%、终点 ≈粒子大小，
+ *   慢出（accel 0.2）地飘散。缩到十几个百分点会让它们直接消失，这是先前那版
+ *   看着「没有星星」的原因。
+ * - 同一个字的碎片错峰生成、但**一起**在「音节结束 + 粒子余生」处散尽，
+ *   于是长音节的碎片自然飘得更久。
+ */
+function karaokeParticleEvents(line: OutputLine, segment: SubtitleSegment, style: AssStyle,
+  sheet: StyleSheet, binding: SubtitleEffectBinding): BuiltEvent[] {
+  const prepared = glyphTimeline(line, segment, style, sheet);
+  if (!prepared) return [];
+  const { sourceText, glyphs, timeline } = prepared;
+  const entryStagger = Math.max(0, param(binding, "entryStaggerMs", 50)) / 1000;
+  const fadeInMs = Math.max(0, param(binding, "fadeInMs", 300));
+  const popScale = Math.max(100, param(binding, "popScale", 120));
+  // 单程涨/落的上限。0 = 跟着音节长短走（Aegisub 模板就是 line.duration/2），但那份
+  // 模板配的是手打 K 轴；编辑器这边的 K 轴来自词级时间戳或整句均分，明显更粗，
+  // 照搬会让每个字都以同一个拖沓的速度涨落，所以默认压在 280ms
+  const popCap = Math.max(0, param(binding, "popMs", 280));
+  const hold = Math.max(0, param(binding, "holdMs", 400)) / 1000;
+  const count = Math.min(25, Math.max(0, Math.round(param(binding, "particleCount", 20))));
+  const spawnMs = Math.max(0, param(binding, "spawnMs", 400));
+  const lifeMs = Math.max(100, param(binding, "particleLifeMs", 1500));
+  const particleScale = Math.max(20, param(binding, "particleScale", 110));
+  const spread = Math.max(0, param(binding, "spreadPx", 300));
+  const drift = Math.max(0, param(binding, "driftPx", 60));
+  // 落回原大小的同时换色（模板的 \1c&HDCC8AE&\3c&HFFFFFF&）；留空则不写标签，保持样式色
+  const swap = colorParam(binding, "swapPrimary", "1c") + colorParam(binding, "swapOutline", "3c");
+  const particleColor = colorParam(binding, "particleOutline", "3c");
+  const events: BuiltEvent[] = [];
+
+  for (const glyph of glyphs) {
+    const unit = timeline.units[glyph.order];
+    if (!unit) continue;
+    // 靠前的字先入场；最后一个字正好在句首出现
+    const appear = Math.max(0, segment.t0 - entryStagger * (glyph.total - 1 - glyph.order));
+    const end = Math.max(unit.t1 + hold, appear + .05);
+    const popAt = rint((unit.t0 - appear) * 1000);
+    const popFull = Math.max(2, rint((end - unit.t0) * 1000));
+    const popHalf = popCap ? Math.min(rint(popCap), rint(popFull / 2)) : rint(popFull / 2);
+    const enter = Math.min(rint(fadeInMs), Math.max(0, popAt));
+    // 入场/退场用 \alpha 而不是 \fad：\fad 会盖掉「渐入渐出」绑定加在整行上的那个
+    const mainTag = `{\\an5\\pos(${rint(glyph.x)},${rint(glyph.y)})\\shad0\\blur4`
+      + (enter > 0 ? `\\alpha&HFF&\\t(0,${enter},\\alpha&H00&)` : "")
+      + `\\t(${popAt},${popAt + popHalf},\\fscx${rint(style.scx * popScale / 100)}`
+      + `\\fscy${rint(style.scy * popScale / 100)}\\blur6)`
+      + `\\t(${popAt + popHalf},${popAt + popHalf * 2},\\fscx${rint(style.scx)}\\fscy${rint(style.scy)}\\blur4${swap})}`;
+    events.push({ layer: 2, t0: appear, t1: end, text: transformTag(line) + mainTag + assTx(glyph.glyph) });
+
+    const burnOut = unit.t1 + lifeMs / 1000;
+    for (let index = 0; index < count; index++) {
+      const random = particleRandom(line, segment, sourceText, glyph.order, index);
+      const spawn = unit.t0 + spawnMs * index / Math.max(1, count - 1) / 1000;
+      const life = Math.max(100, (burnOut - spawn) * 1000);
+      // 单向：模板是 $center - math.random(300)，碎片只往一侧甩，像被风带走
+      const dx = -random() * spread;
+      const dy = (random() * 2 - 1) * drift;
+      const from = Math.max(10, rint(particleScale * .9));
+      const to = Math.max(10, rint(particleScale - index * 2));
+      const spin = () => rint(random() * 360);
+      const particleTag = `{\\an5\\bord1\\shad0\\blur4${particleColor}\\3a&HAA&`
+        + `\\frz${spin()}\\frx${spin()}\\fry${spin()}`
+        + `\\move(${rint(glyph.x)},${rint(glyph.y + 5)},${rint(glyph.x + dx)},${rint(glyph.y + dy)},0,${rint(life)})`
+        + `\\fscx${from}\\fscy${from}`
+        + `\\t(0,${rint(life)},0.2,\\fscx${to}\\fscy${to}`
+        + `\\frx${rint(random() * 9000 - 4500)}\\fry${rint(random() * 12000 - 6000)}\\frz${rint(random() * 9000 - 4500)})`
+        + `\\fad(0,200)\\p1}${PARTICLE_SHAPE}`;
+      events.push({ layer: 1, t0: spawn, t1: burnOut, text: particleTag });
+    }
+  }
+  return events;
+}
+
+/** 生成型模板 → 事件展开器 */
+const GENERATORS: Record<string, (line: OutputLine, segment: SubtitleSegment, style: AssStyle,
+  sheet: StyleSheet, binding: SubtitleEffectBinding) => BuiltEvent[]> = {
+  "character-particle": particleEvents,
+  "karaoke-particle": karaokeParticleEvents,
+};
+
+/** 命中的第一个生成型绑定（模板表里的顺序），没有就照常出整句 */
+const generatorOf = (line: OutputLine): SubtitleEffectBinding | undefined =>
+  line.effects.find(effect => GENERATORS[effect.templateId]);
 
 /** 有绑定、但样式表里查不到的样式名（这些线会回退到 JP/CN 照常出图） */
 export function unknownStylesOf(source: SubtitleSource, sheet: StyleSheet): string[] {
@@ -54,16 +325,23 @@ export function unknownStylesOf(source: SubtitleSource, sheet: StyleSheet): stri
 export function buildAssFrom(source: SubtitleSource, sheet: StyleSheet): string {
   const evs: string[] = [];
   for (const L of outputLinesOf(source, sheet)) {
+    const generator = generatorOf(L);
+    const style = sheet.styleMap[L.style];
     // 组内按时间排：全片一起排会让晚开口的高优先级线被挤走
     const g = L.arr.filter(s => (s[L.lang] || "").trim())
-      .map(s => ({ t0: s.t0, t1: s.t1, text: assTx(s[L.lang]) }))
+      .map(s => ({ segment: s, t0: s.t0, t1: s.t1, text: transformTag(L) + assTx(s[L.lang]) }))
       .sort((a, b) => a.t0 - b.t0 || a.t1 - b.t1);
     // 同一条线内相邻句的毫秒级重叠（ASR 数据自带）会被当成碰撞，
     // 把后一句整句顶离贴边位——前句出点一律钳到后句入点
     for (let i = 0; i < g.length - 1; i++)
       if (g[i].t1 > g[i + 1].t0) g[i].t1 = g[i + 1].t0;
-    for (const e of g)
-      evs.push(`Dialogue: 0,${assTs(e.t0)},${assTs(e.t1)},${L.style},${assNm(L.name)},0,0,0,,${e.text}`);
+    for (const e of g) {
+      const built = generator && style
+        ? GENERATORS[generator.templateId](L, { ...e.segment, t0: e.t0, t1: e.t1 }, style, sheet, generator)
+        : [{ layer: 0, t0: e.t0, t1: e.t1, text: e.text }];
+      for (const event of built)
+        evs.push(`Dialogue: ${event.layer},${assTs(event.t0)},${assTs(event.t1)},${L.style},${assNm(L.name)},0,0,0,,${event.text}`);
+    }
   }
   return assHeadOf(sheet) + ASS_EVENTS_HEAD + evs.join("\n") + "\n";
 }

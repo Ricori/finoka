@@ -1,5 +1,6 @@
 import { DEFAULT_STYLE_SHEET } from './constants.ts';
 import { buildAssFrom, buildSrtFrom, clipAss } from './build.ts';
+import { migrateLegacyFadeBindings, normalizeEffectBindings } from './effects.ts';
 import type { SrtLang } from './build.ts';
 import { composeSheet } from './styles.ts';
 import type { SubtitleSource } from './types.ts';
@@ -10,11 +11,14 @@ import type { EditDocument } from '../documents/types.ts';
  * 插件宿主没有 docStore，直接按同样的字段映射喂进去。
  */
 export function sourceOfDocument(document: EditDocument): SubtitleSource {
-  return {
+  const source: SubtitleSource = {
     segs: document.subtitles ?? [],
     tracks: document.tracks ?? [],
     trackMeta: document.track_meta ?? null,
+    effects: normalizeEffectBindings(document.effects),
   };
+  source.effects = migrateLegacyFadeBindings(source.effects ?? [], source);
+  return source;
 }
 
 /** 本机样式表原文（可能是空串：还没存过就用种子），与 styleStore 的口径一致 */

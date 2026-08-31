@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { mergeStyleText, parseSheet } from '../../ass';
 import { DEFAULT_STYLE_SHEET } from '../../constants';
 import { refreshAll } from '../../lib/edits';
+import { refreshFontMetrics } from '../../lib/subtitles';
 import { saveStyleSheet, styleStore } from '../../store/styleStore';
 import { modalStore, toast } from '../../store/uiStore';
 import { errText } from '../../utils';
@@ -33,6 +34,7 @@ export function TemplateModal() {
     try {
       await saveStyleSheet(text);
       refreshAll();          // 预览重解析整份 ASS，轨道标签的主题色也跟着换
+      void refreshFontMetrics();   // 换了字体的话，逐字特效的排版度量也要重量一遍
       toast("样式模板已保存", false, null, undefined, true);
       close();
     } catch (e) {
