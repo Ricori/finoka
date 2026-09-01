@@ -9,7 +9,7 @@ info:
   description: "Local-first subtitle production"
   copyright: "© 2026 Ricori"
   comments: "Local and cloud subtitle production in one media library."
-  version: "0.1.4"
+  version: "0.1.5"
   cfBundleIconName: "appicon"
 
 dev_mode:
