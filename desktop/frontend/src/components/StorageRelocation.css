@@ -1,0 +1,31 @@
+/* 迁移确认与进度的共用样式：设置页的存储卡片和运行环境页的安装位置提示都用这一套。 */
+
+.storage-warn { margin: 0; color: #e99a9a; font-size: 11px; line-height: 1.6; }
+
+.storage-confirm { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-top: 16px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.storage-confirm > div { min-width: 0; }
+.storage-confirm strong { display: block; color: var(--text); font-size: 12px; }
+.storage-confirm code { display: block; overflow: hidden; margin-top: 6px; color: var(--mut); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.storage-confirm p { max-width: 560px; margin: 8px 0 0; color: var(--faint); font-size: 11px; line-height: 1.6; }
+.storage-confirm-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+
+.storage-confirm-actions button,
+.storage-progress button { border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; background: var(--raised); color: var(--text); font-size: 11px; cursor: pointer; }
+.storage-confirm-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.storage-confirm-actions .ghost,
+.storage-progress .ghost { background: transparent; color: var(--mut); }
+.storage-confirm-actions .primary { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); color: var(--accent); }
+
+.storage-progress { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--panel) 75%, transparent); }
+.storage-progress-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.storage-progress-heading strong { color: var(--text); font-size: 12px; }
+.storage-progress-heading small { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.storage-meter { height: 5px; overflow: hidden; margin-top: 11px; border-radius: 99px; background: var(--line); }
+.storage-meter span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
+.storage-progress-path { display: block; overflow: hidden; margin-top: 9px; color: var(--faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.storage-resume-hint { margin: 9px 0 0; color: var(--faint); font-size: 11px; line-height: 1.6; }
+.storage-progress button { margin-top: 12px; }
+
+@media (max-width: 760px) {
+  .storage-confirm { flex-direction: column; }
+}

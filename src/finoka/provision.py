@@ -142,13 +142,27 @@ class RuntimeProvisioner:
     Wails and selects the resulting interpreter for workers.
     """
 
-    def __init__(self, data_dir: str | Path, vendor: str | Path) -> None:
+    def __init__(
+        self,
+        data_dir: str | Path,
+        vendor: str | Path,
+        install_dir: str | Path | None = None,
+    ) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
+        # The install root carries everything large -- the Python runtime, the
+        # models and the download caches -- so the desktop shell can put it on
+        # another drive while the small state files stay beside the data dir.
+        # Defaulting keeps every existing installation exactly where it is.
+        self.install_root = (
+            Path(install_dir).expanduser().resolve()
+            if install_dir
+            else self.data_dir / "finesub"
+        )
         self.vendor = Path(vendor).expanduser().resolve()
         self.platform = self._platform_id()
         self._runtime_supported = sys.platform == "win32"
         self._media_supported = self.platform in {"windows-x64", "macos-amd64", "macos-arm64"}
-        install_root = self.data_dir / "finesub"
+        install_root = self.install_root
         self._bootstrap_error = ""
         self.runtime = None
         try:
@@ -241,7 +255,7 @@ class RuntimeProvisioner:
                 # bootstrap is broken, so the reason travels with the payload
                 # instead of hiding inside a single asset tooltip.
                 "bootstrap_error": self._bootstrap_error,
-                "root": str(self.data_dir / "finesub"),
+                "root": str(self.install_root),
                 "runtime": {"id": "python", "version": "3.12", "state": "missing", "detail": f"FineSub bootstrap 依赖缺失：{self._bootstrap_error}"},
                 "resources": [],
                 "models": [{"id": model_id, "state": "missing"} for model_id in PIPELINE_MODELS],

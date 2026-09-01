@@ -54,8 +54,8 @@ func (s *Service) TranscodeToH264(id string) (TranscodeResult, error) {
 		return TranscodeResult{}, errors.New("转码需要 FFmpeg，请先在设置中安装媒体工具")
 	}
 
-	destination := filepath.Join(s.cacheDir, id+".mp4")
-	if err := os.MkdirAll(s.cacheDir, 0o755); err != nil {
+	destination := filepath.Join(s.cacheDirectory(), id+".mp4")
+	if err := os.MkdirAll(s.cacheDirectory(), 0o755); err != nil {
 		return TranscodeResult{}, err
 	}
 	part := destination + ".h264.part"
@@ -178,7 +178,7 @@ func (s *Service) runH264Transcode(ctx context.Context, ffmpeg, id, input, outpu
 func (s *Service) installTranscoded(id, part, destination string) error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
-	entries, err := os.ReadDir(s.cacheDir)
+	entries, err := os.ReadDir(s.cacheDirectory())
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func (s *Service) installTranscoded(id, part, destination string) error {
 		if entry.IsDir() || cacheFileID(entry.Name()) != id || !isCacheFile(entry.Name()) {
 			continue
 		}
-		if err := os.Remove(filepath.Join(s.cacheDir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := os.Remove(filepath.Join(s.cacheDirectory(), entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}

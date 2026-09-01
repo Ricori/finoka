@@ -1,6 +1,9 @@
 import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/finoka/desktop/internal/sidecar/models.js";
 import { useState } from "react";
 import type { PythonBootstrapState, RuntimeInstallTarget, RuntimeItem, RuntimeProvisionState, RuntimeToolGroup } from "../bridge/runtime.ts";
+import type { RelocationProgress, StorageDestination, StorageStatus, StorageTarget } from "../bridge/storage.ts";
+import { InstallLocationCard } from "../components/InstallLocationCard.tsx";
+import { installLocationView } from "../components/installLocation.ts";
 import { Mark } from "../components/Mark.tsx";
 import type { Capabilities } from "../providers/types.ts";
 import "./RuntimePage.css";
@@ -22,7 +25,16 @@ interface RuntimePageProps {
   onCancelInstall: () => Promise<void>;
   onRemoveAll: () => Promise<void>;
   onRemoveGroup: (target: RuntimeToolGroup) => Promise<void>;
+  storage: StorageStatus | null;
+  storageProgress: RelocationProgress | null;
+  storageBusy: boolean;
+  onChooseStorage: (target: StorageTarget) => Promise<StorageDestination | null>;
+  onRelocateStorage: (target: StorageTarget, destination: string) => Promise<void>;
+  onCancelStorage: () => Promise<void>;
 }
+
+// 会把十几 GB 拉下来的安装目标。装小工具（git、yt-dlp）不值得为它弹位置提示。
+const largeInstallTargets = new Set<RuntimeInstallTarget>(["all", "runtime", "models"]);
 
 const installPhases = [
   { id: "downloading", label: "下载" },
@@ -229,9 +241,20 @@ function AssetGroup({ title, items, optional = false, target, installing, blocke
   );
 }
 
-export function RuntimePage({ capabilities, message, provisionMessage, provision, pythonBootstrap, ready, sidecar, onCancelInstall, onDismissProvisionMessage, onInstall, onInstallPython, onRemoveAll, onRemoveGroup }: RuntimePageProps) {
+export function RuntimePage({ capabilities, message, provisionMessage, provision, pythonBootstrap, ready, sidecar, onCancelInstall, onDismissProvisionMessage, onInstall, onInstallPython, onRemoveAll, onRemoveGroup, storage, storageProgress, storageBusy, onChooseStorage, onRelocateStorage, onCancelStorage }: RuntimePageProps) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveGroup, setConfirmRemoveGroup] = useState<RuntimeToolGroup | null>(null);
+  // 用户点了大安装但还没确认位置时，先停在这里等确认。
+  const [awaitingLocation, setAwaitingLocation] = useState<RuntimeInstallTarget | null>(null);
+  const runtimeLocation = (storage?.locations ?? []).find((item) => item.target === "runtime") ?? null;
+  const locationView = installLocationView(runtimeLocation, awaitingLocation !== null);
+  const requestInstall = async (target: RuntimeInstallTarget) => {
+    if (locationView.prompt && largeInstallTargets.has(target)) {
+      setAwaitingLocation(target);
+      return;
+    }
+    await onInstall(target);
+  };
   const issues = capabilities?.runtime?.issues ?? [];
   const stages = capabilities?.runtime?.stages ?? [];
   const job = provision?.job;
@@ -280,6 +303,8 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
   const toolsBlocked = connectionBlocked
     || (provision && !provision.runtime_supported ? `托管可选工具暂不支持 ${provision.platform}。` : "")
     || jobBlocked;
+  // 位置卡上的「开始安装」用它对应目标的门槛，包括改完位置后 sidecar 重启的那几秒。
+  const awaitingBlocked = awaitingLocation === "models" ? modelsBlocked : awaitingLocation === "runtime" ? runtimeBlocked : allBlocked;
   const pythonBlocked = !pythonBootstrap
     ? ""
     : !pythonBootstrap.supported
@@ -332,7 +357,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             >
               {confirmRemove ? "确认删除环境" : "删除环境"}
             </button>
-            <button className="primary-button" disabled={allBlocked !== ""} onClick={() => void onInstall("all")} title={allBlocked || "安装必备运行时，并下载全部缺失模型"}>一键准备全部</button>
+            <button className="primary-button" disabled={allBlocked !== ""} onClick={() => void requestInstall("all")} title={allBlocked || "安装必备运行时，并下载全部缺失模型"}>一键准备全部</button>
           </div>
         </div>
         <Notice className="provision-message failed" message={provisionMessage} autoDismissMs={0} onDismiss={onDismissProvisionMessage} />
@@ -363,6 +388,25 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             progress: pythonBootstrap.progress,
           }} onCancel={async () => undefined} cancellable={false} />}
         </section>}
+        {locationView.visible && runtimeLocation && (
+          <InstallLocationCard
+            location={runtimeLocation}
+            view={locationView}
+            progress={storageProgress}
+            busy={storageBusy}
+            awaitingInstall={awaitingLocation !== null}
+            installBlocked={awaitingBlocked || ""}
+            onChoose={onChooseStorage}
+            onRelocate={onRelocateStorage}
+            onCancelRelocation={onCancelStorage}
+            onProceed={() => {
+              const target = awaitingLocation;
+              setAwaitingLocation(null);
+              if (target) void onInstall(target);
+            }}
+            onDismiss={() => setAwaitingLocation(null)}
+          />
+        )}
         {job?.state === "running" && <ProvisionProgress job={job} onCancel={onCancelInstall} />}
         {job?.state !== "running" && <Notice className={`provision-message ${job?.state ?? ""}`} message={job?.message ?? ""} />}
         <div className="asset-groups">
@@ -372,7 +416,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             target={runtimeTarget}
             installing={jobRunning && job?.target === runtimeTarget}
             blocked={runtimeBlocked}
-            onInstall={onInstall}
+            onInstall={requestInstall}
           />
           <AssetGroup
             title="必备模型"
@@ -380,7 +424,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             target="models"
             installing={jobRunning && job?.target === "models"}
             blocked={modelsBlocked}
-            onInstall={onInstall}
+            onInstall={requestInstall}
           />
           <AssetGroup
             title="视频下载工具"
@@ -391,7 +435,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             blocked={toolsBlocked}
             removable={videoTools.some((item) => item.source !== "system" && item.state !== "missing")}
             confirmingRemove={confirmRemoveGroup === "video-tools"}
-            onInstall={onInstall}
+            onInstall={requestInstall}
             onCancelRemove={() => setConfirmRemoveGroup((current) => current === "video-tools" ? null : current)}
             onRemove={() => {
               if (confirmRemoveGroup !== "video-tools") {
@@ -411,7 +455,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             blocked={toolsBlocked}
             removable={otherTools.some((item) => item.source !== "system" && item.state !== "missing")}
             confirmingRemove={confirmRemoveGroup === "optional-tools"}
-            onInstall={onInstall}
+            onInstall={requestInstall}
             onCancelRemove={() => setConfirmRemoveGroup((current) => current === "optional-tools" ? null : current)}
             onRemove={() => {
               if (confirmRemoveGroup !== "optional-tools") {

@@ -1,0 +1,33 @@
+.storage-locations-card { padding: 22px 25px; }
+.storage-heading h2 { margin: 6px 0 0; font-size: 16px; }
+.storage-heading p { max-width: 680px; margin: 8px 0 0; color: var(--mut); font-size: 12px; line-height: 1.65; }
+
+.storage-rows { display: grid; gap: 14px; margin-top: 18px; }
+.storage-row { border: 1px solid var(--line); border-radius: 11px; padding: 15px 16px; background: color-mix(in srgb, var(--panel) 75%, transparent); }
+.storage-row-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.storage-row-heading > div { min-width: 0; }
+.storage-row-heading strong { color: var(--text); font-size: 13px; }
+.storage-row-heading p { max-width: 560px; margin: 6px 0 0; color: var(--faint); font-size: 11px; line-height: 1.6; }
+.storage-row-heading > b { flex: 0 0 auto; color: var(--text); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.storage-path { display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 13px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.storage-path span { color: var(--faint); font-size: 11px; }
+.storage-path code { overflow: hidden; color: var(--mut); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+.storage-row-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--faint); font-size: 11px; }
+.storage-row-stats b { color: var(--mut); font-weight: 600; }
+.storage-badge { border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 99px; padding: 2px 8px; color: var(--accent); font-size: 10px; }
+.storage-badge.muted { border-color: var(--line); color: var(--faint); }
+
+.storage-row-actions { display: flex; align-items: center; gap: 9px; margin-top: 13px; }
+.storage-row-actions button { border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; background: var(--raised); color: var(--text); font-size: 11px; cursor: pointer; }
+.storage-row-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.storage-row-actions .ghost { background: transparent; color: var(--mut); }
+.storage-inline-progress { color: var(--accent); font-size: 11px; }
+
+.storage-message { margin: 12px 0 0; color: var(--accent); font-size: 11px; }
+
+@media (max-width: 760px) {
+  .storage-row-heading { flex-direction: column; gap: 8px; }
+  .storage-row-actions { flex-wrap: wrap; }
+}

@@ -86,7 +86,7 @@ func (s *Service) CacheMedia(id string) (string, error) {
 	if _, ok := supportedExtensions[extension]; !ok {
 		return "", errors.New("unsupported media format")
 	}
-	destination := filepath.Join(s.cacheDir, id+extension)
+	destination := filepath.Join(s.cacheDirectory(), id+extension)
 	if samePath(entry.SourcePath, destination) {
 		return destination, nil
 	}
@@ -127,7 +127,7 @@ func (s *Service) ClearVideoCache() (CacheStatus, error) {
 	s.mu.RLock()
 	active := s.activeMedia
 	s.mu.RUnlock()
-	entries, err := os.ReadDir(s.cacheDir)
+	entries, err := os.ReadDir(s.cacheDirectory())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return s.cacheStatusLocked(), err
 	}
@@ -137,7 +137,7 @@ func (s *Service) ClearVideoCache() (CacheStatus, error) {
 			continue
 		}
 		if isCacheFile(entry.Name()) || strings.HasSuffix(strings.ToLower(entry.Name()), ".part") {
-			removeErr = errors.Join(removeErr, os.Remove(filepath.Join(s.cacheDir, entry.Name())))
+			removeErr = errors.Join(removeErr, os.Remove(filepath.Join(s.cacheDirectory(), entry.Name())))
 		}
 	}
 	status := s.cacheStatusLocked()
@@ -162,14 +162,14 @@ func (s *Service) removeCachedMedia(id string) error {
 	}
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
-	entries, err := os.ReadDir(s.cacheDir)
+	entries, err := os.ReadDir(s.cacheDirectory())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	var result error
 	for _, entry := range entries {
 		if !entry.IsDir() && cacheFileID(entry.Name()) == id {
-			result = errors.Join(result, os.Remove(filepath.Join(s.cacheDir, entry.Name())))
+			result = errors.Join(result, os.Remove(filepath.Join(s.cacheDirectory(), entry.Name())))
 		}
 	}
 	return result
@@ -185,13 +185,13 @@ func (s *Service) cachedPathLocked(id string) string {
 	if !validID(id) {
 		return ""
 	}
-	entries, err := os.ReadDir(s.cacheDir)
+	entries, err := os.ReadDir(s.cacheDirectory())
 	if err != nil {
 		return ""
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() && cacheFileID(entry.Name()) == id && isCacheFile(entry.Name()) {
-			return filepath.Join(s.cacheDir, entry.Name())
+			return filepath.Join(s.cacheDirectory(), entry.Name())
 		}
 	}
 	return ""
@@ -225,11 +225,11 @@ func (s *Service) touchEntry(id string) {
 
 func (s *Service) cacheStatusLocked() CacheStatus {
 	status := CacheStatus{
-		Directory:  s.cacheDir,
+		Directory:  s.cacheDirectory(),
 		LimitGB:    s.cacheConfig.LimitGB,
 		LimitBytes: cacheLimitBytes(s.cacheConfig.LimitGB),
 	}
-	entries, _ := os.ReadDir(s.cacheDir)
+	entries, _ := os.ReadDir(s.cacheDirectory())
 	for _, entry := range entries {
 		if entry.IsDir() || !isCacheFile(entry.Name()) {
 			continue
@@ -293,7 +293,7 @@ func (s *Service) convergeCache() error {
 }
 
 func (s *Service) convergeCacheLocked() error {
-	entries, err := os.ReadDir(s.cacheDir)
+	entries, err := os.ReadDir(s.cacheDirectory())
 	if err != nil {
 		return err
 	}
@@ -310,7 +310,7 @@ func (s *Service) convergeCacheLocked() error {
 		if entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(s.cacheDir, entry.Name())
+		path := filepath.Join(s.cacheDirectory(), entry.Name())
 		if strings.HasSuffix(strings.ToLower(entry.Name()), ".part") {
 			_ = os.Remove(path)
 			continue

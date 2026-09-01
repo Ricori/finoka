@@ -33,6 +33,7 @@ func init() {
 	application.RegisterEvent[bool]("home:refresh")
 	application.RegisterEvent[selfupdate.Status]("update:status")
 	application.RegisterEvent[map[string]string]("update:ready")
+	application.RegisterEvent[RelocationProgress]("storage:progress")
 }
 
 // Run owns the desktop lifecycle. Sidecar startup failure is intentionally
@@ -106,6 +107,7 @@ func Run(assets fs.FS) error {
 		return err
 	}
 	windowService := NewWindowService(preferencesService, libraryService)
+	storageService := NewStorageService(dataDirectory, manager, libraryService)
 	updateService, err := selfupdate.New(dataDirectory)
 	if err != nil {
 		return err
@@ -123,6 +125,7 @@ func Run(assets fs.FS) error {
 			application.NewService(assStyleService),
 			application.NewService(taskHistoryService),
 			application.NewService(windowService),
+			application.NewService(storageService),
 			application.NewService(updateService),
 		},
 		Assets: application.AssetOptions{
@@ -155,6 +158,7 @@ func Run(assets fs.FS) error {
 	homeOptions, deferredState := deferWindowStart(homeOptions)
 	home := applicationInstance.Window.NewWithOptions(homeOptions)
 	windowService.attach(applicationInstance, home)
+	storageService.attach(applicationInstance, home)
 	plugins.Attach(pluginService, applicationInstance, home)
 	// A missing or unreachable manifest must not block startup: the shell
 	// simply stays on the current build.

@@ -44,7 +44,12 @@ type Config struct {
 // PythonConfig constructs the development/managed-runtime command expected by
 // finoka.sidecar. All paths are resolved before the child starts so a later
 // working-directory change cannot redirect its data or engine.
-func PythonConfig(python, script, dataDir, vendorDir string) (Config, error) {
+//
+// installDir is the FineSub install root. It is passed separately from dataDir
+// because it is the one that holds gigabytes — the runtime, the models and the
+// download caches — and the settings page can move it to another drive while
+// the small state files stay put.
+func PythonConfig(python, script, dataDir, vendorDir, installDir string) (Config, error) {
 	if strings.TrimSpace(python) == "" {
 		return Config{}, errors.New("python executable is required")
 	}
@@ -60,14 +65,25 @@ func PythonConfig(python, script, dataDir, vendorDir string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve FineSub vendor directory: %w", err)
 	}
+	arguments := []string{
+		resolvedScript,
+		"--data-dir", resolvedData,
+		"--vendor", resolvedVendor,
+	}
+	// Omitted rather than defaulted here: the sidecar derives the same default
+	// from --data-dir, so a relocated install is the only thing that has to be
+	// spelled out on the command line.
+	if strings.TrimSpace(installDir) != "" {
+		resolvedInstall, installErr := filepath.Abs(installDir)
+		if installErr != nil {
+			return Config{}, fmt.Errorf("resolve FineSub install directory: %w", installErr)
+		}
+		arguments = append(arguments, "--install-dir", resolvedInstall)
+	}
 	return Config{
 		Executable: python,
-		Args: []string{
-			resolvedScript,
-			"--data-dir", resolvedData,
-			"--vendor", resolvedVendor,
-		},
-		Directory: filepath.Dir(resolvedScript),
+		Args:       arguments,
+		Directory:  filepath.Dir(resolvedScript),
 	}, nil
 }
 

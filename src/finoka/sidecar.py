@@ -147,11 +147,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--vendor", type=Path, required=True)
+    # Where the multi-gigabyte install root lives. Optional so an older or
+    # hand-written launch line keeps the historical layout under --data-dir.
+    parser.add_argument("--install-dir", type=Path, default=None)
     args = parser.parse_args(argv)
     token = secrets.token_urlsafe(32)
     settings = FineSubSettings(args.data_dir)
     settings.bind_environment()
-    provisioner = RuntimeProvisioner(args.data_dir, args.vendor)
+    provisioner = RuntimeProvisioner(args.data_dir, args.vendor, args.install_dir)
     provider = LocalProvider(args.data_dir / "tasks", args.vendor, settings=settings, provisioner=provisioner)
     server = SidecarServer(("127.0.0.1", 0), provider, token)
     print(json.dumps({"schema": 1, "host": "127.0.0.1", "port": server.server_port, "token": token}, separators=(",", ":")), flush=True)

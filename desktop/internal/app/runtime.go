@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ricori/finoka/desktop/internal/managedtools"
 	"github.com/Ricori/finoka/desktop/internal/sidecar"
+	"github.com/Ricori/finoka/desktop/internal/storage"
 )
 
 const (
@@ -67,7 +68,7 @@ func SidecarConfig() (sidecar.Config, error) {
 	}
 	script := firstConfiguredPath(scriptEnvironment, workingDirectory, scriptCandidates...)
 	vendor := firstConfiguredPath(vendorEnvironment, workingDirectory, vendorCandidates...)
-	config, err := sidecar.PythonConfig(python, script, data, vendor)
+	config, err := sidecar.PythonConfig(python, script, data, vendor, storage.RuntimeDirectory(data))
 	if err != nil {
 		return sidecar.Config{}, err
 	}

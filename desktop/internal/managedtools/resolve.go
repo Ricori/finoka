@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/Ricori/finoka/desktop/internal/storage"
 )
 
 // PythonEnvironment overrides the interpreter Finoka runs Python code with.
@@ -38,7 +40,7 @@ func findManaged(dataDirectory, name string) string {
 		resourceIDs = append(resourceIDs, "ffmpeg")
 	}
 	for _, resourceID := range resourceIDs {
-		root := filepath.Join(dataDirectory, "finesub", "runtime", resourceID)
+		root := filepath.Join(storage.RuntimeDirectory(dataDirectory), "runtime", resourceID)
 		version := activeVersion(filepath.Join(root, "current.json"))
 		if version == "" {
 			continue
@@ -113,7 +115,7 @@ func FindYTDLP(dataDirectory string) (YTDLP, error) {
 		return YTDLP{Executable: native}, nil
 	}
 	notInstalled := errors.New("Finoka yt-dlp is not installed; install it from 运行环境 first")
-	root := filepath.Join(dataDirectory, "finesub", "runtime", "yt-dlp")
+	root := filepath.Join(storage.RuntimeDirectory(dataDirectory), "runtime", "yt-dlp")
 	version := activeVersion(filepath.Join(root, "current.json"))
 	if version == "" {
 		return YTDLP{}, notInstalled
@@ -149,7 +151,7 @@ const potProviderDirectory = "pot-provider"
 // PYTHONPATH instead of executing anything in it.
 func FindPOTPlugin(dataDirectory string) (string, error) {
 	notInstalled := errors.New("the PO Token provider is not installed; install it from 运行环境 first")
-	root := filepath.Join(dataDirectory, "finesub", "runtime", potProviderDirectory)
+	root := filepath.Join(storage.RuntimeDirectory(dataDirectory), "runtime", potProviderDirectory)
 	version := activeVersion(filepath.Join(root, "current.json"))
 	if version == "" {
 		return "", notInstalled
@@ -172,7 +174,7 @@ func FindPOTPlugin(dataDirectory string) (string, error) {
 // long-running daemon and no listening port.
 func FindPOTServer(dataDirectory string) (string, error) {
 	notInstalled := errors.New("the PO Token provider is not installed; install it from 运行环境 first")
-	root := filepath.Join(dataDirectory, "finesub", "runtime", potProviderDirectory)
+	root := filepath.Join(storage.RuntimeDirectory(dataDirectory), "runtime", potProviderDirectory)
 	version := activeVersion(filepath.Join(root, "current.json"))
 	if version == "" {
 		return "", notInstalled

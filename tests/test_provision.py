@@ -41,6 +41,24 @@ def test_runtime_provision_status_reports_bootstrap_failure(tmp_path: Path) -> N
     assert "manifest missing" in status["runtime"]["detail"]
 
 
+def test_runtime_provisioner_defaults_the_install_root_under_the_data_dir(tmp_path: Path) -> None:
+    provisioner = RuntimeProvisioner(tmp_path, VENDOR)
+    assert provisioner.install_root == (tmp_path / "finesub").resolve()
+
+
+def test_runtime_provisioner_accepts_a_relocated_install_root(tmp_path: Path) -> None:
+    """The desktop shell moves the multi-gigabyte install root off the system
+    drive; settings and the knowledge base stay beside the data directory."""
+    data = tmp_path / "data"
+    install = tmp_path / "elsewhere" / "Finoka" / "finesub"
+    provisioner = RuntimeProvisioner(data, VENDOR, install)
+    assert provisioner.install_root == install.resolve()
+    assert provisioner.status()["root"] == str(install.resolve())
+    assert provisioner.paths is not None
+    assert provisioner.paths.models == install.resolve() / "models"
+    assert provisioner.paths.data_root == (data / "finesub-data").resolve()
+
+
 def test_remove_managed_tree_clears_read_only_files(tmp_path: Path) -> None:
     """uv and pip leave read-only files behind; Windows refuses to unlink them."""
     from finoka.provision import _remove_managed_tree

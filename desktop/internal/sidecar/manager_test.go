@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -124,4 +126,34 @@ func TestSidecarHelperProcess(t *testing.T) {
 	}
 	fmt.Println(`{"schema":1,"host":"127.0.0.1","port":43123,"token":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO"}`)
 	select {}
+}
+
+func TestPythonConfigCarriesTheInstallDirectoryOnlyWhenRelocated(t *testing.T) {
+	root := t.TempDir()
+	script := filepath.Join(root, "run_local_sidecar.py")
+	vendor := filepath.Join(root, "finesub")
+	data := filepath.Join(root, "Finoka")
+
+	config, err := PythonConfig("python", script, data, vendor, "")
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	if slices.Contains(config.Args, "--install-dir") {
+		t.Fatalf("default layout passed --install-dir: %v", config.Args)
+	}
+
+	install := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	config, err = PythonConfig("python", script, data, vendor, install)
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	// The sidecar script and vendor directory keep their positions: SidecarConfig
+	// validates them by index.
+	if config.Args[0] != script || config.Args[4] != vendor {
+		t.Fatalf("argument order changed: %v", config.Args)
+	}
+	index := slices.Index(config.Args, "--install-dir")
+	if index < 0 || config.Args[index+1] != install {
+		t.Fatalf("install directory missing from %v", config.Args)
+	}
 }

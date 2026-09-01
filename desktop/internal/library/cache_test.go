@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Ricori/finoka/desktop/internal/storage"
 )
 
 func TestVideoCacheCopiesIntoManagedRootAndClearPreservesSource(t *testing.T) {
@@ -115,5 +117,56 @@ func TestCacheLimitPersists(t *testing.T) {
 	}
 	if _, err := service.SetCacheLimitGB(0); err == nil {
 		t.Fatal("invalid cache limit was accepted")
+	}
+}
+
+// The video cache is the half of Finoka's disk use a user can move without
+// touching the runtime, so a recorded location has to be honoured from the
+// first import onward — not only after SetCacheDirectory retargets a running
+// service.
+func TestVideoCacheHonoursARelocatedDirectory(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.mp4")
+	if err := os.WriteFile(source, []byte("relocated-cache-fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data := filepath.Join(root, "Finoka")
+	elsewhere := filepath.Join(t.TempDir(), "Finoka", "videos")
+	if err := os.MkdirAll(data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storage.Set(data, storage.VideoTarget, elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	tools := fixtureTools{metadata: Metadata{Duration: 4, HasVideo: true, HasAudio: true}}
+	service, err := newServiceWithTools(data, tools, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := service.Import([]string{source}).Added[0]
+	cached, err := service.CacheMedia(entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(cached) != elsewhere {
+		t.Fatalf("working copy landed in %q, want %q", filepath.Dir(cached), elsewhere)
+	}
+	if status := service.CacheStatus(); status.Directory != elsewhere {
+		t.Fatalf("cache status directory = %q, want %q", status.Directory, elsewhere)
+	}
+	// Moving the cache again while the service is running has to take the
+	// existing working copies' directory with it.
+	moved := filepath.Join(t.TempDir(), "Finoka", "videos")
+	if err := os.MkdirAll(filepath.Dir(moved), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(elsewhere, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCacheDirectory(service, moved); err != nil {
+		t.Fatal(err)
+	}
+	if status := service.CacheStatus(); status.Directory != moved || status.Files != 1 {
+		t.Fatalf("cache status after retarget = %#v", status)
 	}
 }

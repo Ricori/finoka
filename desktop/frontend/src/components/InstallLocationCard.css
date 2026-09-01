@@ -1,0 +1,34 @@
+/* 与 RuntimePage 的 .required-dependency-card 同一套视觉语言：安装前的一张提示卡。
+   默认用 accent（这是提示不是故障），磁盘空间不够时才转成 warn。 */
+
+.install-location-card { position: relative; display: grid; gap: 13px; padding: 17px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line-soft)); border-radius: 14px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--panel)), var(--panel) 58%); box-shadow: 0 8px 24px color-mix(in srgb, black 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 5%, transparent); }
+.install-location-card::before { position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--accent); content: ""; }
+.install-location-card.tight { border-color: color-mix(in srgb, var(--warn) 52%, var(--line-soft)); background: linear-gradient(135deg, color-mix(in srgb, var(--warn) 12%, var(--panel)), var(--panel) 58%); }
+.install-location-card.tight::before { background: var(--warn); }
+/* 用户已经点了安装、正等着确认位置时把这张卡顶出来。 */
+.install-location-card.awaiting { box-shadow: 0 8px 24px color-mix(in srgb, black 16%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.install-location-card.tight.awaiting { box-shadow: 0 8px 24px color-mix(in srgb, black 16%, transparent), 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
+
+.install-location-main { display: flex; align-items: flex-start; gap: 13px; }
+.install-location-icon { display: grid; flex: 0 0 auto; place-items: center; width: 43px; height: 43px; border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: -.04em; }
+.tight .install-location-icon { border-color: color-mix(in srgb, var(--warn) 38%, transparent); background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.install-location-copy { display: grid; gap: 3px; min-width: 0; }
+.install-location-copy > span { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .11em; }
+.tight .install-location-copy > span { color: var(--warn); }
+.install-location-copy h3 { margin: 0; color: var(--text); font-size: 14px; letter-spacing: -.02em; }
+.install-location-copy p { max-width: 620px; margin: 0; color: var(--mut); font-size: 11px; line-height: 1.5; }
+
+.install-location-path { display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+.install-location-path span { color: var(--faint); font-size: 11px; }
+.install-location-path code { overflow: hidden; color: var(--mut); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+.install-location-free { margin: 0; color: var(--faint); font-size: 11px; }
+.install-location-free b { color: var(--mut); font-weight: 600; }
+.install-location-free.tight { color: var(--warn); }
+.install-location-free.tight b { color: var(--warn); }
+
+.install-location-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+
+@media (max-width: 760px) {
+  .install-location-main { flex-direction: column; }
+}

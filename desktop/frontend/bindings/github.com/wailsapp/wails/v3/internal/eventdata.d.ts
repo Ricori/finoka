@@ -7,6 +7,9 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as app$0 from "../../../../Ricori/finoka/desktop/internal/app/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as library$0 from "../../../../Ricori/finoka/desktop/internal/library/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -24,6 +27,7 @@ declare module "@wailsio/runtime" {
             "library:changed": library$0.Entry[] | null;
             "plugins:changed": plugins$0.Change;
             "plugins:download-log": plugins$0.DownloadLog;
+            "storage:progress": app$0.RelocationProgress;
             "update:ready": { [_ in string]?: string } | null;
             "update:status": selfupdate$0.Status;
         }

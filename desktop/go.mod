@@ -2,7 +2,10 @@ module github.com/Ricori/finoka/desktop
 
 go 1.25.0
 
-require github.com/wailsapp/wails/v3 v3.0.0-beta.12
+require (
+	github.com/wailsapp/wails/v3 v3.0.0-beta.12
+	golang.org/x/sys v0.46.0
+)
 
 tool github.com/wailsapp/wails/v3/cmd/wails3
 
@@ -141,7 +144,6 @@ require (
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect

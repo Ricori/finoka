@@ -1,6 +1,6 @@
 // Package library owns Finoka's local media index and managed video cache.
-// Original media remains user-owned; disposable working copies live below the
-// Finoka data directory.
+// Original media remains user-owned; disposable working copies live in the
+// video cache directory, which the settings page can move to another drive.
 package library
 
 import (
@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ricori/finoka/desktop/internal/storage"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -89,10 +90,14 @@ type thumbnailer interface {
 }
 
 type Service struct {
-	mu               sync.RWMutex
-	indexPath        string
-	root             string
-	thumbnailDir     string
+	mu           sync.RWMutex
+	indexPath    string
+	root         string
+	thumbnailDir string
+	// cacheDir is the one directory that can move while the service is
+	// running, so it has a lock of its own rather than sharing cacheMu, which
+	// the cache operations already hold when they need to read it.
+	cachePathMu      sync.RWMutex
 	cacheDir         string
 	cachePath        string
 	entries          []Entry
@@ -124,7 +129,7 @@ func newService(dataDirectory string, tools commandMediaTools) (*Service, error)
 		root:             root,
 		indexPath:        filepath.Join(root, "library.json"),
 		thumbnailDir:     filepath.Join(root, "thumbnails"),
-		cacheDir:         filepath.Join(root, "videos"),
+		cacheDir:         storage.VideoDirectory(root),
 		cachePath:        filepath.Join(root, "cache.json"),
 		prober:           tools,
 		thumbnailer:      tools,
@@ -173,6 +178,30 @@ func SetEditorWindow(s *Service, editor *application.WebviewWindow) {
 	s.mu.Lock()
 	s.editor = editor
 	s.mu.Unlock()
+}
+
+func (s *Service) cacheDirectory() string {
+	s.cachePathMu.RLock()
+	defer s.cachePathMu.RUnlock()
+	return s.cacheDir
+}
+
+// SetCacheDirectory retargets the managed video cache after the settings page
+// has moved it to another volume. Converging immediately means the next status
+// read describes the new directory, including any working copies that arrived
+// with the move.
+func SetCacheDirectory(s *Service, directory string) error {
+	resolved, err := filepath.Abs(directory)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(resolved, 0o755); err != nil {
+		return err
+	}
+	s.cachePathMu.Lock()
+	s.cacheDir = resolved
+	s.cachePathMu.Unlock()
+	return s.convergeCache()
 }
 
 func SetBundledFonts(s *Service, fonts map[string][]byte) {

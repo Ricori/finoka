@@ -3,6 +3,8 @@ import { Events } from "@wailsio/runtime";
 import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/finoka/desktop/internal/sidecar/models.js";
 import { mediaLibrary } from "../bridge/library.ts";
 import type { CacheStatus, ImportResult, MediaEntry } from "../bridge/library.ts";
+import type { RelocationProgress, StorageDestination, StorageStatus, StorageTarget } from "../bridge/storage.ts";
+import { storageLocations } from "../bridge/storage.ts";
 import { cloudAccount, DEFAULT_CLOUD_BACKEND } from "../bridge/cloud.ts";
 import type { CloudEntry, CloudSession } from "../bridge/cloud.ts";
 import { fineSubSettings } from "../bridge/settings.ts";
@@ -106,6 +108,10 @@ export default function App() {
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
   const [cacheBusy, setCacheBusy] = useState(false);
   const [cacheMessage, setCacheMessage] = useState("");
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
+  const [storageProgress, setStorageProgress] = useState<RelocationProgress | null>(null);
+  const [storageBusy, setStorageBusy] = useState(false);
+  const [storageMessage, setStorageMessage] = useState("");
   const [pipeline, setPipeline] = useState<PipelineState>(controller.current() as PipelineState);
   const [taskHistory, setTaskHistory] = useState<TaskHistoryEntry[]>([]);
   const [taskHistoryBusy, setTaskHistoryBusy] = useState(false);
@@ -453,6 +459,58 @@ export default function App() {
     }
   }, []);
 
+  const loadStorageStatus = useCallback(async (remeasure = false) => {
+    try {
+      const status = remeasure ? await storageLocations.refresh() : await storageLocations.status();
+      setStorageStatus(status);
+      setStorageProgress(status.progress);
+    } catch {
+      setStorageStatus(null);
+    }
+  }, []);
+
+  const chooseStorage = useCallback(async (target: StorageTarget): Promise<StorageDestination | null> => {
+    setStorageMessage("");
+    try {
+      return await storageLocations.choose(target);
+    } catch (value) {
+      setStorageMessage(value instanceof Error ? value.message : String(value));
+      return null;
+    }
+  }, []);
+
+  const relocateStorage = useCallback(async (target: StorageTarget, destination: string) => {
+    setStorageBusy(true);
+    setStorageMessage("");
+    try {
+      setStorageProgress(await storageLocations.relocate(target, destination));
+    } catch (value) {
+      setStorageMessage(value instanceof Error ? value.message : String(value));
+    } finally {
+      setStorageBusy(false);
+    }
+  }, []);
+
+  const resetStorage = useCallback(async (target: StorageTarget) => {
+    setStorageBusy(true);
+    setStorageMessage("");
+    try {
+      setStorageProgress(await storageLocations.reset(target));
+    } catch (value) {
+      setStorageMessage(value instanceof Error ? value.message : String(value));
+    } finally {
+      setStorageBusy(false);
+    }
+  }, []);
+
+  const cancelStorage = useCallback(async () => {
+    try {
+      setStorageProgress(await storageLocations.cancel());
+    } catch (value) {
+      setStorageMessage(value instanceof Error ? value.message : String(value));
+    }
+  }, []);
+
   const loadCloud = useCallback(async () => {
     setCloudLoading(true);
     try {
@@ -525,8 +583,8 @@ export default function App() {
   }, [acceptImport, mediaDependencyMissing, runtimeProvision]);
 
   useEffect(() => {
-    void Promise.all([refresh(), loadLibrary(), loadCloud(), loadCacheStatus()]);
-  }, [loadCacheStatus, loadCloud, loadLibrary, refresh]);
+    void Promise.all([refresh(), loadLibrary(), loadCloud(), loadCacheStatus(), loadStorageStatus()]);
+  }, [loadCacheStatus, loadCloud, loadLibrary, loadStorageStatus, refresh]);
 
   useEffect(() => controller.subscribe((state) => setPipeline({ ...state })), [controller]);
 
@@ -546,6 +604,25 @@ export default function App() {
     const timer = window.setInterval(() => void controller.refresh(), taskPollIntervalMs);
     return () => window.clearInterval(timer);
   }, [controller, pipeline.snapshot]);
+
+  useEffect(() => {
+    if (runtimeProvision?.job.state !== "completed") return;
+    void loadStorageStatus(true);
+  }, [loadStorageStatus, runtimeProvision?.job.state]);
+
+  useEffect(() => {
+    // 迁移的进度和结束都从 Go 侧推过来。结束时重新拉一次状态，让路径、
+    // 占用和剩余空间跟着换盘一起更新。
+    return Events.On("storage:progress", (event) => {
+      const progress = event.data as RelocationProgress | undefined;
+      if (!progress) return;
+      setStorageProgress(progress);
+      if (!progress.active) {
+        void loadStorageStatus(true);
+        void loadCacheStatus();
+      }
+    });
+  }, [loadCacheStatus, loadStorageStatus]);
 
   useEffect(() => {
     const offChanged = Events.On("library:changed", (event) => {
@@ -1344,7 +1421,27 @@ export default function App() {
           )}
 
           {section === "runtime" && (
-            <RuntimePage capabilities={capabilities} message={message} provisionMessage={provisionMessage} onDismissProvisionMessage={() => setProvisionMessage("")} provision={runtimeProvision} pythonBootstrap={pythonBootstrap} ready={runtimeReady} sidecar={sidecar} onCancelInstall={cancelRuntimeInstall} onInstall={installRuntime} onInstallPython={installPython} onRemoveAll={removeRuntime} onRemoveGroup={removeRuntimeGroup} />
+            <RuntimePage
+              capabilities={capabilities}
+              message={message}
+              provisionMessage={provisionMessage}
+              onDismissProvisionMessage={() => setProvisionMessage("")}
+              provision={runtimeProvision}
+              pythonBootstrap={pythonBootstrap}
+              ready={runtimeReady}
+              sidecar={sidecar}
+              onCancelInstall={cancelRuntimeInstall}
+              onInstall={installRuntime}
+              onInstallPython={installPython}
+              onRemoveAll={removeRuntime}
+              onRemoveGroup={removeRuntimeGroup}
+              storage={storageStatus}
+              storageProgress={storageProgress}
+              storageBusy={storageBusy}
+              onChooseStorage={chooseStorage}
+              onRelocateStorage={relocateStorage}
+              onCancelStorage={cancelStorage}
+            />
           )}
 
           {section === "keys" && (
@@ -1356,12 +1453,21 @@ export default function App() {
               cache={cacheStatus}
               cacheBusy={cacheBusy}
               cacheMessage={cacheMessage}
+              storage={storageStatus}
+              storageProgress={storageProgress}
+              storageBusy={storageBusy}
+              storageMessage={storageMessage}
               setDrafts={setKeyDraft}
               onSaveKey={saveKeys}
               onSaveCacheLimit={saveCacheLimit}
               onClearCache={clearCache}
+              onChooseStorage={chooseStorage}
+              onRelocateStorage={relocateStorage}
+              onResetStorage={resetStorage}
+              onCancelStorage={cancelStorage}
               onDismissMessage={() => setKeysMessage("")}
               onDismissCacheMessage={() => setCacheMessage("")}
+              onDismissStorageMessage={() => setStorageMessage("")}
             />
           )}
 
