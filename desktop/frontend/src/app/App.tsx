@@ -5,7 +5,7 @@ import { mediaLibrary } from "../bridge/library.ts";
 import type { CacheStatus, ImportResult, MediaEntry } from "../bridge/library.ts";
 import type { RelocationProgress, StorageDestination, StorageStatus, StorageTarget } from "../bridge/storage.ts";
 import { storageLocations } from "../bridge/storage.ts";
-import { cloudAccount, DEFAULT_CLOUD_BACKEND, hasCloudSubtitles } from "../bridge/cloud.ts";
+import { cloudAccount, cloudLibraryOf, DEFAULT_CLOUD_BACKEND, hasCloudSubtitles } from "../bridge/cloud.ts";
 import type { CloudEntry, CloudSession } from "../bridge/cloud.ts";
 import { fineSubSettings } from "../bridge/settings.ts";
 import type { FineSubSettingsState } from "../bridge/settings.ts";
@@ -104,6 +104,7 @@ export default function App() {
   const [adoptFailed, setAdoptFailed] = useState<ReadonlySet<string>>(() => new Set());
   const [manualAdoptingMedia, setManualAdoptingMedia] = useState<ReadonlySet<string>>(() => new Set());
   const [adoptingCloud, setAdoptingCloud] = useState<ReadonlySet<string>>(() => new Set());
+  const [reclaimingMedia, setReclaimingMedia] = useState<ReadonlySet<string>>(() => new Set());
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [libraryMessage, setLibraryMessage] = useState<PageNotice>(noNotice);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
@@ -368,7 +369,8 @@ export default function App() {
   const adoptingMedia = useMemo(() => new Set([
     ...pendingAdoptions.map((pair) => pair.localID),
     ...manualAdoptingMedia,
-  ]), [manualAdoptingMedia, pendingAdoptions]);
+    ...reclaimingMedia,
+  ]), [manualAdoptingMedia, pendingAdoptions, reclaimingMedia]);
 
   // Pull the finished text down, once per pair, whether the media arrived
   // through 关联本地视频, a plain import or a relink. Deliberately not
@@ -525,7 +527,7 @@ export default function App() {
         setCloudCapabilities(null);
         return;
       }
-      setCloudMedia(await cloudAccount.library());
+      setCloudMedia(await cloudLibraryOf(session));
       setCloudCapabilities(await cloudProvider.capabilities().catch(() => null));
       if (session.synced || session.syncFailed || session.syncError) {
         setAccountMessage(
@@ -535,7 +537,7 @@ export default function App() {
         );
       }
     } catch (value) {
-      setCloudSession({ authenticated: false, running: 0 });
+      setCloudSession({ authenticated: false, running: 0, videos: [] });
       setCloudMedia([]);
       setCloudCapabilities(null);
       const detail = value instanceof Error ? value.message : String(value ?? "");
@@ -758,9 +760,9 @@ export default function App() {
       return state ? { ...entry, status: state } : entry;
     }));
     if (!cloudSession?.authenticated) return;
-    void Promise.all([cloudAccount.refreshSession(), cloudAccount.library()]).then(([session, entries]) => {
+    void cloudAccount.refreshSession().then(async (session) => {
       setCloudSession(session);
-      setCloudMedia(entries);
+      setCloudMedia(await cloudLibraryOf(session));
     }).catch(() => undefined);
   }, [cloudSession?.authenticated, taskHistory]);
 
@@ -988,6 +990,16 @@ export default function App() {
       && !(item.taskId === pipeline.snapshot?.task_id && activeStates.has(pipeline.snapshot.state)));
     if (completed.length === 0) return;
     completed.forEach((item) => reconciledCloudTasks.current.add(item.taskId));
+    // Hold the cards in 取回字幕中 for the whole download, not just for the frame
+    // the snapshot flips on. Released only after the projection has marked the
+    // documents available, so the card never falls back to 等待处理 in between.
+    const reclaiming = completed.map((item) => item.mediaId);
+    setReclaimingMedia((current) => new Set([...current, ...reclaiming]));
+    const release = () => setReclaimingMedia((current) => {
+      const next = new Set(current);
+      reclaiming.forEach((id) => next.delete(id));
+      return next;
+    });
     void (async () => {
       const adopted = new Set<string>();
       const failed: Array<{ item: TaskHistoryEntry; error: unknown }> = [];
@@ -1031,7 +1043,7 @@ export default function App() {
         const detail = first.error instanceof Error ? first.error.message : String(first.error);
         setTaskHistoryMessage(warnNotice(`“${first.item.title}”已完成，但自动取回字幕失败：${detail}`));
       }
-    })();
+    })().finally(release);
   }, [cloudProvider, cloudSession?.authenticated, loadCacheStatus, loadLibrary, media, pipeline.artifacts, pipeline.snapshot, taskHistory]);
 
   // Sync from the reconciled media document, not from activeMedia. This also
@@ -1172,7 +1184,7 @@ export default function App() {
       const session = await cloudAccount.login(DEFAULT_CLOUD_BACKEND, loginKey);
       setCloudSession(session);
       setLoginKey("");
-      setCloudMedia(await cloudAccount.library());
+      setCloudMedia(await cloudLibraryOf(session));
       setCloudCapabilities(await cloudProvider.capabilities().catch(() => null));
       setAccountMessage(
         session.syncError
@@ -1190,7 +1202,7 @@ export default function App() {
 
   const logout = useCallback(async () => {
     await cloudAccount.logout();
-    setCloudSession({ authenticated: false, running: 0 });
+    setCloudSession({ authenticated: false, running: 0, videos: [] });
     setCloudMedia([]);
     setCloudCapabilities(null);
     setAccountMessage("已退出；本地媒体库保持不变。");

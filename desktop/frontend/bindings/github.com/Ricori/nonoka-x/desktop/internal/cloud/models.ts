@@ -69,4 +69,13 @@ export interface Session {
     "syncFailed"?: number;
     "cloudVideos"?: number;
     "syncError"?: string;
+
+    /**
+     * The library, as /v1/session now returns it beside the session fields.
+     * Deliberately without omitempty: a nil slice means the backend did not
+     * send one and the caller has to ask /v1/library, while an empty slice
+     * means it did and the library is empty. omitempty would collapse those
+     * two into the same wire shape and put the extra request back.
+     */
+    "videos": Entry[] | null;
 }

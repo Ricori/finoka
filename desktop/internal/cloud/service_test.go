@@ -905,3 +905,90 @@ func TestAdoptLibraryEntryServesSubtitlesWhileANewAttemptIsUnfinished(t *testing
 		t.Fatalf("adopting an entry with no artifacts = %v, projection = %#v", err, projector.projected)
 	}
 }
+
+// A refresh used to make three requests for one screen: the session, the
+// library to render it, and the library again inside the sync check. The
+// backend returns the library beside the session now, and the two extra walks
+// are meant to disappear -- while a backend that predates the field keeps
+// working off the separate request.
+func TestSessionCarriesTheLibraryAndDropsTheExtraRequests(t *testing.T) {
+	for _, testCase := range []struct {
+		name           string
+		sessionBody    string
+		wantLibraryHit int
+		wantTitles     []string
+	}{
+		{
+			name:           "backend sends the library",
+			sessionBody:    `{"authenticated":true,"running":0,"videos":[{"id":"vid_a","title":"从 session 来"}]}`,
+			wantLibraryHit: 0,
+			wantTitles:     []string{"从 session 来"},
+		},
+		{
+			// A nil slice, not an empty one: the field is absent entirely.
+			name:           "backend predates the field",
+			sessionBody:    `{"authenticated":true,"running":0}`,
+			wantLibraryHit: 1,
+			wantTitles:     []string{"从 library 来"},
+		},
+		{
+			// An empty library is not an absent one, and must not cost a request.
+			name:           "backend sends an empty library",
+			sessionBody:    `{"authenticated":true,"running":0,"videos":[]}`,
+			wantLibraryHit: 0,
+			wantTitles:     []string{},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			libraryHits := 0
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				switch request.URL.Path {
+				case "/v1/session":
+					_, _ = writer.Write([]byte(testCase.sessionBody))
+				case "/v1/library":
+					libraryHits++
+					_, _ = writer.Write([]byte(`{"videos":[{"id":"vid_a","title":"从 library 来"}]}`))
+				default:
+					http.NotFound(writer, request)
+				}
+			}))
+			defer server.Close()
+
+			// A catalog that lists, so the sync check actually runs -- it is
+			// the second of the two places that fetched the library, and the
+			// one that has to stop.
+			service, err := New(t.TempDir(), fakeProvider{}, fakeCatalog{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.Login(server.URL, "login-key"); err != nil {
+				t.Fatal(err)
+			}
+			libraryHits = 0
+
+			session, err := service.RefreshSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if libraryHits != testCase.wantLibraryHit {
+				t.Fatalf("/v1/library requests = %d, want %d", libraryHits, testCase.wantLibraryHit)
+			}
+			titles := []string{}
+			for _, entry := range session.Videos {
+				titles = append(titles, entry.Title)
+			}
+			if len(titles) != len(testCase.wantTitles) {
+				t.Fatalf("session videos = %#v, want %#v", titles, testCase.wantTitles)
+			}
+			for index, title := range titles {
+				if title != testCase.wantTitles[index] {
+					t.Fatalf("session videos = %#v, want %#v", titles, testCase.wantTitles)
+				}
+			}
+			if session.CloudVideos != len(testCase.wantTitles) {
+				t.Fatalf("cloudVideos = %d, want %d", session.CloudVideos, len(testCase.wantTitles))
+			}
+		})
+	}
+}

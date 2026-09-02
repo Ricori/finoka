@@ -48,3 +48,15 @@ export const cloudAccount = {
   updateAdminKey: CloudService.UpdateAdminKey,
   deleteAdminKey: CloudService.DeleteAdminKey,
 };
+
+// The library as of a session response. `/v1/session` returns it beside the
+// session fields now, because opening the app asked for the same records three
+// times over -- the session, the library to render, and the library again
+// inside the sync check -- each one a separate authentication and walk.
+//
+// `null` is a backend older than that field, not an empty library: the Go
+// struct declares `videos` without omitempty precisely so the two stay
+// distinguishable, and only the former still costs a request.
+export async function cloudLibraryOf(session: CloudSession): Promise<CloudEntry[]> {
+  return session.videos ?? (await cloudAccount.library());
+}

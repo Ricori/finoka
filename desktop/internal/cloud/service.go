@@ -74,6 +74,12 @@ type Session struct {
 	SyncFailed    int    `json:"syncFailed,omitempty"`
 	CloudVideos   int    `json:"cloudVideos,omitempty"`
 	SyncError     string `json:"syncError,omitempty"`
+	// The library, as /v1/session now returns it beside the session fields.
+	// Deliberately without omitempty: a nil slice means the backend did not
+	// send one and the caller has to ask /v1/library, while an empty slice
+	// means it did and the library is empty. omitempty would collapse those
+	// two into the same wire shape and put the extra request back.
+	Videos []Entry `json:"videos"`
 }
 
 type Entry struct {
@@ -960,10 +966,18 @@ func (s *Service) mergeLocalLibrary(session *Session) {
 	}
 	s.syncMu.Lock()
 	defer s.syncMu.Unlock()
-	remote, err := s.Library()
-	if err != nil {
-		session.SyncError = err.Error()
-		return
+	// /v1/session carries the library now, and this is the second of the two
+	// places that used to fetch it again immediately after. A backend that does
+	// not send one is still asked, so an older deployment keeps working.
+	remote := session.Videos
+	if remote == nil {
+		fetched, err := s.Library()
+		if err != nil {
+			session.SyncError = err.Error()
+			return
+		}
+		remote = fetched
+		session.Videos = fetched
 	}
 	remoteFingerprints := make(map[string]struct{}, len(remote))
 	for _, entry := range remote {
@@ -1002,6 +1016,15 @@ func (s *Service) mergeLocalLibrary(session *Session) {
 		session.Synced++
 	}
 	session.CloudVideos = len(remote) + session.Synced
+	if session.Synced > 0 {
+		// Only now is the list the caller was handed actually out of date, and
+		// only on the first refresh after a local run -- so the re-read is paid
+		// exactly when something was added, rather than on every poll.
+		if refreshed, err := s.Library(); err == nil {
+			session.Videos = refreshed
+			session.CloudVideos = len(refreshed)
+		}
+	}
 }
 
 func (s *Service) safeArtifactPath(uri string) (string, error) {
