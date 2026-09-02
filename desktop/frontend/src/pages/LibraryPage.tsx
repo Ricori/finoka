@@ -3,6 +3,7 @@ import type { CloudEntry } from "../bridge/cloud.ts";
 import type { MediaEntry } from "../bridge/library.ts";
 import { CloudMediaCard, LocalMediaCard } from "../components/MediaCard.tsx";
 import { CustomSelect } from "../components/CustomSelect.tsx";
+import { Mascot } from "../components/Mascot.tsx";
 import type { LibraryFilter, LibraryItem, SortMode, ViewMode } from "../app/types.ts";
 import "./LibraryPage.css";
 import { Notice } from "../components/Notice.tsx";
@@ -71,9 +72,9 @@ export function LibraryPage(props: LibraryPageProps) {
           <strong>正在同步媒体库…</strong>
         </div>
       ) : items.length === 0 ? (
-        <button className="empty-state library-empty" onClick={() => void onImport()} disabled={busy}><div className="empty-art"><span /><span /><span /></div><h3>把本地视频拖进来</h3><p>支持 MP4 / MOV / MKV / WebM。登录云端后，字幕记录会按媒体指纹自动合并到同一个媒体库。</p></button>
+        <button className="empty-state library-empty" onClick={() => void onImport()} disabled={busy}><Mascot pose="welcome" /><h3>把本地视频拖进来</h3><p>支持 MP4 / MOV / MKV / WebM。登录云端后，字幕记录会按媒体指纹自动合并到同一个媒体库。</p></button>
       ) : visibleItems.length === 0 ? (
-        <div className="filtered-empty"><strong>没有匹配的媒体</strong><span>尝试清除搜索词或切换筛选条件。</span><button onClick={() => { onClearQuery(); setFilter("all"); }}>查看全部媒体</button></div>
+        <div className="filtered-empty"><Mascot pose="idle" /><strong>没有匹配的媒体</strong><span>尝试清除搜索词或切换筛选条件。</span><button onClick={() => { onClearQuery(); setFilter("all"); }}>查看全部媒体</button></div>
       ) : (
         <div className={`media-grid ${view === "list" ? "list-view" : ""}`}>
           {visibleItems.map((item) => item.kind === "local" ? (

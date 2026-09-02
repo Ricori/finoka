@@ -43,12 +43,9 @@
 .task-row-actions button.task-log-toggle.open { border-color: var(--accent-border); background: var(--accent-dim); color: var(--accent); }
 .task-row > .task-log-panel { grid-column: 1 / -1; }
 .task-history .task-empty { display: grid; justify-items: center; align-content: center; min-height: 360px; padding: 42px; text-align: center; }
+.task-history .task-empty .mascot-stage { width: 148px; }
 .task-history .task-empty h2 { margin: 20px 0 8px; font-size: 18px; }
 .task-history .task-empty p { max-width: 440px; margin: 0; color: var(--mut); font-size: 12px; line-height: 1.7; }
-.task-empty-art { position: relative; width: 92px; height: 66px; }
-.task-empty-art span { position: absolute; inset: 7px 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--raised); transform: rotate(-7deg) translateX(-8px); }
-.task-empty-art span:nth-child(2) { transform: rotate(7deg) translateX(8px); background: color-mix(in srgb, var(--panel) 76%, var(--accent-dim)); }
-.task-empty-art i { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid var(--accent-line); border-radius: 15px; background: color-mix(in srgb, var(--panel) 88%, var(--accent-dim)); color: var(--accent); box-shadow: 0 15px 36px color-mix(in srgb, var(--accent) 15%, transparent); font-size: 15px; font-style: normal; }
 .task-history .task-empty .primary-button { margin-top: 18px; border: 0; border-radius: 9px; padding: 9px 13px; }
 @keyframes task-pulse { 50% { opacity: .45; transform: scale(.86); } }
 @keyframes task-progress-flow { 100% { transform: translateX(100%); } }

@@ -5,19 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hello Tool</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, "Noto Sans SC", system-ui, sans-serif; }
+    :root {
+      color-scheme: dark;
+      --bg: #0f111b;
+      --panel: #191c2d;
+      --raised: #252a42;
+      --line: #363c59;
+      --text: #f5f2fb;
+      --mut: #aeaac6;
+      --accent: #9caef7;
+      --on-accent: #1b2140;
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 28px; color: #eef1f9; background: #1e2333; }
-    body.light { color: #2f2b27; background: #fffdf8; }
-    main { max-width: 720px; margin: 0 auto; border: 1px solid #38405c; border-radius: 16px; padding: 24px; }
-    body.light main { border-color: #e7e2d9; }
+    body { margin: 0; padding: 28px; color: var(--text); background: var(--bg); }
+    body.light {
+      --bg: #faf9fe;
+      --panel: #fff;
+      --raised: #f0ecf8;
+      --line: #ded8ea;
+      --text: #383344;
+      --mut: #5f5a6e;
+      --accent: #6b4fd0;
+      --on-accent: #fff;
+    }
+    main { max-width: 720px; margin: 0 auto; border: 1px solid var(--line); border-radius: 16px; padding: 24px; background: var(--panel); }
     h1 { margin: 0 0 8px; font-size: 22px; }
-    p { color: #a0aac8; line-height: 1.7; }
-    body.light p { color: #6d675f; }
+    p { color: var(--mut); line-height: 1.7; }
     button, select { border: 0; border-radius: 9px; padding: 9px 13px; font: inherit; }
-    button { background: #8ea6f2; color: #1c2340; font-weight: 700; cursor: pointer; }
-    select { min-width: 280px; margin: 12px 0; background: #293047; color: inherit; }
-    body.light select { background: #eeeae1; }
+    button { background: var(--accent); color: var(--on-accent); font-weight: 700; cursor: pointer; }
+    select { min-width: 280px; margin: 12px 0; background: var(--raised); color: inherit; }
     #result { margin-top: 14px; font-size: 12px; }
   </style>
 </head>
@@ -46,7 +63,9 @@
     });
     window.addEventListener("message", (event) => {
       if (event.data?.source !== "finoka-host" || event.data?.method !== "host.info") return;
-      document.body.classList.toggle("light", event.data.result.theme === "light");
+      const light = event.data.result.theme === "light";
+      document.body.classList.toggle("light", light);
+      document.documentElement.style.colorScheme = light ? "light" : "dark";
       result.textContent = JSON.stringify(event.data.result, null, 2);
       return;
     });

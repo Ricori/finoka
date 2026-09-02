@@ -1,33 +1,32 @@
 /* Professional editor styles migrated from Nonoka Desktop and scoped to Finoka. */
 
-    /* ── 双主题（与 index.html 同一套）─────────
-       · 暗色「星夜」：深蓝打底、瞳蓝做强调色，与主页暗色一致
-       强调蓝与 ja 轨道蓝同族，靠亮度和选中描边+辉光区分；
-       · 亮色「白丝带」：暖白打底，金发金做强调色，加深保证对比，ja/zh 同步加深。
+    /* ── 双主题（与首页同一套）─────────
+       · 暗色：紫蓝夜色打底，鸢尾蓝做强调色；
+       · 亮色：冷白打底，同一支紫做强调色，轨道色同步加深到能在白底上读。
        编辑器单独保存主题偏好，并由窗口启动参数在首帧同步。
        变量挂在文档根上（而不是 .professional-editor），窗口控件这类直接 append 到
        body 的浮层才能拿到同一套配色；.light 同时打在 html 和 body 上，两个都写，
        根元素的 color-scheme 才会跟着切。 */
 :root {
       color-scheme: dark;
-      --bg: #171b2a;
-      --panel: #1e2333;
-      --raised: #293047;
-      --line: #38405c;
-      --line-soft: #2e364e;
-      --text: #eef1f9;
-      --mut: #a0aac8;
-      --faint: #6b7494;
-      --accent: #8ea6f2;
-      --accent-dim: rgba(142, 166, 242, .14);
-      --on-accent: #1c2340;
-      --ja: #6487d6;
-      --zh: #43b3a0;
-      --warn: #e05b6e;
-      --ok: #4cc38a;
+      --bg: #0f111b;
+      --panel: #191c2d;
+      --raised: #252a42;
+      --line: #363c59;
+      --line-soft: #2b3048;
+      --text: #f5f2fb;
+      --mut: #aeaac6;
+      --faint: #8b86a8;
+      --accent: #9caef7;
+      --accent-dim: rgba(156, 174, 247, .13);
+      --on-accent: #1b2140;
+      --ja: #7397e4;
+      --zh: #60cbb5;
+      --warn: #ed789d;
+      --ok: #55cda9;
       /* 切片标记：暖杏色。轨道蓝(ja)/青(zh)/强调蓝都在冷区，暖色一眼就分得开，
          又比纯黄柔和，压得住深蓝底 */
-      --clipmark: #e8a86e;
+      --clipmark: #f2ce75;
       --mask-bg: rgba(0, 0, 0, .55);
       --vf-bg: rgba(10, 11, 16, .92);
       --shadow-pop: 0 16px 48px rgba(0, 0, 0, .5);
@@ -41,26 +40,26 @@
 
     :root.light, body.light {
       color-scheme: light;
-      --bg: #f7f5ef;
-      --panel: #fffdf8;
-      --raised: #eeeae1;
-      --line: #d8d2c7;
-      --line-soft: #e7e2d9;
-      --text: #2f2b27;
-      --mut: #6d675f;
-      --faint: #948d83;
-      --accent: #c96442;
-      --accent-dim: rgba(201, 100, 66, .11);
-      --on-accent: #fffaf4;
-      --ja: #3f63c0;
-      --zh: #1f8a77;
-      --warn: #c43d50;
-      --ok: #2f9e5c;
-      /* 亮色下强调色本身就是金的，切片标记往赭红挪一档才不会和播放头糊在一起 */
-      --clipmark: #bf6438;
-      --mask-bg: rgba(70, 62, 40, .4);
-      --vf-bg: rgba(250, 246, 236, .94);
-      --shadow-pop: 0 16px 48px rgba(96, 80, 35, .25);
+      --bg: #faf9fe;
+      --panel: #fff;
+      --raised: #f0ecf8;
+      --line: #ded8ea;
+      --line-soft: #ebe7f1;
+      --text: #383344;
+      --mut: #5f5a6e;
+      --faint: #79738a;
+      --accent: #6b4fd0;
+      --accent-dim: rgba(107, 79, 208, .10);
+      --on-accent: #fff;
+      --ja: #4a63c4;
+      --zh: #18796b;
+      --warn: #bd4670;
+      --ok: #157a5f;
+      /* 切片标记在亮色下要压得住白底，杏色得往赭金挪一档，同时和紫色播放头拉开 */
+      --clipmark: #9a6a12;
+      --mask-bg: rgba(38, 30, 54, .42);
+      --vf-bg: rgba(250, 248, 254, .94);
+      --shadow-pop: 0 16px 48px rgba(70, 54, 100, .22);
     }
 
     .professional-editor * {
@@ -2399,7 +2398,7 @@
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #171b2a;
+  background: #0f111b;
 }
 
 /* 包装层使用 display:contents 时，禁选必须落到真实页面节点上；输入区仍允许编辑选区。 */
@@ -2428,11 +2427,11 @@
 }
 
 .editor-page body.light {
-  background: #f7f5ef;
+  background: #faf9fe;
 }
 
 .editor-page.light {
-  background: #f7f5ef;
+  background: #faf9fe;
 }
 
 .editor-window-loading,
@@ -2443,8 +2442,8 @@
   place-content: center;
   justify-items: center;
   gap: 12px;
-  background: #171b2a;
-  color: #eef1f9;
+  background: #0f111b;
+  color: #f5f2fb;
   font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-app-region: drag;
   --wails-draggable: drag;
@@ -2452,15 +2451,15 @@
 
 body.light .editor-window-loading,
 body.light .editor-window-error {
-  background: #f7f5ef;
-  color: #2f2b27;
+  background: #faf9fe;
+  color: #383344;
 }
 
 .editor-window-error button {
-  border: 1px solid #38405c;
+  border: 1px solid var(--line);
   border-radius: 7px;
   padding: 7px 14px;
-  background: #293047;
+  background: var(--raised);
   color: inherit;
   -webkit-app-region: no-drag;
   --wails-draggable: no-drag;

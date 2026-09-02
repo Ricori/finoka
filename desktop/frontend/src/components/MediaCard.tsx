@@ -104,9 +104,9 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
         <span className="media-meta">{entry.width > 0 ? `${entry.width}×${entry.height} · ${formatSize(entry.size)} · ` : ""}{formatDate(entry.lastAccess || entry.addedAt)}</span>
         <div className="media-chips"><small>{entry.available ? "本机文件" : subtitleOnly ? "尚未关联视频" : "源文件离线"}</small>{cloudEntry && <small className="cloud-badge">☁ 字幕已同步</small>}</div>
         <div className="media-card-actions">
-          {entry.documentAvailable && <button className="primary-card-action" onClick={() => onOpen(entry)}>编辑字幕</button>}
+          {entry.documentAvailable && <button className="secondary-card-action" onClick={() => onOpen(entry)}>编辑字幕</button>}
           {!entry.available ? (
-            <button className={entry.documentAvailable ? "secondary-card-action" : "primary-card-action"} onClick={() => void onRelink(entry)}>{entry.documentAvailable || subtitleOnly ? "关联视频" : "重新定位"}</button>
+            <button className="secondary-card-action" onClick={() => void onRelink(entry)}>{entry.documentAvailable || subtitleOnly ? "关联视频" : "重新定位"}</button>
           ) : running ? (
             <button className="cancel-card-action" disabled={cancelling} onClick={() => void cancel()} title="停止本次处理；已完成的环节会保留，之后可以继续">{cancelling ? "正在取消…" : "取消处理"}</button>
           ) : !entry.documentAvailable && cloudEntry?.status === "completed" ? (
@@ -132,8 +132,8 @@ export function CloudMediaCard({ entry, thumbnail, adopting, onEdit, onAssociate
         <span className="media-meta">{entry.status} · {formatDate(entry.updatedAt)}</span>
         <div className="media-chips"><small className="cloud-badge">{entry.source === "local_sync" ? "由本机自动同步" : "云端容器任务"}</small>{entry.ownerName && <small className="cloud-badge">{entry.ownerName}</small>}</div>
         <div className="media-card-actions">
-          {entry.status === "completed" && <button className="primary-card-action" disabled={adopting} onClick={() => void onEdit(entry)} title="不需要本地视频，字幕会取回本机后直接打开编辑器">{adopting ? "取回字幕…" : "编辑字幕"}</button>}
-          <button className={entry.status === "completed" ? "secondary-card-action" : "primary-card-action"} disabled={adopting || entry.status !== "completed"} onClick={() => void onAssociate(entry)}>关联本地视频</button>
+          {entry.status === "completed" && <button className="secondary-card-action" disabled={adopting} onClick={() => void onEdit(entry)} title="不需要本地视频，字幕会取回本机后直接打开编辑器">{adopting ? "取回字幕…" : "编辑字幕"}</button>}
+          <button className="secondary-card-action" disabled={adopting || entry.status !== "completed"} onClick={() => void onAssociate(entry)}>关联本地视频</button>
         </div>
       </div>
     </article>

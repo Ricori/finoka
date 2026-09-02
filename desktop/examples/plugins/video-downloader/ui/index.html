@@ -10,31 +10,32 @@
        body 保持透明，让宿主的工作区底色透上来 —— 页面比工作区短的那一截才不会
        被浏览器用 color-scheme 的默认画布涂成一块死色。 */
     :root {
-      --fg: #eef1f9;
-      --mut: #a0aac8;
-      --faint: #6b7494;
-      --line: #38405c;
-      --panel: #1e2333;
-      --field: #171b2a;
-      --accent: #8ea6f2;
-      --accent-fg: #1c2340;
-      --ok: #7fdcc4;
-      --err: #ff8fa3;
-      font-family: Inter, "Noto Sans SC", system-ui, sans-serif;
+      color-scheme: dark;
+      --fg: #f5f2fb;
+      --mut: #aeaac6;
+      --faint: #8b86a8;
+      --line: #363c59;
+      --panel: #191c2d;
+      --field: #252a42;
+      --accent: #9caef7;
+      --accent-fg: #1b2140;
+      --ok: #70dcc2;
+      --err: #f08fae;
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
     }
 
     /* 取值对齐宿主 styles.css 的主题变量：插件页读不到宿主的 CSS 变量，只能抄一份 */
     body.light {
-      --fg: #2f2b27;
-      --mut: #6d675f;
-      --faint: #948d83;
-      --line: #d8d2c7;
-      --panel: #fffdf8;
-      --field: #f7f5ef;
-      --accent: #c96442;
-      --accent-fg: #fffaf4;
-      --ok: #39765a;
-      --err: #b84b42;
+      --fg: #383344;
+      --mut: #5f5a6e;
+      --faint: #79738a;
+      --line: #ded8ea;
+      --panel: #fff;
+      --field: #f0ecf8;
+      --accent: #6b4fd0;
+      --accent-fg: #fff;
+      --ok: #18796b;
+      --err: #bd4670;
     }
 
     * {

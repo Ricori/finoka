@@ -47,8 +47,7 @@ export function StorageLocationsCard(props: StorageLocationsCardProps) {
           <span className="eyebrow">Storage locations</span>
           <h2>磁盘占用与位置</h2>
           <p>
-            默认情况下运行环境与视频缓存都放在系统盘的 Finoka 数据目录里。可以把它们整体搬到别的盘，Finoka 会记住新位置；
-            工程、字幕与设置这类小文件仍留在原处。
+            默认情况下运行环境与视频缓存都放在系统盘的 Finoka 数据目录里。可以把它们整体搬到别的盘，Finoka 会记住新位置。
           </p>
         </div>
       </div>

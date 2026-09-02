@@ -5,33 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>字幕工作台</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, "Noto Sans SC", system-ui, sans-serif; }
+    :root {
+      color-scheme: dark;
+      --bg: #0f111b;
+      --panel: #191c2d;
+      --raised: #252a42;
+      --line: #363c59;
+      --text: #f5f2fb;
+      --mut: #aeaac6;
+      --accent: #9caef7;
+      --on-accent: #1b2140;
+      --warn: #f08fae;
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 28px; color: #eef1f9; background: #1e2333; }
-    body.light { color: #2f2b27; background: #fffdf8; }
+    body { margin: 0; padding: 28px; color: var(--text); background: var(--bg); }
+    body.light {
+      --bg: #faf9fe;
+      --panel: #fff;
+      --raised: #f0ecf8;
+      --line: #ded8ea;
+      --text: #383344;
+      --mut: #5f5a6e;
+      --accent: #6b4fd0;
+      --on-accent: #fff;
+      --warn: #bd4670;
+    }
     main { max-width: 780px; margin: 0 auto; display: grid; gap: 16px; }
-    section { border: 1px solid #38405c; border-radius: 16px; padding: 20px; }
-    body.light section { border-color: #e7e2d9; }
+    section { border: 1px solid var(--line); border-radius: 16px; padding: 20px; background: var(--panel); }
     h1 { margin: 0 0 6px; font-size: 22px; }
     h2 { margin: 0 0 10px; font-size: 15px; }
-    p { margin: 0 0 12px; color: #a0aac8; line-height: 1.7; font-size: 13px; }
-    body.light p { color: #6d675f; }
+    p { margin: 0 0 12px; color: var(--mut); line-height: 1.7; font-size: 13px; }
     button, select, input { border: 0; border-radius: 9px; padding: 9px 13px; font: inherit; }
-    button { background: #8ea6f2; color: #1c2340; font-weight: 700; cursor: pointer; }
-    button.quiet { background: #293047; color: inherit; font-weight: 500; }
-    body.light button.quiet { background: #eeeae1; }
+    button { background: var(--accent); color: var(--on-accent); font-weight: 700; cursor: pointer; }
+    button.quiet { background: var(--raised); color: inherit; font-weight: 500; }
     button:disabled { opacity: .5; cursor: default; }
-    select, input { background: #293047; color: inherit; }
-    body.light select, body.light input { background: #eeeae1; }
+    select, input { background: var(--raised); color: inherit; }
     select { min-width: 260px; }
     .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-    .stat { font-size: 13px; color: #a0aac8; }
+    .stat { font-size: 13px; color: var(--mut); }
     pre { max-height: 190px; overflow: auto; margin: 0; padding: 12px; border-radius: 10px;
-      background: #161b29; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
-    body.light pre { background: #f3efe6; }
+      background: var(--bg); font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
     progress { width: 100%; height: 6px; }
     #status { font-size: 12px; min-height: 18px; }
-    .warn { color: #f0a878; }
+    .warn { color: var(--warn); }
   </style>
 </head>
 <body>
@@ -189,7 +206,9 @@
       const message = event.data;
       if (message?.source !== "finoka-host") return;
       if (message.method === "host.info") {
-        document.body.classList.toggle("light", message.result.theme === "light");
+        const light = message.result.theme === "light";
+        document.body.classList.toggle("light", light);
+        document.documentElement.style.colorScheme = light ? "light" : "dark";
         return;
       }
       if (message.method === "media.progress") {

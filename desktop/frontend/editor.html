@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f7f5ef" />
+    <meta name="theme-color" content="#faf9fe" />
     <title>Finoka · 字幕编辑器</title>
   </head>
   <body class="light">
@@ -12,7 +12,7 @@
         const dark = new URLSearchParams(location.search).get("theme") === "dark";
         document.documentElement.classList.toggle("light", !dark);
         document.body.classList.toggle("light", !dark);
-        document.querySelector('meta[name="theme-color"]').content = dark ? "#171b2a" : "#f7f5ef";
+        document.querySelector('meta[name="theme-color"]').content = dark ? "#0f111b" : "#faf9fe";
       })();
     </script>
     <div id="root"></div>

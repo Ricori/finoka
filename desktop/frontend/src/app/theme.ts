@@ -10,5 +10,5 @@ export function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle("light", light);
   document.body.classList.toggle("light", light);
   document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-    ?.setAttribute("content", light ? "#f7f5ef" : "#171b2a");
+    ?.setAttribute("content", light ? "#faf9fe" : "#0f111b");
 }

@@ -329,44 +329,65 @@ nav svg {
 .empty-state p {
   max-width: 400px;
   margin: 0;
-  color: #718399;
+  color: var(--mut);
   font-size: 13px;
   line-height: 1.65;
 }
 
-.empty-art {
+/* 空状态立绘：三处空状态共用同一套盒子，只换姿势。PNG 是透明底的，
+   暗色下直接贴会「浮」在页面上，所以脚下垫一圈很淡的椭圆当落地光。 */
+.mascot-stage {
   position: relative;
-  width: 100px;
-  height: 62px;
+  display: grid;
+  place-items: end center;
 }
 
-.empty-art span {
-  position: absolute;
-  inset: 0;
-  border: 1px solid #2b4158;
-  border-radius: 11px;
-  background: #101e2c;
-  transform: rotate(-7deg) translate(-8px, 4px);
-}
-
-.empty-art span:nth-child(2) {
-  transform: rotate(7deg) translate(8px, 3px);
-  background: #142536;
-}
-
-.empty-art span:nth-child(3) {
-  transform: none;
-  background: linear-gradient(135deg, #1b3044, #10202f);
-}
-
-.empty-art span:nth-child(3)::after {
+.mascot-stage::before {
   content: "";
   position: absolute;
-  left: 38px;
-  top: 21px;
-  border-left: 18px solid #6fa8d7;
-  border-top: 11px solid transparent;
-  border-bottom: 11px solid transparent;
+  bottom: 3px;
+  width: 68%;
+  height: 19px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 30%, transparent), transparent);
+}
+
+.mascot {
+  position: relative;
+  width: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 20px rgba(10, 6, 22, .30));
+  transition: transform .2s cubic-bezier(.34, 1.56, .64, 1);
+  pointer-events: none;
+  user-select: none;
+}
+
+body.light .mascot {
+  filter: drop-shadow(0 12px 20px rgba(70, 54, 100, .18));
+}
+
+.mascot-fallback {
+  font-size: 42px;
+  line-height: 1.2;
+}
+
+.empty-state .mascot-stage {
+  width: 158px;
+}
+
+/* 整个空状态就是导入按钮，所以立绘要跟着 hover 动一下，表示这里能点 */
+.empty-state:hover:not(:disabled) .mascot {
+  transform: translateY(-4px) rotate(-2.5deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot {
+    transition: none;
+  }
+
+  .empty-state:hover:not(:disabled) .mascot {
+    transform: none;
+  }
 }
 
 .media-grid {
@@ -600,7 +621,7 @@ nav svg {
 }
 
 .task-empty p {
-  color: #718399;
+  color: var(--mut);
 }
 
 .task-panel {
@@ -685,7 +706,7 @@ dl div {
 }
 
 dt {
-  color: #718399;
+  color: var(--mut);
 }
 
 dd {
@@ -863,7 +884,7 @@ dd {
 
 .provision-message {
   margin: 0;
-  color: #7baed3;
+  color: var(--info);
   font-size: 12px;
 }
 
@@ -1417,31 +1438,35 @@ dd {
   }
 }
 
-/* Home window v2: the original Nonoka "Starry Night / White Ribbon" palette. */
+/* Home window v3: soft anime-media palette shared by the desktop surfaces. */
 :root {
   color-scheme: dark;
-  --bg: #171b2a;
-  --panel: #1e2333;
-  --raised: #293047;
-  --line: #38405c;
-  --line-soft: #2e364e;
-  --text: #eef1f9;
-  --mut: #a0aac8;
-  --faint: #6b7494;
-  --accent: #8ea6f2;
-  --accent2: #f6cf6f;
-  --info: #8ea6f2;
-  --accent-dim: rgba(142, 166, 242, .13);
-  --accent-line: rgba(142, 166, 242, .35);
-  --accent-border: rgba(142, 166, 242, .45);
-  --grad: linear-gradient(120deg, #8ea6f2, #bcc9f8);
-  --on-grad: #1c2340;
-  --ok: #7fdcc4;
-  --warn: #ff8fa3;
+  --bg: #0f111b;
+  --panel: #191c2d;
+  --raised: #252a42;
+  --line: #363c59;
+  --line-soft: #2b3048;
+  --text: #f5f2fb;
+  --mut: #aeaac6;
+  --faint: #8b86a8;
+  --accent: #9caef7;
+  --accent2: #f2ce75;
+  --accent-pink: #f19ab7;
+  --info: #b59ff4;
+  --accent-dim: rgba(156, 174, 247, .13);
+  --accent-line: rgba(156, 174, 247, .36);
+  --accent-border: rgba(156, 174, 247, .50);
+  /* 单一强调渐变：紫→粉。凡是铺 --grad 的地方都用 --on-grad 写字，
+     两个主题下都必须过 4.5:1，所以亮色不能只是把暗色渐变原样调亮。 */
+  --grad: linear-gradient(120deg, #9caef7, #d8afe8);
+  --on-grad: #1b2140;
+  --glow: rgba(241, 154, 183, .22);
+  --ok: #70dcc2;
+  --warn: #f08fae;
   --page-bg:
-    radial-gradient(560px 320px at 8% 112%, rgba(142, 166, 242, .10), transparent 70%),
-    radial-gradient(620px 360px at 94% 116%, rgba(246, 207, 111, .07), transparent 70%),
-    radial-gradient(720px 300px at 50% 120%, rgba(240, 160, 180, .05), transparent 70%),
+    radial-gradient(620px 350px at 8% 112%, rgba(156, 174, 247, .11), transparent 70%),
+    radial-gradient(680px 380px at 94% 116%, rgba(241, 154, 183, .08), transparent 70%),
+    radial-gradient(720px 300px at 54% -18%, rgba(181, 159, 244, .06), transparent 72%),
     var(--bg);
   color: var(--text);
   background: var(--bg);
@@ -1451,53 +1476,58 @@ dd {
 
 :root.light {
   color-scheme: light;
-  color: #2f2b27;
-  background: #f7f5ef;
+  color: #3b3548;
+  background: #faf9fe;
 }
 
 body.light {
   color-scheme: light;
-  --bg: #f7f5ef;
-  --panel: #fffdf8;
-  --raised: #eeeae1;
-  --line: #d8d2c7;
-  --line-soft: #e7e2d9;
-  --text: #2f2b27;
-  --mut: #6d675f;
-  --faint: #948d83;
-  --accent: #c96442;
-  --accent2: #a84f32;
-  --info: #8b5e3c;
-  --accent-dim: rgba(201, 100, 66, .11);
-  --accent-line: rgba(201, 100, 66, .34);
-  --accent-border: rgba(201, 100, 66, .52);
-  --grad: linear-gradient(135deg, #d97757, #c86140);
-  --on-grad: #fffaf4;
-  --ok: #39765a;
-  --warn: #b84b42;
+  --bg: #faf9fe;
+  --panel: #fff;
+  --raised: #f0ecf8;
+  --line: #ded8ea;
+  --line-soft: #ebe7f1;
+  --text: #383344;
+  --mut: #5f5a6e;
+  --faint: #79738a;
+  /* 亮色下强调色同时当文字色和填充色用（激活的筛选条、侧栏项、计数气泡），
+     所以取的是能在纯白上过 4.5:1 的那一档紫，而不是暗色那支淡鸢尾。 */
+  --accent: #6b4fd0;
+  --accent2: #9a6a12;
+  --accent-pink: #b74d78;
+  --info: #7156ce;
+  --accent-dim: rgba(107, 79, 208, .10);
+  --accent-line: rgba(107, 79, 208, .32);
+  --accent-border: rgba(107, 79, 208, .50);
+  --grad: linear-gradient(120deg, #6d5bd6, #9c4fb6);
+  --on-grad: #fff;
+  --glow: rgba(183, 77, 120, .16);
+  --ok: #18796b;
+  --warn: #bd4670;
   --page-bg:
-    radial-gradient(660px 360px at 8% 112%, rgba(201, 100, 66, .09), transparent 70%),
-    radial-gradient(620px 360px at 94% 116%, rgba(139, 94, 60, .07), transparent 70%),
+    radial-gradient(660px 360px at 8% 112%, rgba(107, 79, 208, .08), transparent 70%),
+    radial-gradient(680px 380px at 94% 116%, rgba(216, 111, 155, .07), transparent 70%),
+    radial-gradient(720px 300px at 54% -18%, rgba(133, 115, 212, .05), transparent 72%),
     var(--bg);
 }
 
 body.light .sidebar {
-  background: rgba(241, 238, 231, .94);
+  background: rgba(244, 238, 248, .94);
   box-shadow: inset -1px 0 var(--line-soft);
 }
 
 body.light .panel {
-  box-shadow: 0 16px 42px rgba(73, 60, 45, .07);
+  box-shadow: 0 16px 42px rgba(75, 61, 94, .09);
 }
 
 body.light .runtime-diagnostics .issues span,
 body.light .runtime-diagnostics .success-copy,
 body.light .runtime-diagnostics .stage-list small {
-  color: #5f5952;
+  color: var(--mut);
 }
 
 body.light .runtime-diagnostics .stage-list>div {
-  background: #faf7f1;
+  background: var(--raised);
 }
 
 body {
@@ -1658,7 +1688,9 @@ html.wails-fullscreen #wails-window-controls {
   height: 100vh;
   padding: 18px 14px 15px;
   border-color: var(--line-soft);
-  background: color-mix(in srgb, var(--panel) 95%, transparent);
+  background:
+    radial-gradient(220px 180px at 12% -3%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 72%),
+    color-mix(in srgb, var(--panel) 95%, transparent);
   box-shadow: none;
 }
 
@@ -1756,6 +1788,20 @@ html.wails-fullscreen #wails-window-controls {
   box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 
+/* 选中项左缘的紫→粉竖条：侧栏一屏摆着七八个入口，只换底色不够跳，
+   这一条是整套 UI 里唯一让品牌渐变露脸的固定位置。 */
+.sidebar nav button.active::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -1px;
+  width: 3px;
+  height: 17px;
+  translate: 0 -50%;
+  border-radius: 0 3px 3px 0;
+  background: var(--grad);
+}
+
 .nav-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1841,6 +1887,12 @@ html.wails-fullscreen #wails-window-controls {
   color: var(--accent);
   background: var(--accent-dim);
   font-weight: 700;
+}
+
+body:not(.light) .sidebar-provider-switch button.active {
+  color: #dfe4ff;
+  background: color-mix(in srgb, var(--accent) 21%, var(--raised));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .sidebar-provider-switch button:disabled {
@@ -1934,6 +1986,7 @@ html.wails-fullscreen #wails-window-controls {
 }
 
 .sidebar-collapsed .brand-name,
+.sidebar-collapsed .brand-sparkle,
 .sidebar-collapsed .nav-label,
 .sidebar-collapsed .nav-text,
 .sidebar-collapsed .nav-count,
@@ -2019,6 +2072,15 @@ html.wails-frameless .workspace-scroll {
   min-width: 170px;
 }
 
+.page-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-pink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+
 .topbar h1 {
   margin: 0;
   color: var(--text);
@@ -2088,6 +2150,10 @@ html.wails-frameless .workspace-scroll {
 .primary-button {
   color: var(--on-grad);
   background: var(--grad);
+}
+
+.primary-button:hover:not(:disabled) {
+  filter: brightness(1.045) saturate(1.03);
 }
 
 .runtime-banner {

@@ -1347,12 +1347,13 @@ export default function App() {
         <div className={`workspace-scroll${section === "plugin" ? " plugin-workspace-scroll" : ""}`}>
           <header className="topbar">
             <div>
+              {section === "library" && <span className="page-kicker">MY MEDIA COLLECTION</span>}
               <h1>{title}</h1>
             </div>
             {section === "library" && <label className="library-search"><span>⌕</span><input type="search" placeholder="搜索标题或文件名" value={query} onChange={(event) => setQuery(event.target.value)} /></label>}
             <div className="topbar-actions">
               <UpdateButton update={selfUpdate} />
-              <button className="theme-button" aria-label="切换主题" title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"} onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}>{theme === "dark" ? "☼" : "◐"}</button>
+              <button className="theme-button" aria-label="切换主题" title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"} onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}>{theme === "dark" ? "☀" : "☾"}</button>
               {section === "library" ? (
                 <button className="primary-button" disabled={libraryBusy} onClick={() => void importMedia()}>{libraryBusy ? "正在导入…" : "＋ 添加媒体"}</button>
               ) : section === "tasks" ? (

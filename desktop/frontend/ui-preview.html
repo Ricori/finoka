@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Finoka UI 预览</title>
+<script type="module">
+  import "./src/styles.css";
+  import "./src/pages/LibraryPage.css";
+  import "./src/pages/TasksPage.css";
+</script>
+<style>
+  html, body { min-width: 0 !important; }
+  body { padding: 18px; }
+  .preview-row { display: grid; gap: 16px; }
+  .preview-box { border: 1px solid var(--line-soft); border-radius: 14px; padding: 14px; }
+  .preview-tag { margin: 0 0 10px; color: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+  .media-grid { margin-top: 0 !important; }
+  .empty-state, .filtered-empty, .task-history .task-empty { min-height: 0 !important; padding: 10px !important; }
+</style>
+</head>
+<body>
+<div class="preview-row">
+  <div class="preview-box">
+    <p class="preview-tag">媒体卡（hover 看扫光 / 处理中角标）</p>
+    <div class="library-view">
+      <div class="media-grid" style="grid-template-columns: repeat(2, 248px);">
+        <article class="media-card">
+          <div class="media-thumb">
+            <span class="media-placeholder">▶</span>
+            <strong class="state-badge running">处理中</strong>
+            <small class="duration-badge">2:08</small>
+            <span class="card-progress" style="width: 62%"></span>
+          </div>
+          <div class="media-card-copy">
+            <strong>yuka_test2.mp4</strong>
+            <span class="media-meta">1920×1080 · 161 MB · 9月2日</span>
+            <div class="media-chips"><small>本机文件</small></div>
+            <div class="media-card-actions">
+              <button class="primary-card-action">开始任务</button>
+              <button class="secondary-card-action">编辑字幕</button>
+            </div>
+          </div>
+        </article>
+        <article class="media-card">
+          <div class="media-thumb">
+            <span class="media-placeholder">▶</span>
+            <strong class="state-badge ready">字幕可编辑</strong>
+            <small class="duration-badge">4:09</small>
+          </div>
+          <div class="media-card-copy">
+            <strong>multi_test.mp4</strong>
+            <span class="media-meta">1920×1080 · 80.0 MB · 9月2日</span>
+            <div class="media-chips"><small>本机文件</small></div>
+            <div class="media-card-actions">
+              <button class="secondary-card-action">编辑字幕</button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </div>
+
+  <div class="preview-box">
+    <p class="preview-tag">媒体库空状态</p>
+    <button class="empty-state library-empty">
+      <span class="mascot-stage" aria-hidden="true"><img class="mascot" src="./assets/mascot-welcome.png" alt=""></span>
+      <h3>把本地视频拖进来</h3>
+      <p>支持 MP4 / MOV / MKV / WebM。登录云端后，字幕记录会按媒体指纹自动合并到同一个媒体库。</p>
+    </button>
+  </div>
+
+  <div class="preview-box">
+    <p class="preview-tag">筛选无结果</p>
+    <div class="filtered-empty">
+      <span class="mascot-stage" aria-hidden="true"><img class="mascot" src="./assets/mascot-idle.png" alt=""></span>
+      <strong>没有匹配的媒体</strong>
+      <span>尝试清除搜索词或切换筛选条件。</span>
+      <button>查看全部媒体</button>
+    </div>
+  </div>
+
+  <div class="preview-box task-history">
+    <p class="preview-tag">任务页空状态</p>
+    <div class="panel task-empty">
+      <span class="mascot-stage" aria-hidden="true"><img class="mascot" src="./assets/mascot-wave.png" alt=""></span>
+      <h2>从第一个视频开始</h2>
+      <p>在媒体库选择视频并开始任务，任务进度、运行位置和历史结果都会集中显示在这里。</p>
+      <button class="primary-button">前往媒体库</button>
+    </div>
+  </div>
+</div>
+<script>
+  if (new URLSearchParams(location.search).get("theme") === "light") {
+    document.documentElement.classList.add("light");
+    document.body.classList.add("light");
+  }
+</script>
+</body>
+</html>
