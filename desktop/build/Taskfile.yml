@@ -1,6 +1,20 @@
 version: '3'
 
 tasks:
+  ensure:embed-dir:
+    summary: Ensures frontend/dist exists so //go:embed resolves before the renderer is built
+    run: once
+    status:
+      - test -f frontend/dist/.gitkeep
+    cmds:
+      - cmd: >-
+          powershell -NoProfile -Command
+          "New-Item -ItemType Directory -Force frontend/dist | Out-Null;
+          if (-not (Test-Path frontend/dist/.gitkeep)) { New-Item -ItemType File frontend/dist/.gitkeep | Out-Null }"
+        platforms: [windows]
+      - cmd: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
+        platforms: [linux, darwin]
+
   install:frontend:deps:
     summary: Installs locked frontend dependencies
     run: once
@@ -20,6 +34,7 @@ tasks:
     summary: Generates TypeScript bindings for exported Wails services
     run: once
     deps:
+      - task: ensure:embed-dir
       - task: stage:resources
     sources:
       - "**/*.go"

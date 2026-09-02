@@ -37,6 +37,7 @@ tasks:
   dev:
     summary: Starts Wails hot reload and the Vite renderer
     deps:
+      - task: common:ensure:embed-dir
       - task: common:install:frontend:deps
     cmds:
       - '{{.WAILS}} dev -config ./build/config.yml -port {{.VITE_PORT}}'
@@ -59,6 +60,7 @@ tasks:
   verify:
     summary: Runs Go, frontend, resource, and production build checks
     cmds:
+      - task: common:ensure:embed-dir
       - go test ./...
       - task: common:generate:bindings
       - task: common:stage:resources
