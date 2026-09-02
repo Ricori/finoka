@@ -14,7 +14,7 @@ import (
 	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
 )
 
-func TestPythonBootstrapDetectsInstalledLauncher(t *testing.T) {
+func TestPythonBootstrapDetectsUsableInstalledLauncher(t *testing.T) {
 	data := t.TempDir()
 	python := managedtools.BootstrapPython(data)
 	if err := os.MkdirAll(filepath.Dir(python), 0o700); err != nil {
@@ -23,7 +23,9 @@ func TestPythonBootstrapDetectsInstalledLauncher(t *testing.T) {
 	if err := os.WriteFile(python, []byte("fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	bootstrap := NewPythonBootstrap(data, sidecar.New(sidecar.Config{}))
+	bootstrap := newPythonBootstrap(data, sidecar.New(sidecar.Config{}), func(candidate string) bool {
+		return candidate == python
+	})
 	status := bootstrap.Status()
 	if status["state"] != "ready" || status["python"] != python {
 		t.Fatalf("status = %#v", status)
@@ -31,6 +33,26 @@ func TestPythonBootstrapDetectsInstalledLauncher(t *testing.T) {
 	wantSupported := runtime.GOOS == "windows" && runtime.GOARCH == "amd64"
 	if status["supported"] != wantSupported {
 		t.Fatalf("supported = %#v, want %v", status["supported"], wantSupported)
+	}
+}
+
+func TestPythonBootstrapOffersRepairForBrokenInstalledLauncher(t *testing.T) {
+	data := t.TempDir()
+	python := managedtools.BootstrapPython(data)
+	if err := os.MkdirAll(filepath.Dir(python), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(python, []byte("broken uv trampoline"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	bootstrap := newPythonBootstrap(data, sidecar.New(sidecar.Config{}), func(string) bool { return false })
+	status := bootstrap.Status()
+	if status["state"] != "failed" || status["stage"] != "failed" {
+		t.Fatalf("status = %#v", status)
+	}
+	if message, _ := status["message"].(string); !strings.Contains(message, "修复环境") {
+		t.Fatalf("message = %q", message)
 	}
 }
 

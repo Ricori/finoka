@@ -5,6 +5,7 @@ export type TaskEventType =
   | "stage"
   | "progress"
   | "warning"
+  | "handoff"
   | "log"
   | "completed"
   | "failed"

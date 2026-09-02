@@ -259,6 +259,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
   const stages = capabilities?.runtime?.stages ?? [];
   const job = provision?.job;
   const pythonInstalling = pythonBootstrap?.state === "running";
+  const pythonNeedsRepair = Boolean(pythonBootstrap?.python) && (pythonInstalling || pythonBootstrap?.state === "failed");
   // A sidecar started on an interpreter without FineSub's bootstrap dependencies
   // answers requests but cannot build its provisioner. The card is the way out
   // of that state, so a running sidecar must not hide it.
@@ -370,14 +371,16 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
             <div className="required-dependency-copy">
               <span>启动依赖 · AUTOMATIC</span>
               <h3>Python 3.12</h3>
-              <p>{bootstrapBroken && !pythonInstalling
+              <p>{pythonBootstrap?.state === "failed" && !pythonInstalling
+                ? pythonBootstrap.message
+                : bootstrapBroken && !pythonInstalling
                 ? "当前本地服务运行在版本不符或缺少依赖的系统 Python 上。安装隔离的 Python 3.12 后会自动重启服务。"
                 : pythonBootstrap?.message || "Nonoka Sub X 将自动下载隔离的 Python，不会修改系统 Python。"}</p>
             </div>
             <div className="required-dependency-action">
-              <small>{pythonInstalling ? "↓ 正在安装" : pythonBootstrap?.state === "failed" ? "! 安装失败" : pythonBootstrap?.state === "ready" ? "✓ 已安装" : "! 尚未安装"}</small>
+              <small>{pythonInstalling ? `↓ 正在${pythonNeedsRepair ? "修复" : "安装"}` : pythonBootstrap?.state === "failed" ? `! ${pythonNeedsRepair ? "环境损坏" : "安装失败"}` : pythonBootstrap?.state === "ready" ? "✓ 已安装" : "! 尚未安装"}</small>
               <button className="primary-button" disabled={pythonBlocked !== ""} title={pythonBlocked || undefined} onClick={() => void onInstallPython()}>
-                {pythonInstalling ? "正在启用…" : pythonBootstrap?.state === "failed" ? "重试安装" : pythonBootstrap?.state === "ready" ? "重新启用" : "立即安装"}
+                {pythonInstalling ? `正在${pythonNeedsRepair ? "修复" : "启用"}…` : pythonBootstrap?.state === "failed" ? pythonNeedsRepair ? "修复环境" : "重试安装" : pythonBootstrap?.state === "ready" ? "重新启用" : "立即安装"}
               </button>
             </div>
           </div>

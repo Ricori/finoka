@@ -146,6 +146,7 @@ export default function App() {
   const syncedTasks = useRef(new Set<string>());
   const reconciledLocalTasks = useRef(new Set<string>());
   const reconciledCloudTasks = useRef(new Set<string>());
+  const observedActiveCloudTasks = useRef(new Set<string>());
   const taskHistoryHydrated = useRef(false);
   const preferencesHydrated = useRef(false);
   // History persists to its own file, so it needs a hydration gate of its own:
@@ -727,6 +728,41 @@ export default function App() {
     );
     return () => window.clearInterval(timer);
   }, [hasActiveHistory, refreshActiveTaskHistory]);
+
+  // Session.running and cloud library entries are snapshots loaded at login;
+  // task polling does not mutate either. Reconcile them as soon as one of this
+  // desktop's cloud tasks leaves its active state, otherwise the global badge
+  // stays "running" and the stale library row keeps cloud deletion disabled.
+  useEffect(() => {
+    for (const item of taskHistory) {
+      if (item.provider === "cloud" && activeStates.has(item.snapshot.state)) {
+        observedActiveCloudTasks.current.add(item.taskId);
+      }
+    }
+    const settled = taskHistory.filter((item) =>
+      item.provider === "cloud"
+      && !activeStates.has(item.snapshot.state)
+      && observedActiveCloudTasks.current.has(item.taskId));
+    if (settled.length === 0) return;
+    settled.forEach((item) => observedActiveCloudTasks.current.delete(item.taskId));
+
+    // Apply the authoritative task snapshots immediately so the UI unlocks
+    // without another network round trip, then refresh both cloud summaries to
+    // pick up exact account counts, artifact flags, and timestamps.
+    const states = new Map(settled.map((item) => [item.taskId, item.snapshot.state]));
+    setCloudSession((current) => current
+      ? { ...current, running: Math.max(0, current.running - settled.length) }
+      : current);
+    setCloudMedia((current) => current.map((entry) => {
+      const state = states.get(entry.id);
+      return state ? { ...entry, status: state } : entry;
+    }));
+    if (!cloudSession?.authenticated) return;
+    void Promise.all([cloudAccount.refreshSession(), cloudAccount.library()]).then(([session, entries]) => {
+      setCloudSession(session);
+      setCloudMedia(entries);
+    }).catch(() => undefined);
+  }, [cloudSession?.authenticated, taskHistory]);
 
   const actOnHistoryTask = useCallback(async (item: TaskHistoryEntry, action: "cancel" | "resume") => {
     const taskProvider = item.provider === "local" ? localProvider : cloudProvider;

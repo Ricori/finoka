@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderID, TaskEvent, TaskEventPage } from "../providers/types.ts";
+import { visibleTaskEvents } from "./taskLog.ts";
 import "./TaskLogPanel.css";
 
 /** Reading a task's events is a provider capability. The page passes in the
     matching provider's reader rather than coupling the panel to either one. */
 export type TaskLogSource = (taskId: string, afterCursor: number) => Promise<TaskEventPage>;
 
-const logPollIntervalMs = 1200;
+const logPollIntervalMs = 6_000;
 const logLineLimit = 1000;
 const followThresholdPx = 24;
 
@@ -15,6 +16,7 @@ const typeLabels: Record<string, string> = {
   stage: "阶段",
   progress: "进度",
   warning: "警告",
+  handoff: "交接",
   log: "日志",
   completed: "完成",
   failed: "失败",
@@ -90,9 +92,10 @@ export function TaskLogPanel({ taskId, active, provider, source }: { taskId: str
     if (body && follow) body.scrollTop = body.scrollHeight;
   }, [events, follow]);
 
+  const visibleEvents = useMemo(() => visibleTaskEvents(events, provider), [events, provider]);
   const lines = useMemo(
-    () => events.map((event) => `${eventTime(event.timestamp)} [${typeLabels[event.type] ?? event.type}] ${eventText(event)}`),
-    [events],
+    () => visibleEvents.map((event) => `${eventTime(event.timestamp)} [${typeLabels[event.type] ?? event.type}] ${eventText(event)}`),
+    [visibleEvents],
   );
 
   const copy = useCallback(() => {
@@ -105,8 +108,8 @@ export function TaskLogPanel({ taskId, active, provider, source }: { taskId: str
   return (
     <section className="task-log-panel">
       <header className="task-log-heading">
-        <strong>详细日志</strong>
-        <small>{active ? provider === "cloud" ? "云端任务实时事件" : "本机引擎实时输出" : `共 ${events.length} 条记录`}</small>
+        <strong>{provider === "cloud" ? "关键日志" : "详细日志"}</strong>
+        <small>{active ? provider === "cloud" ? "云端任务关键事件" : "本机引擎实时输出" : `共 ${visibleEvents.length} 条记录`}</small>
         <button disabled={lines.length === 0} onClick={copy} type="button">{copied ? "已复制" : "复制全部"}</button>
       </header>
       <div
@@ -117,9 +120,9 @@ export function TaskLogPanel({ taskId, active, provider, source }: { taskId: str
         }}
         ref={bodyRef}
       >
-        {events.length === 0
+        {visibleEvents.length === 0
           ? <p className="task-log-empty">{error || (active ? "等待引擎输出…" : "该任务没有留下日志记录。")}</p>
-          : events.map((event) => (
+          : visibleEvents.map((event) => (
             <p className={`task-log-line task-log-${event.type}`} key={event.cursor}>
               <time>{eventTime(event.timestamp)}</time>
               <b>{typeLabels[event.type] ?? event.type}</b>
@@ -127,7 +130,7 @@ export function TaskLogPanel({ taskId, active, provider, source }: { taskId: str
             </p>
           ))}
       </div>
-      {error && events.length > 0 && <p className="task-log-error">{error}</p>}
+      {error && visibleEvents.length > 0 && <p className="task-log-error">{error}</p>}
       {!follow && active && (
         <button className="task-log-follow" onClick={() => setFollow(true)} type="button">回到最新 ↓</button>
       )}

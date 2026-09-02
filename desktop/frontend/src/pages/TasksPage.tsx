@@ -155,8 +155,8 @@ export function TasksPage(props: TasksPageProps) {
                   )}
                   {activeStates.has(snapshot.state) && <button onClick={() => void onTaskAction(item, "cancel")}>取消</button>}
                   {recoverableStates.has(snapshot.state) && <button className="resume" onClick={() => void onTaskAction(item, "resume")}>继续</button>}
-                  {snapshot.state === "completed" && subtitlesEditable && <button className="resume" onClick={() => onOpenEditor(localEntry)}>编辑字幕</button>}
-                  {snapshot.state === "completed" && !subtitlesEditable && <button onClick={onNavigateLibrary}>查看媒体</button>}
+                  {snapshot.state === "completed" && subtitlesEditable && <button className="view-media" onClick={() => onOpenEditor(localEntry)}>查看媒体</button>}
+                  {snapshot.state === "completed" && !subtitlesEditable && <button className="view-media" onClick={onNavigateLibrary}>查看媒体</button>}
                 </div>
                 {logsOpen && logSource !== undefined && (
                   <TaskLogPanel active={activeStates.has(snapshot.state)} provider={item.provider} source={logSource} taskId={item.taskId} />

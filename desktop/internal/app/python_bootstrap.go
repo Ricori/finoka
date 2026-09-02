@@ -100,9 +100,14 @@ type PythonBootstrap struct {
 	requirements string
 	manager      *sidecar.Manager
 	client       *http.Client
+	usable       func(string) bool
 }
 
 func NewPythonBootstrap(dataDirectory string, manager *sidecar.Manager) *PythonBootstrap {
+	return newPythonBootstrap(dataDirectory, manager, interpreterCanRunSidecar)
+}
+
+func newPythonBootstrap(dataDirectory string, manager *sidecar.Manager, usable func(string) bool) *PythonBootstrap {
 	state := pythonBootstrapState{
 		Schema:    1,
 		Platform:  runtime.GOOS + "-" + runtime.GOARCH,
@@ -113,10 +118,16 @@ func NewPythonBootstrap(dataDirectory string, manager *sidecar.Manager) *PythonB
 	}
 	python := managedtools.BootstrapPython(dataDirectory)
 	if info, err := os.Stat(python); err == nil && !info.IsDir() {
-		state.State = "ready"
-		state.Stage = "completed"
-		state.Message = "Python 启动环境已安装"
 		state.Python = python
+		if usable(python) {
+			state.State = "ready"
+			state.Stage = "completed"
+			state.Message = "Python 启动环境已安装"
+		} else {
+			state.State = "failed"
+			state.Stage = "failed"
+			state.Message = "Python 启动环境已损坏，可点击“修复环境”自动重建"
+		}
 	}
 	if !state.Supported {
 		state.Message = "自动安装 Python 当前仅支持 Windows x64"
@@ -127,6 +138,7 @@ func NewPythonBootstrap(dataDirectory string, manager *sidecar.Manager) *PythonB
 		requirements: bootstrapRequirementsPath(dataDirectory),
 		manager:      manager,
 		client:       &http.Client{Timeout: 30 * time.Minute},
+		usable:       usable,
 	}
 }
 
@@ -216,7 +228,7 @@ func (b *PythonBootstrap) fail(err error) {
 
 func (b *PythonBootstrap) install() {
 	python := managedtools.BootstrapPython(b.dataDir)
-	if info, err := os.Stat(python); err != nil || info.IsDir() {
+	if info, err := os.Stat(python); err != nil || info.IsDir() || !b.usable(python) {
 		if err := b.installPython(); err != nil {
 			b.fail(err)
 			return
