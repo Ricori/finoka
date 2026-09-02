@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { FineSubBaseUrlState, FineSubKeyState, FineSubModelProvider, FineSubModelRoute, FineSubModelRoutingState } from "../bridge/settings.ts";
-import { effectiveRoute, hasDraft, pickModelForProvider, routeSettingName } from "./llmRouting.ts";
+import { effectiveRoute, hasDraft, loadModelMemory, pickModelForProvider, routeSettingName, saveModelMemory } from "./llmRouting.ts";
 import { Mark } from "./Mark.tsx";
 import "./LlmConfigurationCard.css";
 
@@ -17,12 +17,14 @@ interface LlmConfigurationCardProps {
 
 export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, busy, setDrafts, onSave }: LlmConfigurationCardProps) {
   // 每个路由下各提供商最近用过的模型。切走再切回来时用它复原，
-  // 否则手填模型 ID 的提供商每次都得重新输入。
-  const modelMemory = useRef<Record<string, Record<string, string>>>({});
+  // 否则手填模型 ID 的提供商每次都得重新输入。通过 localStorage 持久化，
+  // 避免关闭页面或切换其他提供商保存后丢失。
+  const modelMemory = useRef<Record<string, Record<string, string>>>(loadModelMemory());
   const rememberModel = (routeID: string, providerID: string, model: string) => {
     if (!providerID) return;
     const perRoute = modelMemory.current[routeID] ?? (modelMemory.current[routeID] = {});
     perRoute[providerID] = model;
+    saveModelMemory(modelMemory.current);
   };
   const savedRouteOf = (routeID: string): FineSubModelRoute =>
     routeID === "default"

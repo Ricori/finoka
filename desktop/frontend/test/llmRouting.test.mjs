@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { effectiveRoute, pickModelForProvider, routeSettingName, routeServesMedia } from "../src/components/llmRouting.ts";
+import { effectiveRoute, loadModelMemory, pickModelForProvider, routeSettingName, routeServesMedia, saveModelMemory } from "../src/components/llmRouting.ts";
 
 const compat = {
   id: "openai-compat",
@@ -46,6 +46,26 @@ test("switching back to the saved compat provider restores its model ID", () => 
 
 test("a model typed this session outlives a round trip through another provider", () => {
   assert.equal(pickModelForProvider({ provider: compat, remembered: "vendor/typed", savedModel: "" }), "vendor/typed");
+});
+
+test("model memory persistence round-trips correctly", () => {
+  const store = new Map();
+  const mockStorage = {
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, val) => { store.set(key, String(val)); },
+  };
+  assert.deepEqual(loadModelMemory(mockStorage), {});
+  saveModelMemory({ default: { "openai-compat": "deepseek-chat" } }, mockStorage);
+  assert.deepEqual(loadModelMemory(mockStorage), { default: { "openai-compat": "deepseek-chat" } });
+});
+
+test("model memory safely handles invalid or missing storage", () => {
+  const mockStorage = {
+    getItem: () => "invalid json {",
+    setItem: () => {},
+  };
+  assert.deepEqual(loadModelMemory(mockStorage), {});
+  assert.deepEqual(loadModelMemory(undefined), {});
 });
 
 test("an unconfigured compat provider still starts empty", () => {

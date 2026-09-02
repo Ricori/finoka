@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import type { CacheStatus } from "../bridge/library.ts";
 import type { RelocationProgress, StorageDestination, StorageLocation, StorageStatus, StorageTarget } from "../bridge/storage.ts";
 import "./StorageLocationsCard.css";
 import { Notice } from "./Notice.tsx";
@@ -14,22 +16,54 @@ interface StorageLocationsCardProps {
   progress: RelocationProgress | null;
   message: string;
   busy: boolean;
+  cache?: CacheStatus | null;
+  cacheBusy?: boolean;
+  cacheMessage?: string;
   onChoose: (target: StorageTarget) => Promise<StorageDestination | null>;
   onRelocate: (target: StorageTarget, destination: string) => Promise<void>;
   onReset: (target: StorageTarget) => Promise<void>;
   onCancel: () => Promise<void>;
+  onSaveCacheLimit?: (limit: number) => Promise<void>;
+  onClearCache?: () => Promise<void>;
   onDismissMessage: () => void;
+  onDismissCacheMessage?: () => void;
 }
 
 const targetDetails: Record<StorageTarget, string> = {
   runtime: "Python 运行时、人声分离与转写模型、下载缓存。本地转写占用的绝大部分空间都在这里。",
-  video: "任务执行时复制的视频工作副本，按缓存上限自动回收。",
+  video: "使用过的视频会复制到 Nonoka X 数据目录，达到上限后按最近使用时间自动回收。",
 };
 
 export function StorageLocationsCard(props: StorageLocationsCardProps) {
-  const { status, progress, message, busy, onChoose, onRelocate, onReset, onCancel, onDismissMessage } = props;
+  const {
+    status,
+    progress,
+    message,
+    busy,
+    cache,
+    cacheBusy = false,
+    cacheMessage = "",
+    onChoose,
+    onRelocate,
+    onReset,
+    onCancel,
+    onSaveCacheLimit,
+    onClearCache,
+    onDismissMessage,
+    onDismissCacheMessage,
+  } = props;
   const { pending, choosing, choose, clear } = useDestinationChoice(onChoose);
   const active = progress?.active === true;
+
+  const [limit, setLimit] = useState("20");
+
+  useEffect(() => {
+    if (cache) setLimit(String(cache.limitGB));
+  }, [cache]);
+
+  const limitValue = Number(limit);
+  const limitValid = Number.isFinite(limitValue) && limitValue >= 1 && limitValue <= 1024;
+  const usage = cache?.limitBytes ? Math.min(100, (cache.bytes / cache.limitBytes) * 100) : 0;
 
   const confirm = () => {
     if (!pending) return;
@@ -45,9 +79,9 @@ export function StorageLocationsCard(props: StorageLocationsCardProps) {
       <div className="storage-heading">
         <div>
           <span className="eyebrow">Storage locations</span>
-          <h2>磁盘占用与位置</h2>
+          <h2>磁盘占用</h2>
           <p>
-            默认情况下运行环境与视频缓存都放在系统盘的 Nonoka X 数据目录里。可以把它们整体搬到别的盘，Nonoka Sub X 会记住新位置。
+            默认情况下数据都放在系统盘。可以把它们整体搬到别的盘，Nonoka Sub X 会记住新位置。
           </p>
         </div>
       </div>
@@ -58,6 +92,10 @@ export function StorageLocationsCard(props: StorageLocationsCardProps) {
           const title = storageTargetTitles[target];
           if (!title) return null;
           const movingThis = active && progress?.target === location.target;
+          const isVideo = target === "video";
+          const fileCount = isVideo && cache ? cache.files : location.files;
+          const bytes = isVideo && cache ? cache.bytes : location.bytes;
+
           return (
             <section className="storage-row" key={location.target}>
               <div className="storage-row-heading">
@@ -65,21 +103,74 @@ export function StorageLocationsCard(props: StorageLocationsCardProps) {
                   <strong>{title}</strong>
                   <p>{targetDetails[target]}</p>
                 </div>
-                <b>{location.missing ? "—" : formatStorageBytes(location.bytes)}</b>
+                <b>{location.missing ? "—" : formatStorageBytes(bytes)}</b>
               </div>
+
+              {isVideo && cache && cache.limitBytes > 0 && (
+                <div className="storage-meter" aria-label={`缓存使用率 ${usage.toFixed(0)}%`}>
+                  <span style={{ width: `${usage}%` }} />
+                </div>
+              )}
+
+              {isVideo && (
+                <div className="storage-cache-limit-row">
+                  <label>
+                    缓存上限（GB）
+                    <input
+                      type="number"
+                      min="1"
+                      max="1024"
+                      step="1"
+                      value={limit}
+                      onChange={(event) => setLimit(event.target.value)}
+                    />
+                  </label>
+                  {onSaveCacheLimit && (
+                    <button
+                      disabled={cacheBusy || busy || !limitValid || limitValue === cache?.limitGB}
+                      onClick={() => void onSaveCacheLimit(limitValue)}
+                      type="button"
+                    >
+                      保存上限
+                    </button>
+                  )}
+                  {onClearCache && (
+                    <button
+                      className="danger-link"
+                      disabled={cacheBusy || busy || !fileCount}
+                      onClick={() => void onClearCache()}
+                      type="button"
+                    >
+                      清理视频缓存
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="storage-path" title={location.directory}>
                 <span>当前位置</span>
                 <code>{location.directory}</code>
               </div>
+
               <div className="storage-row-stats">
                 {location.custom ? <span className="storage-badge">已迁移</span> : <span className="storage-badge muted">默认位置</span>}
                 <span>
                   {location.volume} 剩余 <b>{formatStorageBytes(location.freeBytes)}</b>
                 </span>
-                {!location.missing && location.files > 0 && <span>{location.files} 个文件</span>}
+                {!location.missing && fileCount > 0 && (
+                  <span>
+                    <b>{fileCount}</b> {isVideo ? "个视频副本" : "个文件"}
+                  </span>
+                )}
+                {isVideo && cache && cache.limitBytes > 0 && (
+                  <span>
+                    <b>{formatStorageBytes(cache.limitBytes)}</b> 容量上限
+                  </span>
+                )}
                 {location.empty && !location.missing && <span>尚未安装</span>}
                 {location.missing && <span className="storage-warn">目录当前不可访问，请重新连接该磁盘或改回默认位置</span>}
               </div>
+
               <div className="storage-row-actions">
                 <button disabled={busy || active || choosing !== ""} onClick={() => void choose(target)} type="button">
                   {choosing === target ? "正在选择…" : "更改位置…"}
@@ -91,6 +182,10 @@ export function StorageLocationsCard(props: StorageLocationsCardProps) {
                 )}
                 {movingThis && <span className="storage-inline-progress">正在迁移…</span>}
               </div>
+
+              {isVideo && cacheMessage && onDismissCacheMessage && (
+                <Notice className="storage-cache-message" message={cacheMessage} onDismiss={onDismissCacheMessage} />
+              )}
             </section>
           );
         })}

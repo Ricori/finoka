@@ -19,6 +19,29 @@ export function effectiveRoute(routeID: string, saved: FineSubModelRoute, drafts
   };
 }
 
+export const MODEL_MEMORY_STORAGE_KEY = "finesub:llm-provider-models";
+
+export function loadModelMemory(storage?: Pick<Storage, "getItem">): Record<string, Record<string, string>> {
+  try {
+    const backend = storage ?? (typeof localStorage !== "undefined" ? localStorage : undefined);
+    const raw = backend?.getItem(MODEL_MEMORY_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveModelMemory(memory: Record<string, Record<string, string>>, storage?: Pick<Storage, "setItem">): void {
+  try {
+    const backend = storage ?? (typeof localStorage !== "undefined" ? localStorage : undefined);
+    backend?.setItem(MODEL_MEMORY_STORAGE_KEY, JSON.stringify(memory));
+  } catch {
+    // Ignore storage quota or environment errors
+  }
+}
+
 /** 切换提供商后该填哪个模型。
  *
  * 手填模型 ID 的提供商（OpenAI/Anthropic 及两个兼容端点）没有可选清单，
