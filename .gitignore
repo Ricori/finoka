@@ -15,8 +15,10 @@ docs/cloud-*.md
 desktop/bin/
 desktop/.tools/
 desktop/wails_windows_*.syso
-desktop/internal/app/bundled/finoka/*
-!desktop/internal/app/bundled/finoka/.gitkeep
-.temp
+desktop/internal/app/bundled/nonoka_x/*
+!desktop/internal/app/bundled/nonoka_x/.gitkeep
+.temp/*
+.tmp/*
+.claude/*
 upstream-prs
 test_data/*

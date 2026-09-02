@@ -48,7 +48,7 @@ func TestManifestURLPrefersExplicitOverride(t *testing.T) {
 
 func TestRemoveReplacedExecutables(t *testing.T) {
 	directory := t.TempDir()
-	executable := filepath.Join(directory, "Finoka.exe")
+	executable := filepath.Join(directory, "Nonoka X.exe")
 	replaced := []string{
 		executable + ".old.1786267404207847300",
 		executable + ".old.1786267404207847301",
@@ -123,7 +123,7 @@ func TestConsumePendingUpdateClearsMarker(t *testing.T) {
 }
 
 func TestCheckDownloadsAndVerifiesEndpointArtifact(t *testing.T) {
-	artifact := []byte("finoka update fixture")
+	artifact := []byte("nonoka update fixture")
 	digest := sha512.Sum512(artifact)
 	parts := strings.Split(Version, ".")
 	patch, _ := strconv.Atoi(parts[2])
@@ -138,7 +138,7 @@ func TestCheckDownloadsAndVerifiesEndpointArtifact(t *testing.T) {
 				"notes":         "update smoke",
 				"artifacts": []map[string]any{{
 					"url": "/artifact.exe", "platform": runtime.GOOS, "arch": runtime.GOARCH,
-					"filename": "Finoka-windows-amd64.exe", "size": len(artifact),
+					"filename": "Nonoka-X-windows-amd64.exe", "size": len(artifact),
 					"digestAlgo": "sha512", "digest": base64.StdEncoding.EncodeToString(digest[:]),
 				}},
 			})

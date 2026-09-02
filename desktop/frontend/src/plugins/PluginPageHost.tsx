@@ -102,7 +102,7 @@ export function PluginPageHost({ mounted, theme, onOpenManager, onOpenLibrary, o
 
   useEffect(() => {
     const receive = (event: MessageEvent<PluginMessage>) => {
-      if (event.source !== frame.current?.contentWindow || event.data?.source !== "finoka-plugin" || event.data.apiVersion !== 1) return;
+      if (event.source !== frame.current?.contentWindow || event.data?.source !== "nonoka-plugin" || event.data.apiVersion !== 1) return;
       const method = typeof event.data.method === "string" ? event.data.method : "";
       const id = event.data.id;
       if (method === "ui.ready" || method === "host.getInfo") {
@@ -198,7 +198,7 @@ const storedStyles = async (): Promise<string> => {
 };
 
 function post(frame: HTMLIFrameElement | null, message: { id?: unknown; method: string; result?: unknown; error?: unknown }) {
-  frame?.contentWindow?.postMessage({ source: "finoka-host", apiVersion: 1, ...message }, "*");
+  frame?.contentWindow?.postMessage({ source: "nonoka-host", apiVersion: 1, ...message }, "*");
 }
 
 function respond(frame: HTMLIFrameElement | null, id: unknown, result?: unknown, error?: unknown) {

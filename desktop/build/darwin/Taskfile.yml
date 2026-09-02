@@ -5,7 +5,7 @@ includes:
 
 tasks:
   build:
-    summary: Builds Finoka for macOS
+    summary: Builds Nonoka X for macOS
     deps:
       - task: common:build:frontend
         vars: { DEV: '{{.DEV}}', BUILD_FLAGS: '{{.BUILD_FLAGS}}' }
@@ -46,7 +46,7 @@ tasks:
       - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
 
   package:
-    summary: Packages Finoka as a macOS .app bundle
+    summary: Packages Nonoka X as a macOS .app bundle
     deps: [build]
     cmds:
       - task: bundle
@@ -59,7 +59,7 @@ tasks:
       - task: bundle
 
   run:
-    summary: Runs Finoka from a development app bundle
+    summary: Runs Nonoka X from a development app bundle
     cmds:
       - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"

@@ -14,7 +14,7 @@ import (
 // systemDigestName records which embedded bytes produced the installed copy.
 const systemDigestName = ".content-digest"
 
-// System plugins are first-party tools that ship inside the Finoka binary.
+// System plugins are first-party tools that ship inside the Nonoka X binary.
 // They deliberately reuse the ordinary plugin package format — same manifest,
 // same declared permissions, same sandboxed page — so there is one plugin
 // contract to reason about rather than two. Only their origin differs, and

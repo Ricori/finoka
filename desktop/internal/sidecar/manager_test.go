@@ -97,7 +97,7 @@ func TestManagerStartsAndStopsChildProcess(t *testing.T) {
 		Executable: os.Args[0],
 		Args:       []string{"-test.run=TestSidecarHelperProcess"},
 		Environment: []string{
-			"FINOKA_SIDECAR_HELPER=1",
+			"NONOKA_SIDECAR_HELPER=1",
 		},
 		StartupTimeout: 5 * time.Second,
 	})
@@ -121,7 +121,7 @@ func TestManagerStartsAndStopsChildProcess(t *testing.T) {
 }
 
 func TestSidecarHelperProcess(t *testing.T) {
-	if os.Getenv("FINOKA_SIDECAR_HELPER") != "1" {
+	if os.Getenv("NONOKA_SIDECAR_HELPER") != "1" {
 		return
 	}
 	fmt.Println(`{"schema":1,"host":"127.0.0.1","port":43123,"token":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO"}`)
@@ -132,7 +132,7 @@ func TestPythonConfigCarriesTheInstallDirectoryOnlyWhenRelocated(t *testing.T) {
 	root := t.TempDir()
 	script := filepath.Join(root, "run_local_sidecar.py")
 	vendor := filepath.Join(root, "finesub")
-	data := filepath.Join(root, "Finoka")
+	data := filepath.Join(root, "Nonoka X")
 
 	config, err := PythonConfig("python", script, data, vendor, "")
 	if err != nil {
@@ -142,7 +142,7 @@ func TestPythonConfigCarriesTheInstallDirectoryOnlyWhenRelocated(t *testing.T) {
 		t.Fatalf("default layout passed --install-dir: %v", config.Args)
 	}
 
-	install := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	install := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	config, err = PythonConfig("python", script, data, vendor, install)
 	if err != nil {
 		t.Fatalf("config: %v", err)

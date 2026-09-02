@@ -1,4 +1,4 @@
-// Command icon validates and renders the Finoka application icon source.
+// Command icon validates and renders the Nonoka X application icon source.
 package main
 
 import (

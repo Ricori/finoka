@@ -39,7 +39,7 @@ func TestMoveRelocatesTheWholeTree(t *testing.T) {
 		"runtime/python/pyvenv.cfg": "home = C:/Python312",
 		"models/whisper.bin":        "weights",
 	})
-	destination := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	total := Measure(source).Bytes
 	reported := int64(0)
 	if err := Move(context.Background(), source, destination, total, func(copied int64) { reported = copied }); err != nil {
@@ -61,7 +61,7 @@ func TestMoveRelocatesTheWholeTree(t *testing.T) {
 // the point is to record where the next install goes.
 func TestMoveCreatesADestinationForAMissingSource(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "finesub")
-	destination := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	if err := Move(context.Background(), source, destination, 0, nil); err != nil {
 		t.Fatalf("move: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestMoveCreatesADestinationForAMissingSource(t *testing.T) {
 func TestMoveAcceptsAnExistingEmptyDestination(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "videos")
 	writeTree(t, source, map[string]string{"loc_a.mp4": "frames"})
-	destination := filepath.Join(t.TempDir(), "Finoka", "videos")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "videos")
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		t.Fatalf("create destination: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestMoveAcceptsAnExistingEmptyDestination(t *testing.T) {
 func TestMoveCancelledLeavesTheSourceIntact(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "finesub")
 	writeTree(t, source, map[string]string{"models/whisper.bin": "weights"})
-	destination := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	err := Move(ctx, source, destination, 7, nil)
@@ -207,7 +207,7 @@ func TestMoveKeepsAPartialCopyForTheNextAttempt(t *testing.T) {
 	writeTree(t, source, map[string]string{"models/whisper.bin": "weights"})
 	// A destination on the same volume would be renamed, so the partial-copy
 	// path is driven through copyTree plus the marker Move writes.
-	destination := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestMoveKeepsAPartialCopyForTheNextAttempt(t *testing.T) {
 
 func TestDiscardPartialCopyOnlyRemovesItsOwn(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "finesub")
-	destination := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	writeTree(t, destination, map[string]string{"models/whisper.bin": "weights"})
 	other := filepath.Join(t.TempDir(), "videos")
 
@@ -281,7 +281,7 @@ func TestDiscardPartialCopyOnlyRemovesItsOwn(t *testing.T) {
 func TestFreeSpaceReportsTheVolumeOfAMissingDirectory(t *testing.T) {
 	// The destination of a relocation does not exist yet, so the answer has to
 	// come from the nearest ancestor that does.
-	if FreeSpace(filepath.Join(t.TempDir(), "Finoka", "finesub")) <= 0 {
+	if FreeSpace(filepath.Join(t.TempDir(), "Nonoka X", "finesub")) <= 0 {
 		t.Fatal("free space on the test volume reported as zero")
 	}
 }

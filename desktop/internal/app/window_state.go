@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/preferences"
+	"github.com/Ricori/nonoka-x/desktop/internal/preferences"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )

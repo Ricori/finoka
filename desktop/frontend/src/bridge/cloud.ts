@@ -1,9 +1,9 @@
-import { Service as CloudService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/cloud/index.js";
-import type { AdminKey as CloudAdminKey, Entry as CloudEntry, IssuedAdminKey, Session as CloudSession } from "../../bindings/github.com/Ricori/finoka/desktop/internal/cloud/models.js";
+import { Service as CloudService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/cloud/index.js";
+import type { AdminKey as CloudAdminKey, Entry as CloudEntry, IssuedAdminKey, Session as CloudSession } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/cloud/models.js";
 
 export type { CloudAdminKey, CloudEntry, CloudSession, IssuedAdminKey };
 
-export const DEFAULT_CLOUD_BACKEND = "https://ricori--finoka-cloud-api.modal.run";
+export const DEFAULT_CLOUD_BACKEND = "https://ricori--nonoka-x-cloud-api.modal.run";
 
 export const cloudAccount = {
   session: CloudService.Session,

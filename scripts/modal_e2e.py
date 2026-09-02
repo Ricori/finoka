@@ -22,7 +22,7 @@ from typing import Any
 import modal
 
 
-DEFAULT_ENDPOINT = "https://ricori--finoka-cloud-api.modal.run"
+DEFAULT_ENDPOINT = "https://ricori--nonoka-x-cloud-api.modal.run"
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MODAL_BACKEND_ROOT = REPOSITORY_ROOT / "modal_backend"
@@ -90,7 +90,7 @@ def request_json(
 
 
 def synthesize_japanese_audio(directory: Path, repetitions: int) -> tuple[Path, float]:
-    output = directory / "finoka-e2e.aiff"
+    output = directory / "nonoka-x-e2e.aiff"
     phrase = (
         "こんにちは。これはフィノカ字幕処理の端末間テスト音声です。"
         "音声認識、字幕の修正、そして中国語への翻訳を確認します。"
@@ -153,11 +153,11 @@ def main() -> int:
     endpoint = args.endpoint.rstrip("/")
     login_key = "e2e_" + secrets.token_urlsafe(32)
     owner_id = "key_" + hashlib.sha256(login_key.encode("utf-8")).hexdigest()
-    keys = modal.Dict.from_name("finoka-keys")
-    videos = modal.Dict.from_name("finoka-videos")
-    uploads = modal.Dict.from_name("finoka-uploads")
-    controls = modal.Dict.from_name("finoka-task-controls")
-    artifacts = modal.Volume.from_name("finoka-artifacts")
+    keys = modal.Dict.from_name("nonoka-x-keys")
+    videos = modal.Dict.from_name("nonoka-x-videos")
+    uploads = modal.Dict.from_name("nonoka-x-uploads")
+    controls = modal.Dict.from_name("nonoka-x-task-controls")
+    artifacts = modal.Volume.from_name("nonoka-x-artifacts")
     object_id = ""
     task_id = ""
     latest_state = ""
@@ -198,7 +198,7 @@ def main() -> int:
         # Image verification is a test concern, so run it in an anonymous,
         # temporary Modal app instead of keeping a test function deployed in
         # the production app.
-        from finoka_modal.testing.verify_container import (
+        from nonoka_x_modal.testing.verify_container import (
             app as verify_app,
             verify_patched_ctranslate2,
         )
@@ -209,7 +209,7 @@ def main() -> int:
             raise RuntimeError(f"patched CTranslate2 verification failed: {verify}")
         print(f"[e2e] patched CTranslate2 runtime passed ({verify.get('version')})", flush=True)
 
-        with tempfile.TemporaryDirectory(prefix="finoka-modal-e2e-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="nonoka-x-modal-e2e-") as temporary:
             audio, duration = synthesize_japanese_audio(Path(temporary), args.repetitions)
             fingerprint = hashlib.sha256(audio.read_bytes()).hexdigest()
             upload = request_json(
@@ -217,7 +217,7 @@ def main() -> int:
                 "POST",
                 "/v1/uploads/init",
                 key=login_key,
-                payload={"filename": "finoka-e2e.m4a", "bytes": audio.stat().st_size},
+                payload={"filename": "nonoka-x-e2e.m4a", "bytes": audio.stat().st_size},
             )
             object_id = str(upload["objectId"])
             put_upload(str(upload["uploadUrl"]), audio)
@@ -234,7 +234,7 @@ def main() -> int:
                     "source": {
                         "kind": "uploaded_audio",
                         "object_id": object_id,
-                        "title": "Finoka Modal E2E",
+                        "title": "Nonoka X Modal E2E",
                         "fingerprint": fingerprint,
                         "duration": duration,
                     },
@@ -261,7 +261,7 @@ def main() -> int:
 
             task_listing = request_json(endpoint, "GET", "/v1/tasks?limit=100", key=login_key)
             listed = [item for item in task_listing.get("tasks", []) if item.get("snapshot", {}).get("task_id") == task_id]
-            if not listed or listed[0].get("title") != "Finoka Modal E2E":
+            if not listed or listed[0].get("title") != "Nonoka X Modal E2E":
                 raise RuntimeError(f"new cloud task missing from task listing: {task_listing}")
             print("[e2e] cloud task discovery endpoint passed", flush=True)
 

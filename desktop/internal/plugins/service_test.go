@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
 )
 
 const newlineForTest = "\n"
 
 const testManifest = `{
-  "id": "dev.finoka.hello",
+  "id": "dev.nonoka.hello",
   "name": "Hello tools",
   "version": "1.2.3",
   "apiVersion": 1,
@@ -95,7 +95,7 @@ func TestInstallEnablePageAndUninstall(t *testing.T) {
 	packageRoot := filepath.Join(t.TempDir(), "plugin")
 	mustWrite(t, filepath.Join(packageRoot, manifestName), testManifest)
 	mustWrite(t, filepath.Join(packageRoot, "ui", "index.html"), `<!doctype html><html><head><title>Hello</title></head><body>works</body></html>`)
-	mustWrite(t, filepath.Join(root, "plugin-data", "dev.finoka.hello", "settings.json"), `{}`)
+	mustWrite(t, filepath.Join(root, "plugin-data", "dev.nonoka.hello", "settings.json"), `{}`)
 
 	service, err := New(root)
 	if err != nil {
@@ -105,40 +105,40 @@ func TestInstallEnablePageAndUninstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if installed.ID != "dev.finoka.hello" || !installed.Enabled || len(installed.Contributes.Tools) != 1 {
+	if installed.ID != "dev.nonoka.hello" || !installed.Enabled || len(installed.Contributes.Tools) != 1 {
 		t.Fatalf("unexpected installed plugin: %#v", installed)
 	}
 	listed := userPlugins(service.List())
 	if len(listed) != 1 || listed[0].Version != "1.2.3" {
 		t.Fatalf("unexpected plugin list: %#v", listed)
 	}
-	html, err := service.PageHTML("dev.finoka.hello", "hello")
+	html, err := service.PageHTML("dev.nonoka.hello", "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html, "Content-Security-Policy") || !strings.Contains(html, "window.finoka") || !strings.Contains(html, "works") {
+	if !strings.Contains(html, "Content-Security-Policy") || !strings.Contains(html, "window.nonoka") || !strings.Contains(html, "works") {
 		t.Fatalf("page policy was not injected: %s", html)
 	}
-	if _, err := service.SetEnabled("dev.finoka.hello", false); err != nil {
+	if _, err := service.SetEnabled("dev.nonoka.hello", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.PageHTML("dev.finoka.hello", "hello"); err == nil {
+	if _, err := service.PageHTML("dev.nonoka.hello", "hello"); err == nil {
 		t.Fatal("disabled plugin page should not load")
 	}
-	if err := service.Uninstall("dev.finoka.hello", false); err != nil {
+	if err := service.Uninstall("dev.nonoka.hello", false); err != nil {
 		t.Fatal(err)
 	}
 	if len(userPlugins(service.List())) != 0 {
 		t.Fatal("uninstalled plugin is still listed")
 	}
-	if _, err := os.Stat(filepath.Join(root, "plugin-data", "dev.finoka.hello", "settings.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "plugin-data", "dev.nonoka.hello", "settings.json")); err != nil {
 		t.Fatalf("plugin data should be preserved: %v", err)
 	}
 }
 
 func TestInstallZipRejectsTraversal(t *testing.T) {
 	root := t.TempDir()
-	packagePath := filepath.Join(t.TempDir(), "unsafe.finoka-plugin")
+	packagePath := filepath.Join(t.TempDir(), "unsafe.nonoka-plugin")
 	file, err := os.Create(packagePath)
 	if err != nil {
 		t.Fatal(err)
@@ -169,8 +169,8 @@ func TestInstallZipRejectsTraversal(t *testing.T) {
 	}
 }
 
-func TestInstallFinokaPluginArchive(t *testing.T) {
-	packagePath := filepath.Join(t.TempDir(), "hello.finoka-plugin")
+func TestInstallNonokaPluginArchive(t *testing.T) {
+	packagePath := filepath.Join(t.TempDir(), "hello.nonoka-plugin")
 	file, err := os.Create(packagePath)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestInstallFinokaPluginArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if installed.ID != "dev.finoka.hello" || !installed.Enabled {
+	if installed.ID != "dev.nonoka.hello" || !installed.Enabled {
 		t.Fatalf("unexpected archive install: %#v", installed)
 	}
 }
@@ -229,7 +229,7 @@ func TestInstallNewVersionSwitchesCurrent(t *testing.T) {
 	if len(listed) != 1 || listed[0].Version != "2.0.0" {
 		t.Fatalf("new version was not activated: %#v", listed)
 	}
-	html, err := service.PageHTML("dev.finoka.hello", "hello")
+	html, err := service.PageHTML("dev.nonoka.hello", "hello")
 	if err != nil || !strings.Contains(html, "version two") {
 		t.Fatalf("active page did not switch versions: %v, %s", err, html)
 	}
@@ -270,17 +270,17 @@ func TestMediaListRequiresDeclaredPermission(t *testing.T) {
 	if _, err := service.Install(packageRoot); err != nil {
 		t.Fatal(err)
 	}
-	items, err := service.MediaList("dev.finoka.hello")
+	items, err := service.MediaList("dev.nonoka.hello")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(items) != 1 || items[0].ID != "media-1" || items[0].Title != "Example.mp4" {
 		t.Fatalf("unexpected media summaries: %#v", items)
 	}
-	if _, err := service.SetEnabled("dev.finoka.hello", false); err != nil {
+	if _, err := service.SetEnabled("dev.nonoka.hello", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.MediaList("dev.finoka.hello"); err == nil {
+	if _, err := service.MediaList("dev.nonoka.hello"); err == nil {
 		t.Fatal("disabled plugin should not use host capabilities")
 	}
 }
@@ -473,18 +473,18 @@ func TestDocumentCapabilitiesFollowDeclaredPermissions(t *testing.T) {
 	if _, err := service.Install(packageRoot); err != nil {
 		t.Fatal(err)
 	}
-	document, err := service.Document("dev.finoka.hello", "media-1")
+	document, err := service.Document("dev.nonoka.hello", "media-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if document["rev"] != float64(3) {
 		t.Fatalf("unexpected document: %#v", document)
 	}
-	if _, err := service.Document("dev.finoka.hello", "media-unknown"); err == nil {
+	if _, err := service.Document("dev.nonoka.hello", "media-unknown"); err == nil {
 		t.Fatal("a media id outside the library should not resolve to a document")
 	}
 	// Reading is declared, writing is not: the two capabilities stay separate.
-	if _, err := service.SaveDocument("dev.finoka.hello", "media-1", map[string]any{"rev": float64(3)}); err == nil {
+	if _, err := service.SaveDocument("dev.nonoka.hello", "media-1", map[string]any{"rev": float64(3)}); err == nil {
 		t.Fatal("document.write must be declared separately from document.read")
 	}
 }
@@ -505,7 +505,7 @@ func TestSaveDocumentKeepsOnlyWritableFields(t *testing.T) {
 	if _, err := service.Install(packageRoot); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := service.SaveDocument("dev.finoka.hello", "media-1", map[string]any{
+	saved, err := service.SaveDocument("dev.nonoka.hello", "media-1", map[string]any{
 		"rev":       float64(7),
 		"title":     "Example",
 		"video_id":  "somewhere-else",
@@ -536,7 +536,7 @@ func TestSaveDocumentKeepsOnlyWritableFields(t *testing.T) {
 		{"rev": float64(7), "subtitles": "not-a-list"},
 		{"rev": float64(7), "subtitles": []any{}, "effects": "not-a-list"},
 	} {
-		if _, err := service.SaveDocument("dev.finoka.hello", "media-1", broken); err == nil {
+		if _, err := service.SaveDocument("dev.nonoka.hello", "media-1", broken); err == nil {
 			t.Fatalf("malformed document was accepted: %#v", broken)
 		}
 	}
@@ -562,7 +562,7 @@ func TestExportVideoUsesHostOwnedRangeAndName(t *testing.T) {
 	if _, err := service.Install(packageRoot); err != nil {
 		t.Fatal(err)
 	}
-	artifact, err := service.ExportVideo("dev.finoka.hello", "media-1", `..\..\escape.mkv`, "[Events]\n", 3, 0, 720)
+	artifact, err := service.ExportVideo("dev.nonoka.hello", "media-1", `..\..\escape.mkv`, "[Events]\n", 3, 0, 720)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,16 +575,16 @@ func TestExportVideoUsesHostOwnedRangeAndName(t *testing.T) {
 	if exported.t0 != 3 || exported.t1 != 12.5 || exported.scaleH != 720 {
 		t.Fatalf("unexpected export range: %#v", exported)
 	}
-	if _, err := service.ExportVideo("dev.finoka.hello", "media-1", "", "[Events]", 12.5, 12.5, 0); err == nil {
+	if _, err := service.ExportVideo("dev.nonoka.hello", "media-1", "", "[Events]", 12.5, 12.5, 0); err == nil {
 		t.Fatal("an empty range should be rejected")
 	}
-	if _, err := service.ExportVideo("dev.finoka.hello", "media-1", "", "", 0, 0, 0); err == nil {
+	if _, err := service.ExportVideo("dev.nonoka.hello", "media-1", "", "", 0, 0, 0); err == nil {
 		t.Fatal("an empty subtitle track should be rejected")
 	}
-	if _, err := service.ExportVideo("dev.finoka.hello", "media-1", "", "[Events]", 0, 0, 100); err == nil {
+	if _, err := service.ExportVideo("dev.nonoka.hello", "media-1", "", "[Events]", 0, 0, 100); err == nil {
 		t.Fatal("an out-of-range export height should be rejected")
 	}
-	if _, err := service.SaveSubtitleFile("dev.finoka.hello", `C:\Windows\system32\drivers\etc\hosts`, "Dialogue: 0"); err != nil {
+	if _, err := service.SaveSubtitleFile("dev.nonoka.hello", `C:\Windows\system32\drivers\etc\hosts`, "Dialogue: 0"); err != nil {
 		t.Fatal(err)
 	}
 	if subtitle.name != "hosts.ass" {

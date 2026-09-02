@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
-import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/finoka/desktop/internal/sidecar/models.js";
+import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/sidecar/models.js";
 import { mediaLibrary } from "../bridge/library.ts";
 import type { CacheStatus, ImportResult, MediaEntry } from "../bridge/library.ts";
 import type { RelocationProgress, StorageDestination, StorageStatus, StorageTarget } from "../bridge/storage.ts";
@@ -560,7 +560,7 @@ export default function App() {
   const importMedia = useCallback(async (paths?: string[]) => {
     if (mediaDependencyMissing) {
       setSection("runtime");
-      setMessage("导入视频需要 FFmpeg 与 FFprobe，正在准备下载到 Finoka 缓存目录。");
+      setMessage("导入视频需要 FFmpeg 与 FFprobe，正在准备下载到 Nonoka X 缓存目录。");
       if (runtimeProvision?.media_supported && runtimeProvision.job.state !== "running") {
         try {
           setRuntimeProvision(await fineSubRuntime.install("media"));
@@ -1264,7 +1264,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-glyph">F</span>
-          <span className="brand-name">Finoka</span>
+          <span className="brand-name">Nonoka X</span>
           <button className="sidebar-collapse" aria-label={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"} title={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"} onClick={() => setSidebarCollapsed((value) => !value)}>{sidebarCollapsed ? "›" : "‹"}</button>
         </div>
         <span className="nav-label">工作区</span>

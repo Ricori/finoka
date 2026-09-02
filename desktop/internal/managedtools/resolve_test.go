@@ -164,7 +164,7 @@ func TestFindYTDLPPrefersNativeExecutable(t *testing.T) {
 	}
 }
 
-// An explicit FINOKA_PYTHON outranks the bundled interpreter, which is what
+// An explicit NONOKA_PYTHON outranks the bundled interpreter, which is what
 // packaged builds and development checkouts rely on.
 func TestFindYTDLPHonoursPythonOverride(t *testing.T) {
 	root := t.TempDir()
@@ -186,7 +186,7 @@ func TestFindYTDLPHonoursPythonOverride(t *testing.T) {
 	}
 }
 
-// SidecarConfig accepts a bare command name in FINOKA_PYTHON, so this resolver
+// SidecarConfig accepts a bare command name in NONOKA_PYTHON, so this resolver
 // has to as well: silently falling through to a different interpreter than the
 // sidecar runs is worse than either honouring or rejecting the value.
 func TestFindYTDLPResolvesPythonOverrideOnPath(t *testing.T) {
@@ -194,7 +194,7 @@ func TestFindYTDLPResolvesPythonOverrideOnPath(t *testing.T) {
 	writeYTDLPWheel(t, root, fixtureVersion)
 	writeBootstrapPython(t, root)
 	directory := t.TempDir()
-	name := "finoka-fixture-python"
+	name := "nonoka-fixture-python"
 	if runtime.GOOS == "windows" {
 		name += ".bat"
 		t.Setenv("PATHEXT", ".BAT")

@@ -39,8 +39,8 @@ class VendorContractTests(unittest.TestCase):
         self.assertTrue((DEFAULT_VENDOR / "runtime/pylock.win-py312.toml").is_file())
         self.assertTrue((DEFAULT_VENDOR / "runtime/pylock.win-py312.cn.toml").is_file())
 
-    def test_finoka_macos_media_manifests_are_packaged(self) -> None:
-        resources = Path(__file__).resolve().parents[1] / "src/finoka/resources"
+    def test_nonoka_x_macos_media_manifests_are_packaged(self) -> None:
+        resources = Path(__file__).resolve().parents[1] / "src/nonoka_x/resources"
         self.assertTrue((resources / "runtime-manifest.macos-arm64.json").is_file())
         self.assertTrue((resources / "runtime-manifest.macos-amd64.json").is_file())
 

@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from finoka.document_store import DocumentError, DocumentStore, RevisionConflict
-from finoka.projector import ProjectionError, parse_srt, project_edit_document
+from nonoka_x.document_store import DocumentError, DocumentStore, RevisionConflict
+from nonoka_x.projector import ProjectionError, parse_srt, project_edit_document
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "finesub"

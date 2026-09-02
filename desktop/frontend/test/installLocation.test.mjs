@@ -8,8 +8,8 @@ const gigabyte = 1024 ** 3;
 function location(overrides = {}) {
   return {
     target: "runtime",
-    directory: "C:\\Users\\me\\AppData\\Roaming\\Finoka\\finesub",
-    default: "C:\\Users\\me\\AppData\\Roaming\\Finoka\\finesub",
+    directory: "C:\\Users\\me\\AppData\\Roaming\\Nonoka X\\finesub",
+    default: "C:\\Users\\me\\AppData\\Roaming\\Nonoka X\\finesub",
     custom: false,
     missing: false,
     bytes: 0,
@@ -46,7 +46,7 @@ test("an installed runtime never interrupts an install", () => {
 });
 
 test("a location the user already picked is left alone", () => {
-  const view = installLocationView(location({ custom: true, directory: "D:\\Finoka\\finesub" }), false);
+  const view = installLocationView(location({ custom: true, directory: "D:\\Nonoka X\\finesub" }), false);
   assert.equal(view.prompt, false, "asking again after the user already chose is nagging");
   assert.equal(view.visible, false);
 });
@@ -64,7 +64,7 @@ test("the card survives the moment choosing a location satisfies the prompt", ()
   assert.equal(before.visible, true);
   assert.equal(before.settled, false);
 
-  const after = installLocationView(location({ custom: true, directory: "D:\\Finoka\\finesub" }), true);
+  const after = installLocationView(location({ custom: true, directory: "D:\\Nonoka X\\finesub" }), true);
   assert.equal(after.prompt, false, "the prompt condition is expected to lapse here");
   assert.equal(after.visible, true, "the pending install still needs its start button");
   assert.equal(after.settled, true, "and the card should now read as ready rather than as a warning");

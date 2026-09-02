@@ -11,16 +11,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/managedtools"
-	"github.com/Ricori/finoka/desktop/internal/sidecar"
-	"github.com/Ricori/finoka/desktop/internal/storage"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
+	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
+	"github.com/Ricori/nonoka-x/desktop/internal/storage"
 )
 
 const (
-	scriptEnvironment = "FINOKA_SIDECAR_SCRIPT"
-	dataEnvironment   = "FINOKA_DATA_DIR"
-	vendorEnvironment = "FINOKA_VENDOR_DIR"
-	// FINOKA_PYTHON lives in managedtools.PythonEnvironment: the plugin host
+	scriptEnvironment = "NONOKA_SIDECAR_SCRIPT"
+	dataEnvironment   = "NONOKA_DATA_DIR"
+	vendorEnvironment = "NONOKA_VENDOR_DIR"
+	// NONOKA_PYTHON lives in managedtools.PythonEnvironment: the plugin host
 	// needs it too, and managedtools is the one package both can import.
 )
 
@@ -88,9 +88,9 @@ func packagedResourceRoot() string {
 		return ""
 	}
 	executableDirectory := filepath.Dir(executable)
-	candidates := []string{filepath.Join(executableDirectory, "resources", "finoka")}
+	candidates := []string{filepath.Join(executableDirectory, "resources", "nonoka_x")}
 	if runtime.GOOS == "darwin" {
-		candidates = append([]string{filepath.Join(executableDirectory, "..", "Resources", "finoka")}, candidates...)
+		candidates = append([]string{filepath.Join(executableDirectory, "..", "Resources", "nonoka_x")}, candidates...)
 	}
 	for _, candidate := range candidates {
 		resolved, resolveErr := filepath.Abs(candidate)
@@ -165,20 +165,97 @@ func DataDirectory() (string, error) {
 	return platformDataDirectory(runtime.GOOS, os.Getenv("APPDATA"), os.Getenv("HOME"))
 }
 
+type dataDirectoryMigration struct {
+	Source      string
+	Destination string
+}
+
+const (
+	dataMigrationRenameAttempts = 8
+	dataMigrationRenameBackoff  = 250 * time.Millisecond
+)
+
+func renameDataDirectoryWithRetry(source, destination string) error {
+	var err error
+	for attempt := range dataMigrationRenameAttempts {
+		err = os.Rename(source, destination)
+		if err == nil {
+			return nil
+		}
+		if !storage.RetryableFileError(err) {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * dataMigrationRenameBackoff)
+	}
+	return err
+}
+
+// migrateDataDirectory moves the complete data root left by the final Finoka
+// release. The move happens before any service opens files in either tree. The
+// caller must terminate after a successful move so WebView, sidecar and storage
+// processes only ever start against one product root during a process lifetime.
+func migrateDataDirectory(goos, appData, home string) (*dataDirectoryMigration, error) {
+	destination, err := platformDataDirectory(goos, appData, home)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(destination); err == nil {
+		return nil, nil
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect Nonoka X data directory: %w", err)
+	}
+
+	var source string
+	switch goos {
+	case "windows":
+		source = filepath.Join(appData, "Finoka")
+	case "darwin":
+		source = filepath.Join(home, "Library", "Application Support", "Finoka")
+	default:
+		return nil, nil
+	}
+	info, err := os.Stat(source)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("inspect previous data directory: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("previous data path is not a directory: %s", source)
+	}
+	if err := renameDataDirectoryWithRetry(source, destination); err != nil {
+		return nil, fmt.Errorf("move previous data directory to Nonoka X: %w", err)
+	}
+	// Clearing legacy plugin registry and system plugins allows default built-in
+	// plugins (e.g. dev.nonoka.youtube-downloader) to start cleanly enabled.
+	_ = os.Remove(filepath.Join(destination, "plugin-registry.json"))
+	_ = os.RemoveAll(filepath.Join(destination, "system-plugins"))
+	return &dataDirectoryMigration{Source: source, Destination: destination}, nil
+}
+
+func migrateDefaultDataDirectory() (*dataDirectoryMigration, error) {
+	// An explicit destination belongs to the operator and is never moved.
+	if strings.TrimSpace(os.Getenv(dataEnvironment)) != "" {
+		return nil, nil
+	}
+	return migrateDataDirectory(runtime.GOOS, os.Getenv("APPDATA"), os.Getenv("HOME"))
+}
+
 func platformDataDirectory(goos, appData, home string) (string, error) {
 	switch goos {
 	case "windows":
 		if strings.TrimSpace(appData) == "" {
 			return "", errors.New("APPDATA is unavailable")
 		}
-		return filepath.Join(appData, "Finoka"), nil
+		return filepath.Join(appData, "Nonoka X"), nil
 	case "darwin":
 		if strings.TrimSpace(home) == "" {
 			return "", errors.New("HOME is unavailable")
 		}
-		return filepath.Join(home, "Library", "Application Support", "Finoka"), nil
+		return filepath.Join(home, "Library", "Application Support", "Nonoka X"), nil
 	default:
-		return "", fmt.Errorf("Finoka desktop does not support %s", goos)
+		return "", fmt.Errorf("Nonoka X desktop does not support %s", goos)
 	}
 }
 

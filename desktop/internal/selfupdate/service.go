@@ -25,10 +25,10 @@ import (
 const Version = "0.1.5"
 
 const (
-	manifestEnvironment = "FINOKA_UPDATE_MANIFEST"
-	baseEnvironment     = "FINOKA_UPDATE_URL"
-	disableEnvironment  = "FINOKA_DISABLE_UPDATE"
-	defaultUpdateBase   = "https://livestream.nonoka.online/finoka-updates"
+	manifestEnvironment = "NONOKA_UPDATE_MANIFEST"
+	baseEnvironment     = "NONOKA_UPDATE_URL"
+	disableEnvironment  = "NONOKA_DISABLE_UPDATE"
+	defaultUpdateBase   = "https://livestream.nonoka.online/nonoka-x-updates"
 	checkInterval       = 4 * time.Hour
 	retryInterval       = time.Minute
 )
@@ -136,7 +136,7 @@ func Start(s *Service, editorOpen func() bool) {
 		return
 	}
 	// A development build must not pull a release over itself. Pointing
-	// FINOKA_UPDATE_MANIFEST at a test manifest is the deliberate opt-in.
+	// NONOKA_UPDATE_MANIFEST at a test manifest is the deliberate opt-in.
 	if !productionBuild && strings.TrimSpace(os.Getenv(manifestEnvironment)) == "" {
 		return
 	}

@@ -5,7 +5,7 @@
 ## 运行要求
 
 - 媒体库里至少有一个已经跑出字幕文档的视频（列表里只列 `documentAvailable` 的条目）。
-- 字幕文档由本地 Provider（sidecar）提供，所以需要 Finoka 的 Python 运行时已就绪。
+- 字幕文档由本地 Provider（sidecar）提供，所以需要 Nonoka X 的 Python 运行时已就绪。
 - 压制视频需要在“运行环境”里装好 FFmpeg。
 
 ## 申请的权限
@@ -23,11 +23,11 @@
 在此目录执行：
 
 ```powershell
-Compress-Archive -Path .\finoka-plugin.json,.\ui -DestinationPath .\subtitle-studio.zip
-Rename-Item .\subtitle-studio.zip subtitle-studio.finoka-plugin
+Compress-Archive -Path .\nonoka-plugin.json,.\ui -DestinationPath .\subtitle-studio.zip
+Rename-Item .\subtitle-studio.zip subtitle-studio.nonoka-plugin
 ```
 
-然后在 Finoka 左侧“工具 → 插件管理”选择生成的 `.finoka-plugin` 文件。
+然后在 Nonoka X 左侧“工具 → 插件管理”选择生成的 `.nonoka-plugin` 文件。
 
 ## 写回的乐观锁
 

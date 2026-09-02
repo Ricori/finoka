@@ -31,7 +31,7 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-side l">
-        <div className="brand"><b>Finoka</b><span>字幕工作台</span></div>
+        <div className="brand"><b>Nonoka X</b><span>字幕工作台</span></div>
       </div>
       <div className="filechip"><span className="dot"></span><span id="filetitle">{title}</span></div>
       <div className="topbar-side r">

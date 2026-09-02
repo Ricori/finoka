@@ -1,2 +1,2 @@
-"""Finoka repository maintenance tools."""
+"""Nonoka X repository maintenance tools."""
 

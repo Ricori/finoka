@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/managedtools"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
 )
 
 func (s *Service) ResolveMedia(id string) (path, title, fingerprint string, duration float64, err error) {

@@ -1,13 +1,11 @@
-import { Service as LibraryService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/library/index.js";
+import { Service as LibraryService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/library/index.js";
 import type {
   CacheStatus,
   Entry as MediaEntry,
   ImportResult,
-  LegacyMigrationResult,
-  LegacyMigrationStatus,
-} from "../../bindings/github.com/Ricori/finoka/desktop/internal/library/models.js";
+} from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/library/models.js";
 
-export type { CacheStatus, MediaEntry, ImportResult, LegacyMigrationResult, LegacyMigrationStatus };
+export type { CacheStatus, MediaEntry, ImportResult };
 
 export interface EditorClip {
   id: string;
@@ -38,8 +36,6 @@ export const mediaLibrary = {
   cancelTranscode: LibraryService.CancelTranscode,
   spectrogramTile: LibraryService.SpectrogramTile,
   revealInFolder: LibraryService.RevealInFolder,
-  legacyMigrationStatus: LibraryService.LegacyMigrationStatus,
-  migrateLegacyLibrary: LibraryService.MigrateLegacyLibrary,
   cacheStatus: LibraryService.CacheStatus,
   cacheMedia: LibraryService.CacheMedia,
   setCacheLimitGB: LibraryService.SetCacheLimitGB,

@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from finoka.axis import (
+from nonoka_x.axis import (
     AxisError,
     axis_projection,
     axis_speakers,
@@ -21,8 +21,8 @@ from finoka.axis import (
     split_speaker_tracks,
     stable_from_axis,
 )
-from finoka.local_provider import LocalProvider, ProviderError
-from finoka.sidecar import SidecarServer
+from nonoka_x.local_provider import LocalProvider, ProviderError
+from nonoka_x.sidecar import SidecarServer
 
 
 def row(t0: float, t1: float, ja: str = "", zh: str = "", spk: str = "") -> dict:
@@ -241,19 +241,19 @@ class ProviderAxisTests(unittest.TestCase):
         self.assertIsNone(self.provider.document_axis("loc_1")["axis"])
 
     def test_finished_axes_do_not_start_a_task(self) -> None:
-        from finoka.local_provider import validate_request
+        from nonoka_x.local_provider import validate_request
 
         with self.assertRaisesRegex(ProviderError, "does not start a task"):
             validate_request(self.request(axis={"kind": "bi", "rows": [row(0, 1, "あ", "啊")]}))
 
     def test_a_source_text_axis_needs_the_final_target(self) -> None:
-        from finoka.local_provider import validate_request
+        from nonoka_x.local_provider import validate_request
 
         with self.assertRaisesRegex(ProviderError, "final-srt"):
             validate_request(self.request(target="raw-srt", axis={"kind": "ja", "rows": [row(0, 1, "あ")]}))
 
     def test_a_source_text_axis_reaches_the_worker(self) -> None:
-        from finoka.local_provider import validate_request
+        from nonoka_x.local_provider import validate_request
 
         validated = validate_request(self.request(axis={"kind": "ja", "rows": [row(0, 1, "あ")]}))
         self.assertEqual(validated["axis"]["kind"], "ja")

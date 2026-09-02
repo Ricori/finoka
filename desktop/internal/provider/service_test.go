@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Ricori/finoka/desktop/internal/sidecar"
+	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
 )
 
 const taskID = "0123456789abcdef0123456789abcdef"

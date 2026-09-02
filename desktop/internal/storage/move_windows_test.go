@@ -30,7 +30,7 @@ func heldTree(t *testing.T) (directory string, release func()) {
 }
 
 // The failure this guards against reached a user as
-// "rename ...finesub.finoka-incoming ...finesub: Access is denied." after a
+// "rename ...finesub.nonoka-incoming ...finesub: Access is denied." after a
 // 14 GB copy. Classifying it as permanent is what threw that copy away.
 func TestOpenHandleMakesADirectoryRenameRetryable(t *testing.T) {
 	directory, release := heldTree(t)
@@ -73,9 +73,9 @@ func TestTryRenameWaitsOutAHeldHandle(t *testing.T) {
 // A cross-volume rename never succeeds by waiting, so it must not burn the
 // retry budget before Move falls through to the copy.
 func TestTryRenameDoesNotRetryACrossVolumeMove(t *testing.T) {
-	root := os.Getenv("FINOKA_MOVECHECK_DEST")
+	root := os.Getenv("NONOKA_MOVECHECK_DEST")
 	if root == "" {
-		t.Skip("set FINOKA_MOVECHECK_DEST to a directory on another drive")
+		t.Skip("set NONOKA_MOVECHECK_DEST to a directory on another drive")
 	}
 	source := filepath.Join(t.TempDir(), "finesub")
 	if err := os.MkdirAll(source, 0o755); err != nil {

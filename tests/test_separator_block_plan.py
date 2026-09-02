@@ -1,6 +1,6 @@
-"""Contract for Finoka's pinned copy of FineSub's separator block planner.
+"""Contract for Nonoka X's pinned copy of FineSub's separator block planner.
 
-Cloud vocal separation cuts a track into blocks with `finoka.vocal_blocks`,
+Cloud vocal separation cuts a track into blocks with `nonoka_x.vocal_blocks`,
 which is a verbatim copy of arithmetic that lives in the vendored engine (see
 that module for why it is a copy and not an import or a vendor patch). A copy
 is only safe while something notices upstream editing the original, so that is
@@ -20,11 +20,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR_SOURCE = ROOT / "third_party" / "finesub" / "src"
 UPSTREAM_STAGE = VENDOR_SOURCE / "finesub/speech/preprocessing/separator/separation.py"
-FINOKA_COPY = ROOT / "src" / "finoka" / "vocal_blocks.py"
+NONOKA_X_COPY = ROOT / "src" / "nonoka_x" / "vocal_blocks.py"
 
 sys.path.insert(0, str(ROOT / "src"))
 
-from finoka.vocal_blocks import (  # noqa: E402
+from nonoka_x.vocal_blocks import (  # noqa: E402
     DEFAULT_BLOCK_SECONDS,
     DEFAULT_PAD_SECONDS,
     SeparationBlock,
@@ -41,7 +41,7 @@ PINNED = (
     "plan_separation_blocks",
 )
 
-#: Finoka's own names, which live beside the copy rather than inside it.
+#: Nonoka X's own names, which live beside the copy rather than inside it.
 LOCAL_NAMES = {"DEFAULT_BLOCK_SECONDS", "DEFAULT_PAD_SECONDS", "SeparationBlock"}
 
 SAMPLE_RATE = 44_100
@@ -86,31 +86,31 @@ class PinnedUpstreamCopyTests(unittest.TestCase):
 
     def test_every_pinned_definition_matches_the_vendored_engine(self) -> None:
         upstream = _definitions(UPSTREAM_STAGE)
-        copied = _definitions(FINOKA_COPY)
+        copied = _definitions(NONOKA_X_COPY)
         for name in PINNED:
             with self.subTest(definition=name):
                 self.assertIn(
                     name,
                     upstream,
                     f"{name} is gone from the vendored separator, so the copy "
-                    f"in {FINOKA_COPY.name} has no original left to track.",
+                    f"in {NONOKA_X_COPY.name} has no original left to track.",
                 )
                 self.assertEqual(
                     copied.get(name),
                     upstream[name],
                     f"{name} drifted from the vendored separator. Cloud and "
                     f"local would plan different blocks, which means different "
-                    f"audio. Re-copy it into {FINOKA_COPY.name} verbatim.",
+                    f"audio. Re-copy it into {NONOKA_X_COPY.name} verbatim.",
                 )
 
     def test_the_copy_adds_nothing_to_what_it_pins(self) -> None:
-        """Finoka's own names may sit beside the copy, but not inside it.
+        """Nonoka X's own names may sit beside the copy, but not inside it.
 
         A helper quietly added between two copied functions would be invisible
         to the comparison above and would not exist upstream at all.
         """
 
-        copied = set(_definitions(FINOKA_COPY))
+        copied = set(_definitions(NONOKA_X_COPY))
         self.assertEqual(sorted(copied - LOCAL_NAMES), sorted(PINNED))
 
     def test_defaults_match_the_signature_they_were_taken_from(self) -> None:
@@ -148,7 +148,7 @@ class PinnedUpstreamCopyTests(unittest.TestCase):
         probe = (
             "import sys;"
             f"sys.path.insert(0, {str(ROOT / 'src')!r});"
-            "import finoka.vocal_blocks;"
+            "import nonoka_x.vocal_blocks;"
             f"print(','.join(sorted({{{watched}}} & set(sys.modules))))"
         )
         completed = subprocess.run(

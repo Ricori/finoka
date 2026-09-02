@@ -1,10 +1,10 @@
-import { StorageService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/app/index.js";
+import { StorageService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/app/index.js";
 import type {
   Destination as StorageDestination,
   Location as StorageLocation,
   RelocationProgress,
   StorageStatus,
-} from "../../bindings/github.com/Ricori/finoka/desktop/internal/app/models.js";
+} from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/app/models.js";
 
 export type { RelocationProgress, StorageDestination, StorageLocation, StorageStatus };
 

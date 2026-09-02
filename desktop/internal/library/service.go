@@ -1,4 +1,4 @@
-// Package library owns Finoka's local media index and managed video cache.
+// Package library owns Nonoka X's local media index and managed video cache.
 // Original media remains user-owned; disposable working copies live in the
 // video cache directory, which the settings page can move to another drive.
 package library
@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/storage"
+	"github.com/Ricori/nonoka-x/desktop/internal/storage"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -108,7 +108,6 @@ type Service struct {
 	editor           *application.WebviewWindow
 	media            *loopbackMediaServer
 	bundledFonts     map[string][]byte
-	legacyRoot       string
 	cacheMu          sync.Mutex
 	cacheConfig      CacheConfig
 	activeMedia      string
@@ -134,7 +133,6 @@ func newService(dataDirectory string, tools commandMediaTools) (*Service, error)
 		prober:           tools,
 		thumbnailer:      tools,
 		entries:          []Entry{},
-		legacyRoot:       defaultLegacyRoot(),
 		cacheConfig:      defaultCacheConfig(),
 		exportCancels:    map[string]context.CancelFunc{},
 		transcodeCancels: map[string]context.CancelFunc{},

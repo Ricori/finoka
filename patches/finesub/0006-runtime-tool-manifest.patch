@@ -1,6 +1,6 @@
-Subject: [PATCH 6/7] Declare the runtime tools Finoka needs, and the ffmpeg that runs them
+Subject: [PATCH 6/7] Declare the runtime tools Nonoka X needs, and the ffmpeg that runs them
 
-Reason: Finoka has no resource system of its own -- every managed binary it can
+Reason: Nonoka X has no resource system of its own -- every managed binary it can
 find lives under `finesub/runtime/<id>/`, resolved by `managedtools` -- so a tool
 has to be declared here to be installable at all. Two separate corrections to the
 packaged manifest, both about which binary lands on the user's machine.
@@ -23,7 +23,7 @@ would silently change what the model sees; a runtime encoder probe would do the
 same, differently on each machine, against the reproducibility `describe_ffmpeg`
 exists for. The GPL variant comes from the same release under the same
 digest-from-the-release-API rule, onto the user's own machine at provisioning
-time -- Finoka redistributes no ffmpeg binary, and invoking one as a subprocess
+time -- Nonoka X redistributes no ffmpeg binary, and invoking one as a subprocess
 is not derivation. Changing `required_files` is also what re-provisions an
 existing lgpl install: `status()` grades a version dir by those paths, so the old
 directory reads as missing and is replaced.
@@ -48,7 +48,7 @@ to, which is what makes each look useless when added alone.
 `pot-provider` carries both halves of the provider -- the yt-dlp plugin and the
 generator it calls. Upstream ships no built backend (it needs an npm install
 with a native `canvas`, which is not a single archive), and versions the two
-halves together, so Finoka builds and publishes one bundle instead: see
+halves together, so Nonoka X builds and publishes one bundle instead: see
 `scripts/build_pot_bundle.py`. It is GPL-3.0, and the bundle carries the licence
 and corresponding source accordingly.
 
@@ -124,7 +124,7 @@ index f9c1836..64ce291 100644
 +        "yt_dlp_plugins/extractor/getpot_bgutil_http.py"
 +      ],
 +      "asset": {
-+        "url": "https://github.com/Ricori/finoka/releases/download/pot-provider/pot-provider-1.3.2-windows-amd64.zip",
++        "url": "https://github.com/Ricori/nonoka-x/releases/download/pot-provider/pot-provider-1.3.2-windows-amd64.zip",
 +        "size": 28601990,
 +        "sha256": "5c269e87efb307a8ca034417af8e620ddc30ee3109b9231e684351561214d70e"
 +      }

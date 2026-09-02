@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from types import ModuleType, SimpleNamespace
 
-from finoka.model_install import ByteProgressReporter, _install_huggingface, emit_event, missing_managed_models
+from nonoka_x.model_install import ByteProgressReporter, _install_huggingface, emit_event, missing_managed_models
 
 
 def test_model_byte_reporter_emits_bounded_percentage_inputs() -> None:

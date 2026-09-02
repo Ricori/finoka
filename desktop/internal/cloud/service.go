@@ -1,4 +1,4 @@
-// Package cloud owns Finoka account login, the remote library and safe local-artifact sync.
+// Package cloud owns Nonoka X account login, the remote library and safe local-artifact sync.
 package cloud
 
 import (
@@ -23,8 +23,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
-	"github.com/Ricori/finoka/desktop/internal/managedtools"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
 )
 
 const (
@@ -815,7 +815,7 @@ func (s *Service) DeleteAdminKey(identifier string) error {
 }
 
 // SyncLocalTask reads only artifacts reported by the Local Provider and only
-// when their resolved paths remain under Finoka's task root.
+// when their resolved paths remain under Nonoka X's task root.
 func (s *Service) SyncLocalTask(taskID, localID, fingerprint, title string, duration float64) (Entry, error) {
 	if !validTaskID.MatchString(taskID) {
 		return Entry{}, errors.New("invalid local task id")

@@ -1,6 +1,6 @@
 import { Events } from "@wailsio/runtime";
-import { Service as UpdateService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/selfupdate/index.js";
-import type { ReleaseNotes, Status as UpdateStatus } from "../../bindings/github.com/Ricori/finoka/desktop/internal/selfupdate/models.js";
+import { Service as UpdateService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/selfupdate/index.js";
+import type { ReleaseNotes, Status as UpdateStatus } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/selfupdate/models.js";
 
 export type { ReleaseNotes, UpdateStatus };
 

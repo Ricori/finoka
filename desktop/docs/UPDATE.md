@@ -1,6 +1,6 @@
-# Finoka 桌面端更新与发布
+# Nonoka X 桌面端更新与发布
 
-Finoka 桌面端的发布分为两条互不冲突的通道：GitHub Releases 面向手动下载，Cloudflare R2 面向应用内自动更新。两条通道使用相同版本号和 `CHANGELOG.md`，但分别由 GitHub Actions 和本地发布脚本执行。
+Nonoka X 桌面端的发布分为两条互不冲突的通道：GitHub Releases 面向手动下载，Cloudflare R2 面向应用内自动更新。两条通道使用相同版本号和 `CHANGELOG.md`，但分别由 GitHub Actions 和本地发布脚本执行。
 
 | 通道 | 产物 | 更新说明 | 执行方 |
 | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ Finoka 桌面端的发布分为两条互不冲突的通道：GitHub Releases 面
 正式构建使用 Wails Updater 检查以下默认清单：
 
 ```text
-https://livestream.nonoka.online/finoka-updates/wails/latest.json
+https://livestream.nonoka.online/nonoka-x-updates/wails/latest.json
 ```
 
 客户端启动后立即检查一次，此后每 4 小时检查一次。检查到新版本后会在后台下载、校验并暂存安装包：
@@ -27,16 +27,16 @@ https://livestream.nonoka.online/finoka-updates/wails/latest.json
 开发构建默认不自动更新。需要联调更新流程时，显式设置测试清单：
 
 ```powershell
-$env:FINOKA_UPDATE_MANIFEST = "http://127.0.0.1:8080/latest.json"
+$env:NONOKA_UPDATE_MANIFEST = "http://127.0.0.1:8080/latest.json"
 ```
 
 可用的客户端环境变量：
 
 | 变量 | 作用 |
 | --- | --- |
-| `FINOKA_UPDATE_MANIFEST` | 直接覆盖完整清单 URL；开发构建设置后也会启用更新检查 |
-| `FINOKA_UPDATE_URL` | 覆盖更新根地址，客户端会追加 `/wails/latest.json` |
-| `FINOKA_DISABLE_UPDATE=1` | 完全禁用自动更新 |
+| `NONOKA_UPDATE_MANIFEST` | 直接覆盖完整清单 URL；开发构建设置后也会启用更新检查 |
+| `NONOKA_UPDATE_URL` | 覆盖更新根地址，客户端会追加 `/wails/latest.json` |
+| `NONOKA_DISABLE_UPDATE=1` | 完全禁用自动更新 |
 
 主要实现位于：
 
@@ -63,7 +63,7 @@ $env:FINOKA_UPDATE_MANIFEST = "http://127.0.0.1:8080/latest.json"
 不要手工逐个修改版本。统一使用：
 
 ```powershell
-cd D:\Development\finoka\desktop
+cd D:\Development\nonoka-x\desktop
 
 # 只同步版本号，不构建、不生成更新包
 .\scripts\release-update.ps1 -Version 0.2.0 -VersionOnly
@@ -88,7 +88,7 @@ cd D:\Development\finoka\desktop
 仓库根目录的 `.github/workflows/release.yml` 监听 `main` 分支上的 `desktop/build/config.yml`。提交并推送版本变更后会自动执行：
 
 ```powershell
-cd D:\Development\finoka
+cd D:\Development\nonoka-x
 git add CHANGELOG.md desktop
 git commit -m "chore: release 0.2.0"
 git push origin main
@@ -98,8 +98,8 @@ git push origin main
 
 1. 从 `desktop/build/config.yml` 读取版本号。
 2. 检查 `v<版本>` Release 是否已经存在；正常推送时已存在则跳过。
-3. 在 Windows runner 构建 `Finoka.exe`（amd64）。
-4. 在 macOS runner 构建 universal `Finoka.app`，使用 `ditto` 打包 zip，以保留权限和符号链接。
+3. 在 Windows runner 构建 `Nonoka X.exe`（amd64）。
+4. 在 macOS runner 构建 universal `Nonoka X.app`，使用 `ditto` 打包 zip，以保留权限和符号链接。
 5. 合并两个 runner 的产物并创建 GitHub Release 和 tag。
 6. 优先使用 `CHANGELOG.md` 对应小节作为 Release 正文；缺失时自动生成说明。
 
@@ -112,7 +112,7 @@ git push origin main
 `scripts/release-update.ps1` 是统一入口。默认平台为 Windows，默认架构为 amd64。
 
 ```powershell
-cd D:\Development\finoka\desktop
+cd D:\Development\nonoka-x\desktop
 
 # 同步版本、构建 Windows、生成并校验清单，但不上传
 .\scripts\release-update.ps1 -Version 0.2.0 -Platform windows
@@ -134,7 +134,7 @@ cd D:\Development\finoka\desktop
 
 1. 同步全部版本字段。
 2. 调用 Wails 构建目标平台。
-3. 从 `bin/Finoka.exe` 或 `bin/Finoka.app` 收集产物。
+3. 从 `bin/Nonoka X.exe` 或 `bin/Nonoka X.app` 收集产物。
 4. 将更新文件写入 `bin/update/<版本>/`。
 5. 调用 `wails3 updater manifest` 生成带摘要的 `latest.json`。
 6. 从 `CHANGELOG.md` 摘取对应版本说明；使用其他 `-NotesFile` 时读取整份文件。
@@ -145,8 +145,8 @@ cd D:\Development\finoka\desktop
 
 ```text
 desktop/bin/update/0.2.0/
-├── Finoka-0.2.0-windows-amd64.exe
-├── Finoka-0.2.0-darwin-universal.zip
+├── Nonoka-X-0.2.0-windows-amd64.exe
+├── Nonoka-X-0.2.0-darwin-universal.zip
 └── latest.json
 ```
 
@@ -165,12 +165,15 @@ desktop/bin/update/0.2.0/
 
 # 复用现有 Windows 构建并发布
 .\scripts\release-update.ps1 -Version 0.2.0 -Platform windows -SkipBuild -Publish
+
+# 仅在首次品牌迁移版本使用：同时把同一版本发布到旧更新路径
+.\scripts\release-update.ps1 -Version 0.2.0 -Platform windows -Publish -PublishLegacyUpdatePathOnce
 ```
 
 首次使用前安装发布脚本依赖：
 
 ```powershell
-cd D:\Development\finoka\desktop\scripts
+cd D:\Development\nonoka-x\desktop\scripts
 npm install
 ```
 
@@ -187,11 +190,13 @@ R2_BUCKET=...
 
 | 变量 | 默认值 | 作用 |
 | --- | --- | --- |
-| `R2_WAILS_PREFIX` | `finoka-updates/wails/` | R2 对象前缀 |
+| `R2_WAILS_PREFIX` | `nonoka-x-updates/wails/` | R2 对象前缀 |
 | `R2_ENDPOINT` | `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` | S3 兼容端点 |
 | `R2_FORCE_PATH_STYLE=1` | 未启用 | 为兼容的 S3 服务启用 path-style 请求 |
 
 发布器在上传前会再次验证清单格式、平台、文件名和摘要。更新包使用长期 immutable 缓存，`latest.json` 使用 `no-cache`。发布单个平台时，如果远端清单已经是相同版本，脚本会保留远端另一平台的产物并合并清单；不同版本的产物不会被合并。
+
+`-PublishLegacyUpdatePathOnce` 会把同一组改名后的产物和清单额外发布到旧客户端使用的更新前缀。该开关只用于首个 Nonoka X 版本；后续版本省略它，发布器就只写入 `nonoka-x-updates/wails/`。
 
 > `.env.release` 包含敏感凭证，已被 `desktop/.gitignore` 忽略，禁止提交到 Git。
 
@@ -200,7 +205,7 @@ R2_BUCKET=...
 以 `0.2.0` 为例：
 
 ```powershell
-cd D:\Development\finoka\desktop
+cd D:\Development\nonoka-x\desktop
 
 # 1. 先编辑仓库根目录 CHANGELOG.md
 # 2. 同步版本号
@@ -235,13 +240,13 @@ cd desktop
 - 检查 `latest.json` 的版本是否高于客户端版本。
 - 检查清单是否包含当前系统对应的 `platform` 和 `arch`。
 - 检查 CDN/R2 公网地址是否能直接访问清单和清单中的产物 URL。
-- 检查是否设置了 `FINOKA_DISABLE_UPDATE=1` 或错误的覆盖 URL。
+- 检查是否设置了 `NONOKA_DISABLE_UPDATE=1` 或错误的覆盖 URL。
 
 ### `prepare-update.ps1` 报找不到产物
 
 - 不使用 `-SkipBuild`，让脚本重新构建。
-- Windows 应存在 `desktop/bin/Finoka.exe`。
-- macOS 应存在 `desktop/bin/Finoka.app`。
+- Windows 应存在 `desktop/bin/Nonoka X.exe`。
+- macOS 应存在 `desktop/bin/Nonoka X.app`。
 
 ### 发布器报缺少 R2 凭证
 

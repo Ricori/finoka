@@ -1,4 +1,4 @@
-// Package plugins owns installation and discovery of Finoka tool plugins.
+// Package plugins owns installation and discovery of Nonoka X tool plugins.
 //
 // Plugin UI is deliberately data-driven: the renderer asks this service for
 // validated manifests and isolated HTML, while native capabilities remain
@@ -22,12 +22,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const (
-	manifestName           = "finoka-plugin.json"
+	manifestName           = "nonoka-plugin.json"
 	registryName           = "plugin-registry.json"
 	currentName            = "current.json"
 	maxPackageFiles        = 10_000
@@ -68,7 +68,7 @@ type Manifest struct {
 type InstalledPlugin struct {
 	Manifest
 	Enabled bool `json:"enabled"`
-	// System marks a first-party plugin that ships inside the Finoka binary.
+	// System marks a first-party plugin that ships inside the Nonoka X binary.
 	// The flag is derived from where the plugin is installed, never from the
 	// manifest, so a sideloaded package cannot promote itself.
 	System bool `json:"system"`
@@ -193,9 +193,9 @@ func (s *Service) PickAndInstall() (InstalledPlugin, error) {
 		return InstalledPlugin{}, errors.New("application window is not ready")
 	}
 	path, err := app.Dialog.OpenFile().
-		SetTitle("安装 Finoka 插件").
+		SetTitle("安装 Nonoka X 插件").
 		AttachToWindow(home).
-		AddFilter("Finoka 插件", "*.finoka-plugin").
+		AddFilter("Nonoka X 插件", "*.nonoka-plugin").
 		PromptForSingleSelection()
 	if err != nil && !dialogCancelled(err) {
 		return InstalledPlugin{}, err
@@ -206,7 +206,7 @@ func (s *Service) PickAndInstall() (InstalledPlugin, error) {
 	return s.Install(path)
 }
 
-// Install accepts a .finoka-plugin ZIP or an unpacked plugin directory. The
+// Install accepts a .nonoka-plugin ZIP or an unpacked plugin directory. The
 // directory form is intended for developer workflows and automated tests.
 func (s *Service) Install(path string) (InstalledPlugin, error) {
 	absolute, err := filepath.Abs(strings.TrimSpace(path))
@@ -337,7 +337,7 @@ func (s *Service) Uninstall(id string, removeData bool) error {
 	}
 	if system {
 		s.mu.Unlock()
-		return errors.New("system plugins are built into Finoka and can only be disabled")
+		return errors.New("system plugins are built into Nonoka X and can only be disabled")
 	}
 	if err := os.RemoveAll(pluginRoot); err != nil {
 		s.mu.Unlock()
@@ -568,8 +568,8 @@ func readManifest(root string) (Manifest, error) {
 }
 
 func extractPackage(path, destination string) error {
-	if !strings.EqualFold(filepath.Ext(path), ".finoka-plugin") && !strings.EqualFold(filepath.Ext(path), ".zip") {
-		return errors.New("plugin package must have a .finoka-plugin extension")
+	if !strings.EqualFold(filepath.Ext(path), ".nonoka-plugin") && !strings.EqualFold(filepath.Ext(path), ".zip") {
+		return errors.New("plugin package must have a .nonoka-plugin extension")
 	}
 	archive, err := zip.OpenReader(path)
 	if err != nil {
@@ -693,7 +693,7 @@ func safeJoin(root, relative string) (string, error) {
 
 func injectPagePolicy(html string) string {
 	policy := `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'">`
-	bridge := `<script>window.finoka={apiVersion:1,post:function(method,params,id){parent.postMessage({source:'finoka-plugin',apiVersion:1,id:id,method:method,params:params||{}},'*')}};parent.postMessage({source:'finoka-plugin',apiVersion:1,method:'ui.ready',params:{}},'*');</script>`
+	bridge := `<script>window.nonoka={apiVersion:1,post:function(method,params,id){parent.postMessage({source:'nonoka-plugin',apiVersion:1,id:id,method:method,params:params||{}},'*')}};parent.postMessage({source:'nonoka-plugin',apiVersion:1,method:'ui.ready',params:{}},'*');</script>`
 	lower := strings.ToLower(html)
 	if index := strings.Index(lower, "<head>"); index >= 0 {
 		position := index + len("<head>")

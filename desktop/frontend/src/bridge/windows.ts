@@ -1,4 +1,4 @@
-import { WindowService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/app/index.js";
+import { WindowService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/app/index.js";
 
 export const desktopWindows = {
   openEditor: WindowService.OpenEditor,

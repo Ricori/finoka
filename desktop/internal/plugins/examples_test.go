@@ -12,7 +12,7 @@ import (
 // it exercises the same extraction, manifest validation and permission check
 // the desktop runs.
 func TestShippedExamplePackagesInstall(t *testing.T) {
-	packages, err := filepath.Glob(filepath.Join("..", "..", "examples", "plugins", "*.finoka-plugin"))
+	packages, err := filepath.Glob(filepath.Join("..", "..", "examples", "plugins", "*.nonoka-plugin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestShippedExamplePackagesInstall(t *testing.T) {
 			if err != nil {
 				t.Fatalf("example page did not load: %v", err)
 			}
-			if !strings.Contains(page, "window.finoka") {
+			if !strings.Contains(page, "window.nonoka") {
 				t.Fatal("example page did not receive the host bridge")
 			}
 		})

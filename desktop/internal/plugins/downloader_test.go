@@ -176,7 +176,7 @@ func TestCookiesAreScopedToTheOwningPlugin(t *testing.T) {
 	}
 	newPackage := func(id string, withPermission bool) string {
 		packageRoot := filepath.Join(t.TempDir(), id)
-		manifest := strings.Replace(testManifest, "dev.finoka.hello", id, 1)
+		manifest := strings.Replace(testManifest, "dev.nonoka.hello", id, 1)
 		if withPermission {
 			manifest = strings.Replace(
 				manifest, `"apiVersion": 1,`, `"apiVersion": 1, "permissions": ["tools.cookies"],`, 1)
@@ -189,7 +189,7 @@ func TestCookiesAreScopedToTheOwningPlugin(t *testing.T) {
 
 	// Declaring the permission is what grants it; being sideloaded does not
 	// disqualify a plugin, because the jar never leaves its own directory.
-	first, err := service.Install(newPackage("dev.finoka.one", true))
+	first, err := service.Install(newPackage("dev.nonoka.one", true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestCookiesAreScopedToTheOwningPlugin(t *testing.T) {
 
 	// A second plugin must not see the first one's session, or the per-plugin
 	// jar would be a shared credential with extra steps.
-	second, err := service.Install(newPackage("dev.finoka.two", true))
+	second, err := service.Install(newPackage("dev.nonoka.two", true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestCookiesAreScopedToTheOwningPlugin(t *testing.T) {
 	}
 
 	// Without the permission it stays refused, whatever the plugin's origin.
-	third, err := service.Install(newPackage("dev.finoka.three", false))
+	third, err := service.Install(newPackage("dev.nonoka.three", false))
 	if err != nil {
 		t.Fatal(err)
 	}

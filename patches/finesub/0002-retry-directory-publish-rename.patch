@@ -6,7 +6,7 @@ scanning the bytes just written is enough, and so is an ordinary reader, since
 Python's `open` does not share deletion. Three of them fail on real machines.
 A resource install renames `ffmpeg/n9.0-latest.staging` onto
 `ffmpeg/n9.0-latest` right after unpacking `ffmpeg.exe`, and dies on
-`[WinError 5] 拒绝访问` -- minutes of download discarded, with Finoka's desktop
+`[WinError 5] 拒绝访问` -- minutes of download discarded, with Nonoka X's desktop
 UI showing that raw line, which tells a user nothing they can act on. The
 downloader publishes the finished `.part` the same way, one step earlier and
 just as freshly written. And `write_atomic` loses the same race between its
@@ -42,7 +42,7 @@ What this does not fix is a *continuous* reader: a bounded wait cannot outlast
 something that reopens the name in a tight loop. That is a starved writer, a
 different problem, and no caller here polls that way.
 
-`tests/test_resource_activation_retry.py` in the Finoka repository pins all of
+`tests/test_resource_activation_retry.py` in the Nonoka X repository pins all of
 it: both bounded waits, the two calls that stay bare, the actionable message
 with the original `OSError` still attached as `__cause__`, and the cleanup that
 cannot mask it.

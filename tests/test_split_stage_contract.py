@@ -1,4 +1,4 @@
-"""What Finoka's FineSub engine patch is allowed to be.
+"""What Nonoka X's FineSub engine patch is allowed to be.
 
 The cloud runs one task across three containers and only the Whisper leg needs
 the GPU, so ``patches/finesub/0001-split-vad-prefix-and-qwen-pass.patch`` makes

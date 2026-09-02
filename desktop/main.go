@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"log"
 
-	"github.com/Ricori/finoka/desktop/internal/app"
+	"github.com/Ricori/nonoka-x/desktop/internal/app"
 )
 
 // frontend/dist contains the Vite application in release builds. A tracked

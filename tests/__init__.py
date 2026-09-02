@@ -1,2 +1,2 @@
-"""Finoka contract tests."""
+"""Nonoka X contract tests."""
 

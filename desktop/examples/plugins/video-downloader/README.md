@@ -1,6 +1,6 @@
 # 视频下载 Demo
 
-下载公开的 YouTube / Twitch 视频，完成后自动导入 Finoka 媒体库。这是内置「视频下载」插件的同源示例：页面代码与内置版本一致，只有 manifest 的 id、名称和发布者不同。
+下载公开的 YouTube / Twitch 视频，完成后自动导入 Nonoka X 媒体库。这是内置「视频下载」插件的同源示例：页面代码与内置版本一致，只有 manifest 的 id、名称和发布者不同。
 
 它演示的是一个长任务插件需要处理的全部环节：
 
@@ -11,7 +11,7 @@
 
 ## 运行要求
 
-先在 Finoka 的「运行环境」里安装 **FFmpeg**，以及「视频下载工具」分组（yt-dlp、aria2c、Node.js、PO Token 生成器）。
+先在 Nonoka X 的「运行环境」里安装 **FFmpeg**，以及「视频下载工具」分组（yt-dlp、aria2c、Node.js、PO Token 生成器）。
 
 不装 PO Token 相关组件也能用，但 YouTube 只对携带 PO token 的请求返回可用格式，实际表现是**短视频能下完、稍长的会中途 403 失败**。文档 [PLUGINS.md](../../../docs/PLUGINS.md) 的「YouTube 的四道门禁」一节解释了为什么这几样缺一不可。
 
@@ -20,11 +20,11 @@
 在此目录执行：
 
 ```powershell
-Compress-Archive -Path .\finoka-plugin.json,.\ui -DestinationPath .\video-downloader.zip
-Rename-Item .\video-downloader.zip video-downloader.finoka-plugin
+Compress-Archive -Path .\nonoka-plugin.json,.\ui -DestinationPath .\video-downloader.zip
+Rename-Item .\video-downloader.zip video-downloader.nonoka-plugin
 ```
 
-然后在 Finoka 左侧「工具 → 插件管理」选择生成的 `.finoka-plugin` 文件。
+然后在 Nonoka X 左侧「工具 → 插件管理」选择生成的 `.nonoka-plugin` 文件。
 
 ## 用到的宿主能力
 

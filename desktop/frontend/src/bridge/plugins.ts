@@ -1,4 +1,4 @@
-import { Service as PluginService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/plugins/index.js";
+import { Service as PluginService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/plugins/index.js";
 import type {
   DownloadedMedia,
   DownloaderSettings,
@@ -6,7 +6,7 @@ import type {
   InstalledPlugin,
   MediaSummary,
   ToolContribution,
-} from "../../bindings/github.com/Ricori/finoka/desktop/internal/plugins/models.js";
+} from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/plugins/models.js";
 import type { EditDocument } from "../documents/types.ts";
 
 export type { DownloadedMedia, DownloaderSettings, ExportedArtifact, InstalledPlugin, MediaSummary, ToolContribution };

@@ -1,4 +1,4 @@
-// Command stage assembles the Python sidecar resources shipped with Finoka.
+// Command stage assembles the Python sidecar resources shipped with Nonoka X.
 package main
 
 import (
@@ -22,7 +22,7 @@ type stagedFile struct {
 
 func main() {
 	repository := flag.String("repository", "..", "repository root")
-	output := flag.String("output", "internal/app/bundled/finoka", "staging directory")
+	output := flag.String("output", "internal/app/bundled/nonoka_x", "staging directory")
 	flag.Parse()
 	repo, err := filepath.Abs(*repository)
 	must(err)
@@ -34,7 +34,7 @@ func main() {
 	entries := []string{
 		"bootstrap-requirements.win-py312.txt",
 		"scripts/run_local_sidecar.py",
-		"src/finoka",
+		"src/nonoka_x",
 		"third_party/finesub/src",
 		"third_party/finesub/resources",
 		"third_party/finesub/runtime",

@@ -1,5 +1,5 @@
-import { Service as ProviderService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/provider/index.js";
-import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/finoka/desktop/internal/sidecar/models.js";
+import { Service as ProviderService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/provider/index.js";
+import type { Snapshot as SidecarSnapshot } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/sidecar/models.js";
 import type { LocalProviderBridge } from "../providers/localProvider.ts";
 
 // Generated Wails bindings are the only renderer-to-Go entry point. The

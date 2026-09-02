@@ -67,9 +67,9 @@ tasks:
     sources:
       - ../scripts/run_local_sidecar.py
       - ../bootstrap-requirements.win-py312.txt
-      - ../src/finoka/**/*
-      - exclude: ../src/finoka/**/__pycache__/**/*
-      - exclude: ../src/finoka/**/*.pyc
+      - ../src/nonoka_x/**/*
+      - exclude: ../src/nonoka_x/**/__pycache__/**/*
+      - exclude: ../src/nonoka_x/**/*.pyc
       - ../third_party/finesub/src/**/*
       - exclude: ../third_party/finesub/src/**/__pycache__/**/*
       - exclude: ../third_party/finesub/src/**/*.pyc
@@ -82,12 +82,12 @@ tasks:
       - ../third_party/finesub/pyproject.toml
       - build/tools/stage/main.go
     generates:
-      - internal/app/bundled/finoka/STAGED.json
+      - internal/app/bundled/nonoka_x/STAGED.json
     cmds:
-      - go run ./build/tools/stage -repository .. -output internal/app/bundled/finoka
+      - go run ./build/tools/stage -repository .. -output internal/app/bundled/nonoka_x
 
   generate:icons:
-    summary: Generates PNG, ICNS, and ICO icons from the Finoka mascot
+    summary: Generates PNG, ICNS, and ICO icons from the Nonoka X mascot
     run: once
     sources:
       - build/icon-source.png

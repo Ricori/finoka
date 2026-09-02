@@ -10,14 +10,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Ricori/finoka/desktop/internal/storage"
+	"github.com/Ricori/nonoka-x/desktop/internal/storage"
 )
 
-// PythonEnvironment overrides the interpreter Finoka runs Python code with.
-const PythonEnvironment = "FINOKA_PYTHON"
+// PythonEnvironment overrides the interpreter Nonoka X runs Python code with.
+const PythonEnvironment = "NONOKA_PYTHON"
 
 // Find prefers an existing system tool and falls back to the verified copy in
-// Finoka's application-data runtime. The active version pointer is written
+// Nonoka X's application-data runtime. The active version pointer is written
 // atomically by the Python provisioner after download and checksum validation.
 func Find(dataDirectory, name string) (string, error) {
 	if executable, err := exec.LookPath(name); err == nil {
@@ -87,7 +87,7 @@ func activeVersion(pointer string) string {
 
 // Everything below resolves yt-dlp, which ships as a Python wheel.
 
-// BootstrapPython locates the interpreter Finoka installs for itself.
+// BootstrapPython locates the interpreter Nonoka X installs for itself.
 func BootstrapPython(dataDirectory string) string {
 	if runtime.GOOS == "windows" {
 		return filepath.Join(dataDirectory, "bootstrap", "launcher", "Scripts", "python.exe")
@@ -104,17 +104,17 @@ type YTDLP struct {
 	Environment []string
 }
 
-// FindYTDLP resolves how to run yt-dlp. Finoka installs it as a Python wheel
+// FindYTDLP resolves how to run yt-dlp. Nonoka X installs it as a Python wheel
 // rather than a standalone binary, so Find alone cannot see it: the package is
 // imported through the managed interpreter with PYTHONPATH pointing at the
-// unpacked wheel, the same way finoka.provision runs it for the FineSub
+// unpacked wheel, the same way nonoka_x.provision runs it for the FineSub
 // pipeline. A real binary still wins, so swapping the resource back to a
 // standalone build needs no change here.
 func FindYTDLP(dataDirectory string) (YTDLP, error) {
 	if native, err := Find(dataDirectory, "yt-dlp"); err == nil {
 		return YTDLP{Executable: native}, nil
 	}
-	notInstalled := errors.New("Finoka yt-dlp is not installed; install it from 运行环境 first")
+	notInstalled := errors.New("Nonoka X yt-dlp is not installed; install it from 运行环境 first")
 	root := filepath.Join(storage.RuntimeDirectory(dataDirectory), "runtime", "yt-dlp")
 	version := activeVersion(filepath.Join(root, "current.json"))
 	if version == "" {
@@ -140,7 +140,7 @@ func FindYTDLP(dataDirectory string) (YTDLP, error) {
 }
 
 // potProviderDirectory holds both halves of the PO token provider. Upstream
-// versions the yt-dlp plugin and the generator together, so Finoka ships them as
+// versions the yt-dlp plugin and the generator together, so Nonoka X ships them as
 // one bundle: the two resolvers below point at the same directory and differ
 // only in the file each needs to find.
 const potProviderDirectory = "pot-provider"
@@ -168,7 +168,7 @@ func FindPOTPlugin(dataDirectory string) (string, error) {
 
 // FindPOTServer resolves the PO token generation bundle. The provider's own
 // backend cannot be expressed as a single pinned archive upstream -- it needs an
-// npm install with a native module -- so Finoka installs a prebuilt bundle and
+// npm install with a native module -- so Nonoka X installs a prebuilt bundle and
 // points yt-dlp's plugin at this directory with `server_home`. Script mode is
 // deliberate: it spawns the generator per call, so a desktop install carries no
 // long-running daemon and no listening port.
@@ -221,7 +221,7 @@ func findPython(dataDirectory string) string {
 		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
 			return candidate
 		}
-		// FINOKA_PYTHON may name an interpreter on PATH instead of giving a
+		// NONOKA_PYTHON may name an interpreter on PATH instead of giving a
 		// path, which is how SidecarConfig already accepts it.
 		if executable, err := exec.LookPath(candidate); err == nil {
 			return executable

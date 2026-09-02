@@ -1,4 +1,4 @@
-module github.com/Ricori/finoka/desktop
+module github.com/Ricori/nonoka-x/desktop
 
 go 1.25.0
 

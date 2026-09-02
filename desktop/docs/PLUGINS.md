@@ -1,6 +1,6 @@
-# Finoka 插件开发（API v1）
+# Nonoka X 插件开发（API v1）
 
-Finoka 插件在主页左侧的“工具”分组中贡献入口。插件代码、持久数据和缓存相互分离，因此插件可以独立启用、停用、升级和卸载。
+Nonoka X 插件在主页左侧的“工具”分组中贡献入口。插件代码、持久数据和缓存相互分离，因此插件可以独立启用、停用、升级和卸载。
 
 ## 系统插件与用户插件
 
@@ -8,7 +8,7 @@ Finoka 插件在主页左侧的“工具”分组中贡献入口。插件代码�
 
 | | 系统插件 | 用户插件 |
 | --- | --- | --- |
-| 来源 | 编译进 Finoka 二进制，启动时发布到 `system-plugins/<id>/` | 用户选择 `.finoka-plugin` 安装到 `plugins/<id>/` |
+| 来源 | 编译进 Nonoka X 二进制，启动时发布到 `system-plugins/<id>/` | 用户选择 `.nonoka-plugin` 安装到 `plugins/<id>/` |
 | 默认状态 | 启用 | 安装后启用 |
 | 停用 | 可以 | 可以 |
 | 卸载 | 不可以，属于程序的一部分 | 可以 |
@@ -23,11 +23,11 @@ Finoka 插件在主页左侧的“工具”分组中贡献入口。插件代码�
 
 ## 插件包
 
-`.finoka-plugin` 是一个 ZIP 文件，根目录必须包含 `finoka-plugin.json`。manifest 和所有页面都必须位于压缩包根目录之下；绝对路径、`..`、符号链接和重复文件会被拒绝。
+`.nonoka-plugin` 是一个 ZIP 文件，根目录必须包含 `nonoka-plugin.json`。manifest 和所有页面都必须位于压缩包根目录之下；绝对路径、`..`、符号链接和重复文件会被拒绝。
 
 ```text
-example.finoka-plugin
-├─ finoka-plugin.json
+example.nonoka-plugin
+├─ nonoka-plugin.json
 └─ ui/
    └─ index.html
 ```
@@ -76,13 +76,13 @@ API v1 认识的权限：
 
 权限只在 manifest 里声明，安装时展示在插件管理页；每次调用由 Go 侧再校验一次，停用的插件调用任何能力都会被拒绝。
 
-开发时也可以调用 Go service 的 `Install(path)` 安装未打包目录；桌面 UI 只选择 `.finoka-plugin` 文件。
+开发时也可以调用 Go service 的 `Install(path)` 安装未打包目录；桌面 UI 只选择 `.nonoka-plugin` 文件。
 
 PowerShell 打包示例：
 
 ```powershell
 Compress-Archive -Path .\hello-tool\* -DestinationPath .\hello-tool.zip
-Rename-Item .\hello-tool.zip hello-tool.finoka-plugin
+Rename-Item .\hello-tool.zip hello-tool.nonoka-plugin
 ```
 
 ## 页面隔离
@@ -94,19 +94,19 @@ Rename-Item .\hello-tool.zip hello-tool.finoka-plugin
 - **背景**。`html`/`body` 留透明就能让宿主的工作区底色透上来；但如果同时写死了 `color-scheme`，页面比工作区短的那一截会被浏览器用该配色的默认画布涂成一块死色（深色下就是纯黑）。要么跟着主题切 `color-scheme`，要么自己铺满底色。
 - **主题**。插件页是独立文档，读不到宿主的 CSS 变量，需要自己抄一份色板，并在收到 `host.getInfo` / `host.info` 的 `theme` 时切换。原生控件（`<select>` 的箭头和下拉面板）跟的是 `color-scheme`，别忘了一起切，否则浅色主题里下拉是一块突兀的深色。
 
-内置的 `dev.finoka.youtube-downloader` 就是按这个写的，可以直接抄。
+内置的 `dev.nonoka.youtube-downloader` 就是按这个写的，可以直接抄。
 
 宿主注入：
 
 ```js
-window.finoka.post("host.getInfo", {});
+window.nonoka.post("host.getInfo", {});
 ```
 
 插件向宿主发送的消息格式：
 
 ```json
 {
-  "source": "finoka-plugin",
+  "source": "nonoka-plugin",
   "apiVersion": 1,
   "method": "host.getInfo",
   "params": {}
@@ -123,8 +123,8 @@ window.finoka.post("host.getInfo", {});
 - `subtitle.ass` / `subtitle.srt`：需要 `document.read` 权限。参数 `{ mediaId, t0?, t1?, lang? }`，返回 `{ text, rev }`。字幕由宿主用编辑器那条拼装管线现拼，因此与编辑器导出的逐字相同；给了 `t0`/`t1` 就裁成区间并把时间轴平移到 0，`lang` 只对 SRT 有效（`both` / `zh` / `ja`）。
 - `subtitle.save`：需要 `subtitle.export` 权限。参数 `{ fileName, content }`，宿主弹保存对话框并落盘，返回最终路径；用户取消时返回空串。扩展名只接受 `.ass` 和 `.srt`，目录由对话框决定。
 - `media.exportVideo`：需要 `media.export-video` 权限。参数 `{ mediaId, ass, fileName?, t0?, t1?, height? }`，宿主用托管的 FFmpeg 把 ASS 压制进视频，返回 `{ path, format, size }`。编码参数（CRF 21、preset medium、AAC 192k）由宿主固定，`height` 只能是 0（原分辨率）或 240–4320。压制期间宿主会向页面推送 `media.progress` 消息（`{ done, total }`，单位秒）。
-- `ffmpeg.extractAudio`：需要 `ffmpeg.extract-audio` 权限。参数为 `{ mediaId, format }`，其中格式只能是 `wav`、`flac`、`mp3` 或 `m4a`。Finoka 负责解析输入、选择输出位置、构造 FFmpeg 参数和原子发布结果。
-- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Finoka 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。yt-dlp 以 Python wheel 形式安装，因此该能力同时依赖 Finoka 的 Python 运行时。下载单次上限 20 分钟，超时会结束子进程并报错，避免卡住的分片服务器一直占着媒体任务锁。下载期间宿主向页面推送 `download.progress` 消息（`{ done, total }`，`total` 恒为 100，即百分比），节流到 400ms 一条。
+- `ffmpeg.extractAudio`：需要 `ffmpeg.extract-audio` 权限。参数为 `{ mediaId, format }`，其中格式只能是 `wav`、`flac`、`mp3` 或 `m4a`。Nonoka X 负责解析输入、选择输出位置、构造 FFmpeg 参数和原子发布结果。
+- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Nonoka X 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。yt-dlp 以 Python wheel 形式安装，因此该能力同时依赖 Nonoka X 的 Python 运行时。下载单次上限 20 分钟，超时会结束子进程并报错，避免卡住的分片服务器一直占着媒体任务锁。下载期间宿主向页面推送 `download.progress` 消息（`{ done, total }`，`total` 恒为 100，即百分比），节流到 400ms 一条。
 
 字幕文档能力有几条固定规则：
 
@@ -227,11 +227,11 @@ npm ci && npx tsc && npm prune --omit=dev
 带返回值的调用应传入请求 ID：
 
 ```js
-window.finoka.post("media.list", {}, "request-1");
+window.nonoka.post("media.list", {}, "request-1");
 
 window.addEventListener("message", (event) => {
   const message = event.data;
-  if (message?.source !== "finoka-host" || message.method !== "rpc.result") return;
+  if (message?.source !== "nonoka-host" || message.method !== "rpc.result") return;
   if (message.id === "request-1") console.log(message.result, message.error);
 });
 ```
@@ -241,7 +241,7 @@ API v1 暂不执行插件原生进程，也不开放任意 FFmpeg 参数或媒�
 ## 安装布局和生命周期
 
 ```text
-FinokaData/
+NonokaXData/
 ├─ plugins/<id>/current.json
 ├─ plugins/<id>/versions/<version>/
 ├─ system-plugins/<id>/current.json
@@ -259,7 +259,7 @@ FinokaData/
 
 内置的系统插件：
 
-- `desktop/internal/plugins/system/dev.finoka.youtube-downloader`：下载公开的 YouTube/Twitch 视频并自动导入媒体库，带进度条，可选画质到 2160p、并发分片到 16；装了可选工具 aria2c 时自动走多连接加速。
+- `desktop/internal/plugins/system/dev.nonoka.youtube-downloader`：下载公开的 YouTube/Twitch 视频并自动导入媒体库，带进度条，可选画质到 2160p、并发分片到 16；装了可选工具 aria2c 时自动走多连接加速。
 
 可运行示例：
 

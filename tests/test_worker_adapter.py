@@ -14,7 +14,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from finoka import worker
+from nonoka_x import worker
 
 
 class WorkerAdapterTests(unittest.TestCase):
@@ -215,7 +215,7 @@ class WorkerAdapterTests(unittest.TestCase):
             messages = profile_warnings(parse_profile_id(profile_id))
             self.assertTrue(messages, f"engine said nothing for {profile_id}")
             output = io.StringIO()
-            reporter = worker.FinokaReporter()
+            reporter = worker.NonokaXReporter()
             with contextlib.redirect_stdout(output):
                 for message in messages:
                     reporter.warning("routing-profile", message)

@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/managedtools"
-	"github.com/Ricori/finoka/desktop/internal/sidecar"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
+	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
 )
 
 const (

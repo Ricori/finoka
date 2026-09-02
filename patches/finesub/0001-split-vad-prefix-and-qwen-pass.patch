@@ -1,6 +1,6 @@
 Subject: [PATCH 1/1] Make the VAD prefix and the Qwen pass separately runnable
 
-Reason: Finoka's cloud deployment rents its accelerator by the second and runs
+Reason: Nonoka X's cloud deployment rents its accelerator by the second and runs
 one FineSub task across three containers. `run_vad_asr` is one process from
 energy VAD through Whisper to the Qwen referee, and only the Whisper leg needs
 the GPU. This patch splits the other two out as opt-in entry points so they can
@@ -14,12 +14,12 @@ moves into an `else:` arm one level deeper, statement for statement, and the
 default reaches it. A caller that does not pass the keyword -- every local
 run, the CLI, batch -- executes exactly the upstream code path.
 
-`tests/test_split_stage_contract.py` in the Finoka repository enforces that
+`tests/test_split_stage_contract.py` in the Nonoka X repository enforces that
 reading of this patch: two files touched, every deleted statement re-appearing
 verbatim modulo indentation, and comments only re-wrapped, never reworded.
 
 Removal: Delete once upstream can run the VAD prefix and the referee as
-separate steps, or once Finoka stops splitting the stage across containers.
+separate steps, or once Nonoka X stops splitting the stage across containers.
 
 diff --git a/src/finesub/speech/recognition/vad_asr_stage.py b/src/finesub/speech/recognition/vad_asr_stage.py
 index 55fe3e1..4bc6659 100644

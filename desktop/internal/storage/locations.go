@@ -1,8 +1,8 @@
-// Package storage records where Finoka keeps the two directories that grow
+// Package storage records where Nonoka X keeps the two directories that grow
 // large enough to fill a system drive: the FineSub install root (the Python
 // runtime, the models and the download caches) and the managed video cache.
 //
-// Everything else Finoka writes — the library index, preferences, documents,
+// Everything else Nonoka X writes — the library index, preferences, documents,
 // task history — is small and stays in the application data directory, which
 // is also where the record of these two choices lives. That keeps the record
 // findable without needing a record of its own.
@@ -32,7 +32,7 @@ const (
 	// containerName is the folder a relocation creates inside the directory the
 	// user picked. Picking a drive root is the common case, and scattering
 	// "finesub" and "videos" over E:\ is not what anyone means by it.
-	containerName = "Finoka"
+	containerName = "Nonoka X"
 )
 
 // Locations is storage.json. An empty directory means "still the default",
@@ -186,8 +186,8 @@ func save(dataDirectory string, locations Locations) error {
 }
 
 // DestinationFor turns the directory the user picked in the folder dialog into
-// the directory Finoka will own. The payload always lands one level down inside
-// a "Finoka" folder, which is what makes picking a drive root safe: the
+// the directory Nonoka X will own. The payload always lands one level down inside
+// a "Nonoka X" folder, which is what makes picking a drive root safe: the
 // relocation can create and remove its own directory without ever touching a
 // folder the user keeps other things in.
 func DestinationFor(picked, target string) (string, error) {
@@ -233,10 +233,10 @@ func ValidateDestination(dataDirectory, target, destination string) error {
 	}
 	otherDirectory := Directory(dataDirectory, other)
 	if sameLocation(destination, otherDirectory) || within(destination, otherDirectory) || within(otherDirectory, destination) {
-		return errors.New("目标目录与另一个 Finoka 目录重叠")
+		return errors.New("目标目录与另一个 Nonoka X 目录重叠")
 	}
 	if sameLocation(destination, dataDirectory) {
-		return errors.New("目标目录不能是 Finoka 数据目录本身")
+		return errors.New("目标目录不能是 Nonoka X 数据目录本身")
 	}
 	info, err := os.Stat(destination)
 	if err != nil {
@@ -255,7 +255,7 @@ func ValidateDestination(dataDirectory, target, destination string) error {
 	if len(entries) == 0 {
 		return nil
 	}
-	// Finoka's own unfinished copy is the one non-empty directory worth
+	// Nonoka X's own unfinished copy is the one non-empty directory worth
 	// accepting: refusing it would throw away everything a cancelled or
 	// interrupted relocation already carried across.
 	if _, resumable := ResumableCopy(current, destination); resumable {

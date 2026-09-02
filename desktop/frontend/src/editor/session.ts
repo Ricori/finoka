@@ -56,5 +56,5 @@ export async function initSession(): Promise<boolean> {
 }
 
 export function reportBootError(error: unknown) {
-  console.error("Finoka editor:", error);
+  console.error("Nonoka X editor:", error);
 }

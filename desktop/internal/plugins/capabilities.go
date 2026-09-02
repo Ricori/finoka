@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
-	"github.com/Ricori/finoka/desktop/internal/managedtools"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
 )
 
 type MediaSummary struct {
@@ -67,7 +67,7 @@ func (s *Service) MediaList(pluginID string) ([]MediaSummary, error) {
 	return result, nil
 }
 
-// ExportAudio is a structured FFmpeg capability. Plugins select a Finoka media
+// ExportAudio is a structured FFmpeg capability. Plugins select a Nonoka X media
 // ID and an output format; the host owns input resolution, arguments, the save
 // dialog, temporary files, and final publication.
 func (s *Service) ExportAudio(pluginID, mediaID, format string) (ExportedArtifact, error) {
@@ -129,7 +129,7 @@ func (s *Service) ExportAudio(pluginID, mediaID, format string) (ExportedArtifac
 
 	ffmpeg, err := managedtools.Find(s.dataDirectory, "ffmpeg")
 	if err != nil {
-		return ExportedArtifact{}, errors.New("Finoka FFmpeg is not installed")
+		return ExportedArtifact{}, errors.New("Nonoka X FFmpeg is not installed")
 	}
 	partial := strings.TrimSuffix(output, extension) + ".part" + extension
 	_ = os.Remove(partial)
@@ -227,7 +227,7 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 	}
 	ffmpeg, err := managedtools.Find(s.dataDirectory, "ffmpeg")
 	if err != nil {
-		return DownloadedMedia{}, errors.New("Finoka FFmpeg is not installed; install it from 运行环境 first")
+		return DownloadedMedia{}, errors.New("Nonoka X FFmpeg is not installed; install it from 运行环境 first")
 	}
 	args := append([]string(nil), ytDLP.Prefix...)
 	args = append(args, pluginArgs...)
@@ -274,7 +274,7 @@ func (s *Service) RunYTDLP(pluginID, rawURL string, pluginArgs []string) (Downlo
 		args = append(args, "--extractor-args", "youtube:player_client=mweb")
 	}
 	// Multi-connection fetching, as the reference downloader does it: aria2c
-	// pulls a long VOD far faster than yt-dlp's own HTTP downloader. Finoka does
+	// pulls a long VOD far faster than yt-dlp's own HTTP downloader. Nonoka X does
 	// not manage the binary, so this stays optional — without it the built-in
 	// downloader still completes, just more slowly. Only built-in plugins get
 	// it, because handing an external downloader to sideloaded pages would put
@@ -488,7 +488,7 @@ func downloadFailureDetail(output string) string {
 		lines = lines[len(lines)-3:]
 	}
 	detail := strings.Join(lines, "; ")
-	// Trimmed by runes: the log carries Chinese from Finoka-managed tools, and
+	// Trimmed by runes: the log carries Chinese from Nonoka X-managed tools, and
 	// slicing bytes would hand the UI a broken character.
 	if runes := []rune(detail); len(runes) > 400 {
 		detail = string(runes[len(runes)-400:])
@@ -680,7 +680,7 @@ func validateVideoURL(raw string) (platform, normalized string, err error) {
 
 // validateYTDLPArguments keeps plugin-supplied arguments inside a closed set.
 // The set widens for built-in plugins rather than opening up per flag: they
-// ship with Finoka and are reviewed with it, so the taller formats and the
+// ship with Nonoka X and are reviewed with it, so the taller formats and the
 // 16-way fragment concurrency that pair with aria2c are reachable there while
 // sideloaded pages stay on the conservative set.
 func validateYTDLPArguments(arguments []string, system bool) error {

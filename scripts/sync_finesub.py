@@ -102,7 +102,7 @@ def github_slug(repository: str) -> str:
 def request_json(url: str) -> dict[str, object]:
     request = urllib.request.Request(
         url,
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "finoka-sync-finesub/1"},
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "nonoka-sync-finesub/1"},
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
@@ -129,7 +129,7 @@ def resolve_upstream(repository: str, ref: str) -> Upstream:
 def download_archive(upstream: Upstream, destination: Path) -> None:
     slug = github_slug(upstream.repository)
     url = f"https://codeload.github.com/{slug}/tar.gz/{upstream.commit}"
-    request = urllib.request.Request(url, headers={"User-Agent": "finoka-sync-finesub/1"})
+    request = urllib.request.Request(url, headers={"User-Agent": "nonoka-sync-finesub/1"})
     try:
         with urllib.request.urlopen(request, timeout=180) as response, destination.open("wb") as output:
             shutil.copyfileobj(response, output)
@@ -352,7 +352,7 @@ def sync_archive(
     archive = archive.resolve()
     if not archive.is_file():
         raise SyncError(f"archive not found: {archive}")
-    with tempfile.TemporaryDirectory(prefix="finoka-finesub-extract-") as extract_temp:
+    with tempfile.TemporaryDirectory(prefix="nonoka-finesub-extract-") as extract_temp:
         source = extract_archive(archive, Path(extract_temp), upstream.commit)
         engine_version = validate_source(source)
         staging = destination.parent / f".{destination.name}.next-{uuid.uuid4().hex}"
@@ -451,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
                 archive = args.archive
                 result = sync_archive(archive, upstream, args.vendor_dir, args.patches_dir)
             else:
-                with tempfile.TemporaryDirectory(prefix="finoka-finesub-download-") as temp:
+                with tempfile.TemporaryDirectory(prefix="nonoka-finesub-download-") as temp:
                     archive = Path(temp) / f"finesub-{upstream.commit}.tar.gz"
                     download_archive(upstream, archive)
                     result = sync_archive(archive, upstream, args.vendor_dir, args.patches_dir)

@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
-	"github.com/Ricori/finoka/desktop/internal/preferences"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/preferences"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -118,7 +118,7 @@ func (s *WindowService) handleEditorReady(event *application.CustomEvent) {
 func editorWindowOptions(store *preferences.Service, id, title string) application.WebviewWindowOptions {
 	return applyWindowOptions(store, "editor", applyWindowTheme(store, "editor", application.WebviewWindowOptions{
 		Name:            "editor",
-		Title:           "Finoka · " + title,
+		Title:           "Nonoka X · " + title,
 		Width:           1440,
 		Height:          900,
 		MinWidth:        960,

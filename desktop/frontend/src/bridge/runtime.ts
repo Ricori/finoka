@@ -1,4 +1,4 @@
-import * as ProviderService from "../../bindings/github.com/Ricori/finoka/desktop/internal/provider/service.js";
+import * as ProviderService from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/provider/service.js";
 
 export interface RuntimeItem {
   id: string;

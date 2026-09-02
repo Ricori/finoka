@@ -1155,17 +1155,17 @@ def load_model_routes(
                     == pinned_tier
                 )
             members = tuple(dict.fromkeys((target_id, *existing)))
-            group_id = f"finoka-route:{task_group_id}"
+            group_id = f"nonoka-route:{task_group_id}"
             model_groups[group_id] = ModelGroup(
                 group_id, members, MappingProxyType({})
             )
             for difficulty in DIFFICULTIES:
                 bindings.pop((task_group_id, difficulty), None)
             bindings[(task_group_id, "quality")] = group_id
-        synthetic_id = "finoka-routed"
+        synthetic_id = "nonoka-routed"
         presets[synthetic_id] = Preset(
             synthetic_id,
-            "Finoka 模型路由",
+            "Nonoka X 模型路由",
             base_preset.test_target_id,
             MappingProxyType(bindings),
             base_preset.thinking,

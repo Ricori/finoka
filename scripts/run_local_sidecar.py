@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "third_party/finesub/src"))
 
-from finoka.sidecar import main
+from nonoka_x.sidecar import main
 
 
 if __name__ == "__main__":

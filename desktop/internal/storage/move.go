@@ -16,9 +16,9 @@ import (
 // filled. A cross-drive relocation cannot be atomic, and the record in
 // storage.json — not the presence of the directory — is what commits it. So the
 // destination is written in place and this marker is what tells a later run
-// that the tree is Finoka's own unfinished copy: safe to resume, and never to
+// that the tree is Nonoka X's own unfinished copy: safe to resume, and never to
 // be mistaken for a finished install or for the user's own data.
-const partialSuffix = ".finoka-partial"
+const partialSuffix = ".nonoka-partial"
 
 const copyBufferSize = 1 << 20
 
@@ -267,7 +267,7 @@ func copyTree(ctx context.Context, source, destination string, report func(copie
 			return copyErr
 		case !info.Mode().IsRegular():
 			// Devices, sockets and named pipes have no meaning in a copy of a
-			// runtime tree, and nothing Finoka installs creates one.
+			// runtime tree, and nothing Nonoka X installs creates one.
 			return nil
 		default:
 			// Already carried over by an earlier attempt. Files are written

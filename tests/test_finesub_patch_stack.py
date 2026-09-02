@@ -58,7 +58,7 @@ class FineSubPatchStackTests(unittest.TestCase):
             (DEFAULT_VENDOR / "FILES.json").read_text(encoding="utf-8")
         )
 
-        with tempfile.TemporaryDirectory(prefix="finoka-finesub-patches-") as temp:
+        with tempfile.TemporaryDirectory(prefix="nonoka-finesub-patches-") as temp:
             replay = Path(temp) / "vendor"
             shutil.copytree(DEFAULT_VENDOR, replay)
 

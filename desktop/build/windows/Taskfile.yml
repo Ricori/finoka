@@ -5,7 +5,7 @@ includes:
 
 tasks:
   build:
-    summary: Cross-builds Finoka for Windows
+    summary: Cross-builds Nonoka X for Windows
     deps:
       - task: common:build:frontend
         vars: { DEV: '{{.DEV}}', BUILD_FLAGS: '{{.BUILD_FLAGS}}' }

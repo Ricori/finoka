@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/managedtools"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
 )
 
 func TestSidecarConfigHonoursExplicitPaths(t *testing.T) {
@@ -93,21 +94,21 @@ func TestFirstConfiguredPathPreservesAbsoluteCandidate(t *testing.T) {
 	if err := os.WriteFile(candidate, []byte("fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	const environment = "FINOKA_TEST_RESOURCE_PATH"
+	const environment = "NONOKA_TEST_RESOURCE_PATH"
 	t.Setenv(environment, "")
 	if got := firstConfiguredPath(environment, filepath.Join(root, "working"), candidate); got != candidate {
 		t.Fatalf("expected absolute candidate %q, got %q", candidate, got)
 	}
 }
 
-func TestPlatformDataDirectoryUsesFinokaApplicationDataRoot(t *testing.T) {
+func TestPlatformDataDirectoryUsesNonokaXApplicationDataRoot(t *testing.T) {
 	windowsRoot := filepath.Join("C:", "Users", "chika", "AppData", "Roaming")
 	windows, err := platformDataDirectory("windows", windowsRoot, "")
-	if err != nil || windows != filepath.Join(windowsRoot, "Finoka") {
+	if err != nil || windows != filepath.Join(windowsRoot, "Nonoka X") {
 		t.Fatalf("windows data directory = %q, %v", windows, err)
 	}
 	mac, err := platformDataDirectory("darwin", "", "/Users/chika")
-	expectedMac := filepath.Join("/Users/chika", "Library", "Application Support", "Finoka")
+	expectedMac := filepath.Join("/Users/chika", "Library", "Application Support", "Nonoka X")
 	if err != nil || mac != expectedMac {
 		t.Fatalf("macOS data directory = %q, %v", mac, err)
 	}
@@ -115,3 +116,98 @@ func TestPlatformDataDirectoryUsesFinokaApplicationDataRoot(t *testing.T) {
 		t.Fatal("unsupported desktop platform was accepted")
 	}
 }
+
+func TestMigrateDataDirectoryMovesFinokaRootAndRequiresRestart(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "Finoka")
+	if err := os.MkdirAll(filepath.Join(source, "system-plugins", "dev.finoka.test"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(source, "library.json")
+	if err := os.WriteFile(marker, []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyRegistry := filepath.Join(source, "plugin-registry.json")
+	if err := os.WriteFile(legacyRegistry, []byte(`{"enabled":{"dev.finoka.test":false}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	migration, err := migrateDataDirectory("windows", root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migration == nil || migration.Source != source {
+		t.Fatalf("migration = %#v", migration)
+	}
+	destination := filepath.Join(root, "Nonoka X")
+	if migration.Destination != destination {
+		t.Fatalf("destination = %q, want %q", migration.Destination, destination)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "library.json")); err != nil {
+		t.Fatalf("migrated marker: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "plugin-registry.json")); !os.IsNotExist(err) {
+		t.Fatalf("plugin-registry.json should be removed on migration: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "system-plugins")); !os.IsNotExist(err) {
+		t.Fatalf("system-plugins should be removed on migration: %v", err)
+	}
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		t.Fatalf("legacy source still exists: %v", err)
+	}
+
+	again, err := migrateDataDirectory("windows", root, "")
+	if err != nil || again != nil {
+		t.Fatalf("second migration = %#v, %v", again, err)
+	}
+}
+
+func TestMigrateDataDirectoryDoesNotMergeExistingDestination(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"Finoka", "Nonoka X"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	migration, err := migrateDataDirectory("windows", root, "")
+	if err != nil || migration != nil {
+		t.Fatalf("migration = %#v, %v", migration, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Finoka")); err != nil {
+		t.Fatalf("source should remain untouched: %v", err)
+	}
+}
+
+func TestMigrateDataDirectoryRetriesWhileFileIsLocked(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "Finoka")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(source, "library.json")
+	if err := os.WriteFile(marker, []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := os.OpenFile(marker, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		_ = file.Close()
+	}()
+
+	migration, err := migrateDataDirectory("windows", root, "")
+	if err != nil {
+		t.Fatalf("migration failed with retry: %v", err)
+	}
+	if migration == nil || migration.Source != source {
+		t.Fatalf("migration = %#v", migration)
+	}
+	destination := filepath.Join(root, "Nonoka X")
+	if _, err := os.Stat(filepath.Join(destination, "library.json")); err != nil {
+		t.Fatalf("migrated marker: %v", err)
+	}
+}
+

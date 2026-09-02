@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  APP_NAME: "Finoka"
+  APP_NAME: "Nonoka X"
   BIN_DIR: "bin"
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
@@ -15,12 +15,12 @@ includes:
 
 tasks:
   default:
-    summary: Lists available Finoka desktop tasks
+    summary: Lists available Nonoka X desktop tasks
     cmds:
       - task --list-all
 
   build:
-    summary: Builds Finoka for GOOS (defaults to the host)
+    summary: Builds Nonoka X for GOOS (defaults to the host)
     cmds:
       - task: '{{.GOOS}}:build'
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/storage"
+	"github.com/Ricori/nonoka-x/desktop/internal/storage"
 )
 
 func waitForIdle(t *testing.T, service *StorageService) RelocationProgress {
@@ -34,7 +34,7 @@ func TestRelocateMovesTheVideoCacheAndRecordsIt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "loc_a.mp4"), []byte("frames"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	destination := filepath.Join(t.TempDir(), "Finoka", "videos")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "videos")
 
 	service := NewStorageService(data, nil, nil)
 	if _, err := service.Relocate(storage.VideoTarget, destination); err != nil {
@@ -67,7 +67,7 @@ func TestRelocateMovesTheVideoCacheAndRecordsIt(t *testing.T) {
 
 func TestResetLocationMovesTheCacheBack(t *testing.T) {
 	data := t.TempDir()
-	elsewhere := filepath.Join(t.TempDir(), "Finoka", "videos")
+	elsewhere := filepath.Join(t.TempDir(), "Nonoka X", "videos")
 	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
 		t.Fatal(err)
 	}

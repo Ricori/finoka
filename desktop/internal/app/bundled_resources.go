@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-const bundledResourcePrefix = "bundled/finoka"
+const bundledResourcePrefix = "bundled/nonoka_x"
 
 // How many extracted version directories survive a launch, the running one
 // included. One spare keeps a self-update rollback (and a second build run
@@ -27,7 +27,7 @@ const retainedResourceVersions = 2
 // The build task stages the sidecar and pinned FineSub snapshot here before
 // compiling. The tracked placeholder also keeps source-only Go tests valid.
 //
-//go:embed all:bundled/finoka
+//go:embed all:bundled/nonoka_x
 var bundledResources embed.FS
 
 // stagedResource is one entry of STAGED.json, written by build/tools/stage.
@@ -58,7 +58,7 @@ func extractBundledResources(source fs.FS, prefix, dataDirectory string) (string
 	digest := sha256.Sum256(manifest)
 	version := hex.EncodeToString(digest[:8])
 	base := filepath.Join(dataDirectory, "app-resources")
-	root := filepath.Join(base, version, "finoka")
+	root := filepath.Join(base, version, "nonoka_x")
 	installedManifest := filepath.Join(root, "STAGED.json")
 	// A matching manifest is not proof the tree beneath it survived: antivirus
 	// quarantine, a cleanup tool, or an interrupted profile sync can take the
@@ -149,7 +149,7 @@ func stagedResourcesPresent(root string, staged []stagedResource) bool {
 }
 
 // pruneResourceVersions keeps the running version and the most recent spares,
-// deleting the rest. Best effort: a directory another Finoka process still runs
+// deleting the rest. Best effort: a directory another Nonoka X process still runs
 // from refuses to go on Windows, and skipping it is preferable to failing a
 // launch over disk hygiene.
 func pruneResourceVersions(base, keep string) {

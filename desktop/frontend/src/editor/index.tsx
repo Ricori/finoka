@@ -74,6 +74,6 @@ function EditorWindow() {
 }
 
 const root = document.getElementById("root");
-if (!root) throw new Error("Finoka editor root element is missing");
+if (!root) throw new Error("Nonoka X editor root element is missing");
 createRoot(root).render(<EditorWindow />);
 void installWindowsTitlebar();

@@ -1,0 +1,25 @@
+{
+  "id": "dev.nonoka.youtube-downloader",
+  "name": "视频下载",
+  "version": "1.0.1",
+  "apiVersion": 1,
+  "description": "下载公开的 YouTube / Twitch 视频，完成后自动导入媒体库",
+  "publisher": "Nonoka X",
+  "license": "MIT",
+  "permissions": [
+    "tools.yt-dlp",
+    "tools.cookies",
+    "media.import"
+  ],
+  "contributes": {
+    "tools": [
+      {
+        "id": "download",
+        "title": "视频下载",
+        "icon": "download",
+        "page": "ui/index.html",
+        "order": 10
+      }
+    ]
+  }
+}

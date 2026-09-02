@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
 )
 
 type fakeProvider struct {
@@ -392,9 +392,9 @@ func TestLoginMergesExistingLocalDocumentsAndSkipsRemoteFingerprints(t *testing.
 }
 
 func TestRealModalLoginMergesAnIsolatedLocalLibrary(t *testing.T) {
-	keyPath := os.Getenv("FINOKA_MODAL_TEST_KEY_FILE")
+	keyPath := os.Getenv("NONOKA_MODAL_TEST_KEY_FILE")
 	if keyPath == "" {
-		t.Skip("set FINOKA_MODAL_TEST_KEY_FILE to run the deployed Modal integration")
+		t.Skip("set NONOKA_MODAL_TEST_KEY_FILE to run the deployed Modal integration")
 	}
 	keyResponse, err := os.ReadFile(keyPath)
 	if err != nil {
@@ -451,9 +451,9 @@ func TestRealModalLoginMergesAnIsolatedLocalLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	endpoint := os.Getenv("FINOKA_MODAL_ENDPOINT")
+	endpoint := os.Getenv("NONOKA_MODAL_ENDPOINT")
 	if endpoint == "" {
-		endpoint = "https://ricori--finoka-cloud-api.modal.run"
+		endpoint = "https://ricori--nonoka-x-cloud-api.modal.run"
 	}
 	session, err := service.Login(endpoint, issued.Key)
 	if err != nil || session.Synced != 1 || session.SyncFailed != 0 {

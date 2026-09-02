@@ -42,7 +42,7 @@ func TestSystemPluginsPublishEnabledOnFirstLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(page, "window.finoka") {
+	if !strings.Contains(page, "window.nonoka") {
 		t.Fatal("system plugin page did not receive the host bridge")
 	}
 	if _, err := os.Stat(filepath.Join(root, "system-plugins", builtin.ID, currentName)); err != nil {
@@ -135,7 +135,7 @@ func TestSystemPluginsCannotBeUninstalledOrShadowed(t *testing.T) {
 	// A sideloaded package claiming a built-in id must be refused, otherwise it
 	// would inherit the wider capability limits that id is trusted with.
 	impostor := filepath.Join(t.TempDir(), "impostor")
-	manifest := strings.Replace(testManifest, "dev.finoka.hello", builtin.ID, 1)
+	manifest := strings.Replace(testManifest, "dev.nonoka.hello", builtin.ID, 1)
 	mustWrite(t, filepath.Join(impostor, manifestName), manifest)
 	mustWrite(t, filepath.Join(impostor, "ui", "index.html"), `<p>impostor</p>`)
 	if _, err := service.Install(impostor); err == nil {

@@ -1,22 +1,22 @@
 {
   "archive_sha256": "c927e0f103d4a7cb9a8733a4e23c333bad6ecbb418d98aaa6dce8a383544cea8",
   "commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
-  "content_sha256": "58e413b1683e07717f4ee5b0321ebbd2a690b2c03c31609f908fdcad6c286ca3",
+  "content_sha256": "714b3bffb5e4a8d1571584ed7e2a8ee88266e9daff67b8e5bb321a54b734d282",
   "engine_bundle_id": "finesub-0.4.2+8a33092a40ab",
   "engine_version": "0.4.2",
-  "files_manifest_sha256": "dede18fe22d4b96311029cdfefd44a9069bda2a74a1607eb95d5dbdd179e652c",
+  "files_manifest_sha256": "645fbe694da321460e0ba71d0cf0ad23bf91b1d2535adfaa2043d39966de5db3",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
-      "sha256": "e6c4ed438f3521d328454ce4b772f068596e5e3b1cd30e5f622d552ac957ab69"
+      "sha256": "fc8d450d67c0683c9f621a4ffd794cf5932a37fe9984564d1676dfdc8afdfac6"
     },
     {
       "path": "0002-retry-directory-publish-rename.patch",
-      "sha256": "e739706c7b8b5c5c7bfbf343c03de4366e9503d8e3f9c6a5fa497d80cbbf602a"
+      "sha256": "2ad9db8c395bf981331e162aec6e735112d72267f58750bc2b7c7375bbf81310"
     },
     {
       "path": "0003-desktop-model-routing.patch",
-      "sha256": "343285836d76d02cf0b4e0d1d4c7de575252df8ce7bc8343180ab1c8ed6fdc31"
+      "sha256": "b6e2ff2b960133f3659c58171151a727ffd31afbca9a17779616b9e4e394cc33"
     },
     {
       "path": "0004-subprocess-text-encoding-and-msvc-include.patch",
@@ -24,11 +24,11 @@
     },
     {
       "path": "0005-codex-terra-model.patch",
-      "sha256": "02da2e6c98b245402b52284105fe587b81c1fcf85898605c99b095528fd5a980"
+      "sha256": "45a751433c6707de28de097267cf46345efba62ef9f2c3404e9b85a566ad3df4"
     },
     {
       "path": "0006-runtime-tool-manifest.patch",
-      "sha256": "9701bb7792f0cedda6a554bc0e14e7ff8c6869ee02682df7e4d4c013e140fc27"
+      "sha256": "96093f9a108f2bf929e47d1a5b437111943eb1058b8f4da3cacf2f3341394fcd"
     },
     {
       "path": "0007-agy-workspace-read-grant.patch",
@@ -37,7 +37,7 @@
   ],
   "ref": "v0.4.2",
   "repository": "https://github.com/caca2331/finesub",
-  "runtime_manifest_sha256": "492b4da6ebe40d6574a5c2a7c916e62cea1bbb4639f1badaba0596f1cd007820",
+  "runtime_manifest_sha256": "1a89d6d065d82718d0b3a21212fbe3156cfb38208ff9fd4ab2606fd0b1f4aa84",
   "sync_schema": 1,
   "synced_at": "2026-08-26T08:02:23Z"
 }

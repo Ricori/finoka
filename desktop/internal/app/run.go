@@ -9,15 +9,15 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/assstyles"
-	"github.com/Ricori/finoka/desktop/internal/cloud"
-	"github.com/Ricori/finoka/desktop/internal/library"
-	"github.com/Ricori/finoka/desktop/internal/plugins"
-	"github.com/Ricori/finoka/desktop/internal/preferences"
-	"github.com/Ricori/finoka/desktop/internal/provider"
-	"github.com/Ricori/finoka/desktop/internal/selfupdate"
-	"github.com/Ricori/finoka/desktop/internal/sidecar"
-	"github.com/Ricori/finoka/desktop/internal/taskhistory"
+	"github.com/Ricori/nonoka-x/desktop/internal/assstyles"
+	"github.com/Ricori/nonoka-x/desktop/internal/cloud"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/plugins"
+	"github.com/Ricori/nonoka-x/desktop/internal/preferences"
+	"github.com/Ricori/nonoka-x/desktop/internal/provider"
+	"github.com/Ricori/nonoka-x/desktop/internal/selfupdate"
+	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
+	"github.com/Ricori/nonoka-x/desktop/internal/taskhistory"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -41,6 +41,13 @@ func init() {
 // what is missing. The failure is retained in the manager's safe Snapshot.
 func Run(assets fs.FS) error {
 	selfupdate.CleanupReplacedExecutables()
+	migration, err := migrateDefaultDataDirectory()
+	if err != nil {
+		return err
+	}
+	if migration != nil {
+		return showDataDirectoryMigrationComplete(migration)
+	}
 	dataDirectory, err := DataDirectory()
 	if err != nil {
 		return err
@@ -114,7 +121,7 @@ func Run(assets fs.FS) error {
 	}
 
 	applicationInstance := application.New(application.Options{
-		Name:        "Finoka",
+		Name:        "Nonoka X",
 		Description: "Local-first subtitle production",
 		Services: []application.Service{
 			application.NewService(providerService),
@@ -138,7 +145,7 @@ func Run(assets fs.FS) error {
 	})
 	homeOptions := applyWindowOptions(preferencesService, "home", applyWindowTheme(preferencesService, "home", application.WebviewWindowOptions{
 		Name:            "home",
-		Title:           "Finoka",
+		Title:           "Nonoka X",
 		Width:           1180,
 		Height:          760,
 		MinWidth:        960,
@@ -180,4 +187,25 @@ func Run(assets fs.FS) error {
 	stopErr := manager.Stop(shutdownContext)
 	cancel()
 	return errors.Join(runErr, stopErr, libraryService.Close())
+}
+
+func showDataDirectoryMigrationComplete(migration *dataDirectoryMigration) error {
+	instance := application.New(application.Options{
+		Name:   "Nonoka X",
+		Assets: application.AlphaAssets,
+	})
+	instance.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:  "Nonoka X",
+		Width:  1,
+		Height: 1,
+		Hidden: true,
+	})
+	instance.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		instance.Dialog.Info().
+			SetTitle("Nonoka X 数据迁移完成").
+			SetMessage("数据已从旧目录迁移到：\n" + migration.Destination + "\n\n请重新启动 Nonoka X。").
+			Show()
+		instance.Quit()
+	})
+	return instance.Run()
 }

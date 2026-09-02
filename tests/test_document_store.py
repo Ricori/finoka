@@ -21,8 +21,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from finoka import document_store
-from finoka.document_store import _atomic_json
+from nonoka_x import document_store
+from nonoka_x.document_store import _atomic_json
 
 
 def test_a_reader_that_lets_go_does_not_fail_the_write(tmp_path: Path) -> None:

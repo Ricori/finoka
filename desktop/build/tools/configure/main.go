@@ -1,4 +1,4 @@
-// Command configure reapplies Finoka-specific changes after Wails regenerates
+// Command configure reapplies Nonoka X-specific changes after Wails regenerates
 // its platform metadata.
 package main
 

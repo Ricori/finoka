@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "finoka-frontend",
+      "name": "nonoka-frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "desktop/frontend",

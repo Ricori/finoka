@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "third_party/finesub/src"))
 
-from finoka.settings import FineSubSettings
+from nonoka_x.settings import FineSubSettings
 
 
 class FineSubSettingsTests(unittest.TestCase):
@@ -99,7 +99,7 @@ class FineSubSettingsTests(unittest.TestCase):
             self.assertIn("openai_compat|https://proxy.example/v1|OPENAI_API_KEY", catalog)
             self.assertIn("|gpt-custom|gpt-custom|", catalog)
             config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
-            self.assertIn('default_target = "finoka-openai-', config)
+            self.assertIn('default_target = "nonoka-openai-', config)
             self.assertIn('task_route_research = "gemini-free-3_6-flash"', config)
 
             from finesub.config import clear_config_cache
@@ -121,9 +121,9 @@ class FineSubSettingsTests(unittest.TestCase):
             research, _ = routes.resolve_binding(
                 routes.active_preset_id, "research", "quality"
             )
-            self.assertTrue(correction.target_ids[0].startswith("finoka-openai-"))
-            self.assertTrue(correction_mid.target_ids[0].startswith("finoka-openai-"))
-            self.assertTrue(correction_eff.target_ids[0].startswith("finoka-openai-"))
+            self.assertTrue(correction.target_ids[0].startswith("nonoka-openai-"))
+            self.assertTrue(correction_mid.target_ids[0].startswith("nonoka-openai-"))
+            self.assertTrue(correction_eff.target_ids[0].startswith("nonoka-openai-"))
             self.assertEqual(research.target_ids[0], "gemini-free-3_6-flash")
 
     def test_llm_is_not_ready_until_a_global_model_is_saved(self) -> None:
@@ -188,7 +188,7 @@ class FineSubSettingsTests(unittest.TestCase):
         ):
             settings = FineSubSettings(temporary)
             settings.bind_environment()
-            with patch("finoka.settings.shutil.which", return_value="/usr/local/bin/codex"):
+            with patch("nonoka_x.settings.shutil.which", return_value="/usr/local/bin/codex"):
                 self.assertFalse(settings.snapshot()["llmReady"])
                 snapshot = settings.update_keys(
                     {
@@ -197,8 +197,8 @@ class FineSubSettingsTests(unittest.TestCase):
                     }
                 )
                 self.assertTrue(snapshot["llmReady"])
-            with patch("finoka.settings.shutil.which", return_value=None), patch(
-                "finoka.settings.os.name", "posix"
+            with patch("nonoka_x.settings.shutil.which", return_value=None), patch(
+                "nonoka_x.settings.os.name", "posix"
             ):
                 self.assertFalse(settings.snapshot()["llmReady"])
 
@@ -331,9 +331,9 @@ class FineSubSettingsTests(unittest.TestCase):
             staging.mkdir()
             (staging / "codex.exe").write_bytes(b"")
             with patch.dict(os.environ, {"LOCALAPPDATA": temporary}, clear=False), patch(
-                "finoka.settings.shutil.which", return_value=None
-            ), patch("finoka.settings.os.name", "nt"):
-                from finoka.settings import local_agent_executable, local_agent_path_entries
+                "nonoka_x.settings.shutil.which", return_value=None
+            ), patch("nonoka_x.settings.os.name", "nt"):
+                from nonoka_x.settings import local_agent_executable, local_agent_path_entries
 
                 self.assertEqual(local_agent_executable("local-codex"), live / "codex.exe")
                 self.assertEqual(local_agent_path_entries(), [str(live)])
@@ -344,9 +344,9 @@ class FineSubSettingsTests(unittest.TestCase):
             bin_dir.mkdir(parents=True)
             (bin_dir / "agy.exe").write_bytes(b"")
             with patch.dict(os.environ, {"LOCALAPPDATA": temporary}, clear=False), patch(
-                "finoka.settings.shutil.which", return_value=None
-            ), patch("finoka.settings.os.name", "nt"):
-                from finoka.settings import local_agent_executable, local_agent_path_entries
+                "nonoka_x.settings.shutil.which", return_value=None
+            ), patch("nonoka_x.settings.os.name", "nt"):
+                from nonoka_x.settings import local_agent_executable, local_agent_path_entries
 
                 self.assertEqual(local_agent_executable("local-agy"), bin_dir / "agy.exe")
                 self.assertEqual(local_agent_path_entries(), [str(bin_dir)])
@@ -360,15 +360,15 @@ class FineSubSettingsTests(unittest.TestCase):
             ide.mkdir(parents=True)
             (ide / "Antigravity.exe").write_bytes(b"")
             with patch.dict(os.environ, {"LOCALAPPDATA": temporary}, clear=False), patch(
-                "finoka.settings.shutil.which", return_value=None
-            ), patch("finoka.settings.os.name", "nt"):
-                from finoka.settings import local_agent_executable
+                "nonoka_x.settings.shutil.which", return_value=None
+            ), patch("nonoka_x.settings.os.name", "nt"):
+                from nonoka_x.settings import local_agent_executable
 
                 self.assertIsNone(local_agent_executable("local-agy"))
 
     def test_local_agent_on_path_is_not_added_to_it_twice(self) -> None:
-        with patch("finoka.settings.shutil.which", return_value="/usr/local/bin/codex"):
-            from finoka.settings import local_agent_path_entries
+        with patch("nonoka_x.settings.shutil.which", return_value="/usr/local/bin/codex"):
+            from nonoka_x.settings import local_agent_path_entries
 
             self.assertEqual(local_agent_path_entries(), [])
 

@@ -7,16 +7,16 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as app$0 from "../../../../Ricori/finoka/desktop/internal/app/models.js";
+import type * as app$0 from "../../../../Ricori/nonoka-x/desktop/internal/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as library$0 from "../../../../Ricori/finoka/desktop/internal/library/models.js";
+import type * as library$0 from "../../../../Ricori/nonoka-x/desktop/internal/library/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as plugins$0 from "../../../../Ricori/finoka/desktop/internal/plugins/models.js";
+import type * as plugins$0 from "../../../../Ricori/nonoka-x/desktop/internal/plugins/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as selfupdate$0 from "../../../../Ricori/finoka/desktop/internal/selfupdate/models.js";
+import type * as selfupdate$0 from "../../../../Ricori/nonoka-x/desktop/internal/selfupdate/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {

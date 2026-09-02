@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from finoka.provision import CANCELLED_MESSAGE, DONE_MESSAGES, OPTIONAL_TOOLS, TOOL_GROUPS, RuntimeProvisionError, RuntimeProvisioner, parse_model_install_event
+from nonoka_x.provision import CANCELLED_MESSAGE, DONE_MESSAGES, OPTIONAL_TOOLS, TOOL_GROUPS, RuntimeProvisionError, RuntimeProvisioner, parse_model_install_event
 
 
 VENDOR = Path(__file__).resolve().parents[1] / "third_party" / "finesub"
@@ -50,7 +50,7 @@ def test_runtime_provisioner_accepts_a_relocated_install_root(tmp_path: Path) ->
     """The desktop shell moves the multi-gigabyte install root off the system
     drive; settings and the knowledge base stay beside the data directory."""
     data = tmp_path / "data"
-    install = tmp_path / "elsewhere" / "Finoka" / "finesub"
+    install = tmp_path / "elsewhere" / "Nonoka X" / "finesub"
     provisioner = RuntimeProvisioner(data, VENDOR, install)
     assert provisioner.install_root == install.resolve()
     assert provisioner.status()["root"] == str(install.resolve())
@@ -61,7 +61,7 @@ def test_runtime_provisioner_accepts_a_relocated_install_root(tmp_path: Path) ->
 
 def test_remove_managed_tree_clears_read_only_files(tmp_path: Path) -> None:
     """uv and pip leave read-only files behind; Windows refuses to unlink them."""
-    from finoka.provision import _remove_managed_tree
+    from nonoka_x.provision import _remove_managed_tree
 
     target = tmp_path / "runtime"
     (target / "nested").mkdir(parents=True)
@@ -80,7 +80,7 @@ def test_remove_all_reports_failures_instead_of_raising_oserror(tmp_path: Path, 
     def refuse(target: Path) -> None:
         raise PermissionError(13, "被占用", str(target))
 
-    monkeypatch.setattr("finoka.provision._remove_managed_tree", refuse)
+    monkeypatch.setattr("nonoka_x.provision._remove_managed_tree", refuse)
     with pytest.raises(RuntimeProvisionError, match="未能完全删除"):
         provisioner.remove_all()
     job = provisioner.status()["job"]
@@ -129,7 +129,7 @@ def test_runtime_install_refuses_unsupported_platform(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS managed media resources")
 def test_macos_manifests_pin_both_media_tools() -> None:
-    resource_root = Path(__file__).resolve().parents[1] / "src" / "finoka" / "resources"
+    resource_root = Path(__file__).resolve().parents[1] / "src" / "nonoka_x" / "resources"
     for architecture in ("arm64", "amd64"):
         manifest = json.loads(
             (resource_root / f"runtime-manifest.macos-{architecture}.json").read_text(encoding="utf-8")

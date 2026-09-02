@@ -1,6 +1,6 @@
-# Finoka Execution Provider 接口规范 (v1)
+# Nonoka X Execution Provider 接口规范 (v1)
 
-本文档是 Finoka **执行提供方（Execution Provider）** 的标准接口规范。任何第三方只要完整实现本规范，即可作为独立的转写执行后端接入 Finoka 桌面端，复用其媒体库、任务视图、Projector 投影层与 JASSUB 字幕编辑器。
+本文档是 Nonoka X **执行提供方（Execution Provider）** 的标准接口规范。任何第三方只要完整实现本规范，即可作为独立的转写执行后端接入 Nonoka X 桌面端，复用其媒体库、任务视图、Projector 投影层与 JASSUB 字幕编辑器。
 
 内置的 Local Provider（本地 Python sidecar）与 Cloud Provider（Nonoka 云端）是本规范的两个参考实现，二者与自建 Provider 处于完全同等的地位，前端不对任何 Provider 做特判。
 
@@ -560,7 +560,7 @@ kind|position|duration|gap|corrected|translation|conf|chars|note
 
 ### 11.2 形态 B（Sidecar）
 
-1. 实现第 9 节的 HTTP 路由与 stdout 握手协议（参照 [`src/finoka/sidecar.py`](../src/finoka/sidecar.py) 与 [`src/finoka/local_provider.py`](../src/finoka/local_provider.py)）。
+1. 实现第 9 节的 HTTP 路由与 stdout 握手协议（参照 [`src/nonoka_x/sidecar.py`](../src/nonoka_x/sidecar.py) 与 [`src/nonoka_x/local_provider.py`](../src/nonoka_x/local_provider.py)）。
 2. 在 Go 后端新增一个 service，负责进程生命周期、令牌注入与 JSON 转发（参照 [`desktop/internal/provider/service.go`](../desktop/internal/provider/service.go)）。
 3. 通过 Wails bindings 暴露方法，再在前端包一层形态 A 的薄适配器。
 

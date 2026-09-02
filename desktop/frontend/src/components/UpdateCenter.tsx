@@ -76,7 +76,7 @@ export function UpdateOverlay({ update }: { update: SelfUpdate }) {
       <div className="modal-backdrop update-gate" role="alertdialog" aria-modal="true" aria-label="必须更新">
         <div className="dialog">
           <h2>需要更新到 v{mandatory.version}</h2>
-          <p>这是一个必需版本，Finoka 会自动下载并重启完成安装。</p>
+          <p>这是一个必需版本，Nonoka X 会自动下载并重启完成安装。</p>
           <div className={`update-progress ${determinate ? "" : "indeterminate"}`} role="progressbar"
             aria-valuenow={determinate ? percent : undefined} aria-valuemin={0} aria-valuemax={100}>
             <span style={determinate ? { width: `${percent}%` } : undefined} />

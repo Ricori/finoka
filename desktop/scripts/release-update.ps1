@@ -6,7 +6,8 @@ param(
     [string]$NotesFile = "CHANGELOG.md",
     [switch]$VersionOnly,
     [switch]$SkipBuild,
-    [switch]$Publish
+    [switch]$Publish,
+    [switch]$PublishLegacyUpdatePathOnce
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,7 +40,7 @@ Set-VersionInFile "frontend\package-lock.json" '("":\s*\{\s*"name":\s*"[^"]+",\s
 Set-VersionInFile "internal\selfupdate\service.go" '(?m)^(const Version = ")[^"]+("\s*$)' "`${1}$Version`${2}"
 Set-VersionInFile "build\config.yml" '(?m)^  version: "[^"]+"\r?$' "  version: `"$Version`""
 Set-VersionInFile "build\windows\info.json" '("(?:file_version|product_version|ProductVersion)"\s*:\s*")[^"]+(")' "`${1}$Version`${2}" 2
-Set-VersionInFile "build\windows\wails.exe.manifest" '(<assemblyIdentity\s+type="win32"\s+name="app\.finoka\.desktop"\s+version=")[^"]+(")' "`${1}$Version`${2}"
+Set-VersionInFile "build\windows\wails.exe.manifest" '(<assemblyIdentity\s+type="win32"\s+name="app\.nonoka\.desktop"\s+version=")[^"]+(")' "`${1}$Version`${2}"
 Set-VersionInFile "build\darwin\Info.plist" '(<key>CFBundle(?:ShortVersionString|Version)</key>\s*<string>)[^<]+(</string>)' "`${1}$Version`${2}" 2
 Set-VersionInFile "build\darwin\Info.dev.plist" '(<key>CFBundle(?:ShortVersionString|Version)</key>\s*<string>)[^<]+(</string>)' "`${1}$Version`${2}" 2
 
@@ -97,6 +98,10 @@ if ($Publish) {
     }
     $publisher = Join-Path $PSScriptRoot "publish-update.mjs"
     $outputDir = Join-Path (Join-Path $projectRoot "bin\update") $Version
-    & $node $publisher --dir $outputDir
+    $publishArguments = @($publisher, "--dir", $outputDir)
+    if ($PublishLegacyUpdatePathOnce) {
+        $publishArguments += "--publish-legacy-update-path-once"
+    }
+    & $node @publishArguments
     if ($LASTEXITCODE -ne 0) { throw "Failed to publish update artifacts to R2" }
 }

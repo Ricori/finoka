@@ -14,7 +14,7 @@ const plaintextKeyPattern = /^[A-Za-z0-9._~-]{1,256}$/;
 function generateKey(): string {
   const bytes = new Uint8Array(18);
   crypto.getRandomValues(bytes);
-  return `finoka_${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
+  return `nonoka_${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function errorMessage(value: unknown): string {

@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
 )
 
 const (

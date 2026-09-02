@@ -2,8 +2,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from finesub_bootstrap.models import DownloadProgress
-import finoka.runtime_install as runtime_install
-from finoka.runtime_install import (
+import nonoka_x.runtime_install as runtime_install
+from nonoka_x.runtime_install import (
     KNOWN_WHEEL_SIZES,
     ProgressRuntimeEnvironment,
     large_wheels_from_lock,

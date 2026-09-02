@@ -42,7 +42,7 @@ type Config struct {
 }
 
 // PythonConfig constructs the development/managed-runtime command expected by
-// finoka.sidecar. All paths are resolved before the child starts so a later
+// nonoka_x.sidecar. All paths are resolved before the child starts so a later
 // working-directory change cannot redirect its data or engine.
 //
 // installDir is the FineSub install root. It is passed separately from dataDir

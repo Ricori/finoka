@@ -1,4 +1,4 @@
-import { Service as ProviderService } from "../../bindings/github.com/Ricori/finoka/desktop/internal/provider/index.js";
+import { Service as ProviderService } from "../../bindings/github.com/Ricori/nonoka-x/desktop/internal/provider/index.js";
 import type { EditDocument } from "../documents/types.ts";
 import type { TaskAxis } from "../providers/types.ts";
 

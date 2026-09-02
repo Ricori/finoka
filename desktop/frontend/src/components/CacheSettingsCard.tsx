@@ -35,7 +35,7 @@ export function CacheSettingsCard({ status, busy, message, onSaveLimit, onClear,
         <div>
           <span className="eyebrow">Managed video cache</span>
           <h2>视频库缓存</h2>
-          <p>任务使用过的视频会复制到 Finoka 数据目录。达到上限后按最近使用时间自动回收；原始视频和字幕文档不会被删除。</p>
+          <p>任务使用过的视频会复制到 Nonoka X 数据目录。达到上限后按最近使用时间自动回收；原始视频和字幕文档不会被删除。</p>
         </div>
         <strong>{status ? formatBytes(status.bytes) : "—"}</strong>
       </div>

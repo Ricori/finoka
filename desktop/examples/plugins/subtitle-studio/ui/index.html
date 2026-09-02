@@ -96,12 +96,12 @@
     let loaded = null;   // 最近一次读到的文档（含 rev）
     let mediaId = "";
 
-    /** window.finoka.post 之上的 Promise 封装：一个请求 ID 对应一个 rpc.result */
+    /** window.nonoka.post 之上的 Promise 封装：一个请求 ID 对应一个 rpc.result */
     function rpc(method, params) {
       const id = "req-" + (++counter);
       return new Promise((resolve, reject) => {
         pending.set(id, { resolve, reject });
-        window.finoka.post(method, params || {}, id);
+        window.nonoka.post(method, params || {}, id);
       });
     }
 
@@ -204,7 +204,7 @@
 
     window.addEventListener("message", (event) => {
       const message = event.data;
-      if (message?.source !== "finoka-host") return;
+      if (message?.source !== "nonoka-host") return;
       if (message.method === "host.info") {
         const light = message.result.theme === "light";
         document.body.classList.toggle("light", light);

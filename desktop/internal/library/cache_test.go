@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Ricori/finoka/desktop/internal/storage"
+	"github.com/Ricori/nonoka-x/desktop/internal/storage"
 )
 
 func TestVideoCacheCopiesIntoManagedRootAndClearPreservesSource(t *testing.T) {
@@ -16,7 +16,7 @@ func TestVideoCacheCopiesIntoManagedRootAndClearPreservesSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	tools := fixtureTools{metadata: Metadata{Duration: 4, HasVideo: true, HasAudio: true}}
-	data := filepath.Join(root, "Finoka")
+	data := filepath.Join(root, "Nonoka X")
 	service, err := newServiceWithTools(data, tools, tools)
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestVideoCacheCopiesIntoManagedRootAndClearPreservesSource(t *testing.T) {
 func TestCacheConvergenceUsesLRUAndProtectsActiveEditor(t *testing.T) {
 	root := t.TempDir()
 	tools := fixtureTools{metadata: Metadata{Duration: 4, HasVideo: true, HasAudio: true}}
-	service, err := newServiceWithTools(filepath.Join(root, "Finoka"), tools, tools)
+	service, err := newServiceWithTools(filepath.Join(root, "Nonoka X"), tools, tools)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestCacheLimitPersists(t *testing.T) {
 	}
 }
 
-// The video cache is the half of Finoka's disk use a user can move without
+// The video cache is the half of Nonoka X's disk use a user can move without
 // touching the runtime, so a recorded location has to be honoured from the
 // first import onward — not only after SetCacheDirectory retargets a running
 // service.
@@ -130,8 +130,8 @@ func TestVideoCacheHonoursARelocatedDirectory(t *testing.T) {
 	if err := os.WriteFile(source, []byte("relocated-cache-fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	data := filepath.Join(root, "Finoka")
-	elsewhere := filepath.Join(t.TempDir(), "Finoka", "videos")
+	data := filepath.Join(root, "Nonoka X")
+	elsewhere := filepath.Join(t.TempDir(), "Nonoka X", "videos")
 	if err := os.MkdirAll(data, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestVideoCacheHonoursARelocatedDirectory(t *testing.T) {
 	}
 	// Moving the cache again while the service is running has to take the
 	// existing working copies' directory with it.
-	moved := filepath.Join(t.TempDir(), "Finoka", "videos")
+	moved := filepath.Join(t.TempDir(), "Nonoka X", "videos")
 	if err := os.MkdirAll(filepath.Dir(moved), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-// Runs only when FINOKA_MOVECHECK_DEST names a directory on another volume.
+// Runs only when NONOKA_MOVECHECK_DEST names a directory on another volume.
 func TestManualCrossVolumeMoveCancelAndResume(t *testing.T) {
-	root := os.Getenv("FINOKA_MOVECHECK_DEST")
+	root := os.Getenv("NONOKA_MOVECHECK_DEST")
 	if root == "" {
-		t.Skip("set FINOKA_MOVECHECK_DEST to a directory on another drive")
+		t.Skip("set NONOKA_MOVECHECK_DEST to a directory on another drive")
 	}
 	source := filepath.Join(t.TempDir(), "finesub")
 	destination := filepath.Join(root, "movecheck")

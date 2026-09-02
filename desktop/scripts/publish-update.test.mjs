@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 const publisher = path.join(import.meta.dirname, "..", "scripts", "publish-update.mjs");
 
 function manifest(version, artifacts) {
-  return { schemaVersion: 1, version, channel: "stable", name: `Finoka ${version}`, artifacts };
+  return { schemaVersion: 1, version, channel: "stable", name: `Nonoka X ${version}`, artifacts };
 }
 
 function artifact(platform, arch, filename, content) {
@@ -24,8 +24,8 @@ function artifact(platform, arch, filename, content) {
   };
 }
 
-async function runPublisher(localManifest, files, remoteManifest) {
-  const directory = mkdtempSync(path.join(tmpdir(), "finoka-publish-"));
+async function runPublisher(localManifest, files, remoteManifest, publisherArguments = []) {
+  const directory = mkdtempSync(path.join(tmpdir(), "nonoka-publish-"));
   const requests = [];
   writeFileSync(path.join(directory, "latest.json"), JSON.stringify(localManifest));
   for (const [name, content] of Object.entries(files)) writeFileSync(path.join(directory, name), content);
@@ -52,7 +52,7 @@ async function runPublisher(localManifest, files, remoteManifest) {
   const address = server.address();
   try {
     const result = await new Promise(resolve => {
-      const child = spawn(process.execPath, [publisher, "--dir", directory], {
+      const child = spawn(process.execPath, [publisher, "--dir", directory, ...publisherArguments], {
         env: {
           ...process.env,
           R2_ACCOUNT_ID: "test-account",
@@ -80,8 +80,8 @@ async function runPublisher(localManifest, files, remoteManifest) {
 test("publishes Windows first and merges same-version macOS", async () => {
   const windowsContent = Buffer.from("windows-update");
   const macContent = Buffer.from("mac-update");
-  const windows = artifact("windows", "amd64", "Finoka-0.5.1-windows-amd64.exe", windowsContent);
-  const darwin = artifact("darwin", "universal", "Finoka-0.5.1-darwin-universal.zip", macContent);
+  const windows = artifact("windows", "amd64", "Nonoka-X-0.5.1-windows-amd64.exe", windowsContent);
+  const darwin = artifact("darwin", "universal", "Nonoka-X-0.5.1-darwin-universal.zip", macContent);
   const result = await runPublisher(
     manifest("0.5.1", [windows]),
     { [windows.url]: windowsContent },
@@ -89,7 +89,7 @@ test("publishes Windows first and merges same-version macOS", async () => {
   );
 
   assert.deepEqual(result.requests.map(request => request.method), ["GET", "PUT", "PUT"]);
-  assert.match(result.requests[1].url, /Finoka-0\.5\.1-windows-amd64\.exe\?/);
+  assert.match(result.requests[1].url, /Nonoka-X-0\.5\.1-windows-amd64\.exe\?/);
   assert.match(result.requests[1].headers["cache-control"], /immutable/);
   assert.match(result.requests[2].url, /latest\.json\?/);
   assert.equal(result.requests[2].headers["cache-control"], "no-cache");
@@ -98,14 +98,28 @@ test("publishes Windows first and merges same-version macOS", async () => {
 
 test("does not merge artifacts from another release version", async () => {
   const content = Buffer.from("windows-update");
-  const windows = artifact("windows", "amd64", "Finoka-0.5.2-windows-amd64.exe", content);
-  const oldMac = artifact("darwin", "universal", "Finoka-0.5.1-darwin-universal.zip", Buffer.from("old-mac"));
+  const windows = artifact("windows", "amd64", "Nonoka-X-0.5.2-windows-amd64.exe", content);
+  const oldMac = artifact("darwin", "universal", "Nonoka-X-0.5.1-darwin-universal.zip", Buffer.from("old-mac"));
   const result = await runPublisher(
     manifest("0.5.2", [windows]),
     { [windows.url]: content },
     manifest("0.5.1", [oldMac]),
   );
   assert.deepEqual(result.published.artifacts.map(artifactKey), ["windows/amd64"]);
+});
+
+test("publishes the renamed release to the legacy update path only when requested", async () => {
+  const content = Buffer.from("transition-update");
+  const windows = artifact("windows", "amd64", "Nonoka-X-0.5.3-windows-amd64.exe", content);
+  const result = await runPublisher(
+    manifest("0.5.3", [windows]),
+    { [windows.url]: content },
+    null,
+    ["--publish-legacy-update-path-once"],
+  );
+  const urls = result.requests.map(request => request.url);
+  assert.equal(urls.filter(url => url.includes("nonoka-x-updates/wails")).length, 3);
+  assert.equal(urls.filter(url => url.includes("finoka-updates/wails")).length, 3);
 });
 
 function artifactKey(value) {

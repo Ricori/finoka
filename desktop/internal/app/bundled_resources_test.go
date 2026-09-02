@@ -87,7 +87,7 @@ func TestExtractBundledResourcesPrunesOldVersions(t *testing.T) {
 	base := filepath.Dir(filepath.Dir(root))
 	now := time.Now()
 	for index, name := range []string{"0000000000000001", "0000000000000002", "0000000000000003"} {
-		previous := filepath.Join(base, name, "finoka")
+		previous := filepath.Join(base, name, "nonoka_x")
 		if err := os.MkdirAll(previous, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +110,7 @@ func TestExtractBundledResourcesPrunesOldVersions(t *testing.T) {
 	if len(remaining) != retainedResourceVersions {
 		t.Fatalf("expected %d retained versions, got %v", retainedResourceVersions, remaining)
 	}
-	if _, err := os.Stat(filepath.Join(base, "0000000000000001", "finoka")); err != nil {
+	if _, err := os.Stat(filepath.Join(base, "0000000000000001", "nonoka_x")); err != nil {
 		t.Fatalf("expected the newest spare version retained: %v", err)
 	}
 	if _, err := os.Stat(root); err != nil {

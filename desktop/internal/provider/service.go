@@ -12,13 +12,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Ricori/finoka/desktop/internal/sidecar"
+	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
 )
 
 var validTaskID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 // runtimeTargets is the closed set InstallRuntime forwards to the sidecar: the
-// bulk targets plus OPTIONAL_TOOLS from finoka/provision.py. The rejection
+// bulk targets plus OPTIONAL_TOOLS from nonoka_x/provision.py. The rejection
 // message is derived from it rather than written out again, because the two
 // drifted apart once already -- aria2c was added to the Python side and this
 // list still refused it, naming the old tools in the error.

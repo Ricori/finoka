@@ -15,14 +15,14 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from finoka.local_provider import (
+from nonoka_x.local_provider import (
     LocalProvider,
     ProviderError,
     _clear_legacy_separator_decode_probes,
     _prepare_msvc_environment,
     runtime_report,
 )
-from finoka.sidecar import SidecarServer, session_authorized
+from nonoka_x.sidecar import SidecarServer, session_authorized
 
 
 def wait_state(provider: LocalProvider, task_id: str, expected: set[str], timeout: float = 5) -> dict:

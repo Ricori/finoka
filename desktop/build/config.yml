@@ -4,8 +4,8 @@ version: '3'
 
 info:
   companyName: "Ricori"
-  productName: "Finoka"
-  productIdentifier: "app.finoka.desktop"
+  productName: "Nonoka X"
+  productIdentifier: "app.nonoka.desktop"
   description: "Local-first subtitle production"
   copyright: "© 2026 Ricori"
   comments: "Local and cloud subtitle production in one media library."

@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Ricori/finoka/desktop/internal/library"
-	"github.com/Ricori/finoka/desktop/internal/sidecar"
-	"github.com/Ricori/finoka/desktop/internal/storage"
+	"github.com/Ricori/nonoka-x/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
+	"github.com/Ricori/nonoka-x/desktop/internal/storage"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -45,12 +45,12 @@ const emptyInstallThreshold = 64 << 20
 // Location describes one relocatable directory for the settings page.
 type Location struct {
 	Target string `json:"target"`
-	// Directory is what Finoka uses right now, relocated or not.
+	// Directory is what Nonoka X uses right now, relocated or not.
 	Directory string `json:"directory"`
 	Default   string `json:"default"`
 	Custom    bool   `json:"custom"`
 	// Missing marks a recorded directory that is not there any more, which is
-	// what an unplugged external drive looks like. Finoka keeps pointing at it
+	// what an unplugged external drive looks like. Nonoka X keeps pointing at it
 	// rather than quietly reinstalling gigabytes somewhere else.
 	Missing   bool   `json:"missing"`
 	Bytes     int64  `json:"bytes"`
@@ -118,7 +118,7 @@ type measurement struct {
 	taken time.Time
 }
 
-// StorageService moves Finoka's two large directories to another drive.
+// StorageService moves Nonoka X's two large directories to another drive.
 //
 // The move is the easy half; the hard half is that the FineSub install root is
 // in use by a running sidecar whose Python interpreter lives inside it. So a
@@ -239,7 +239,7 @@ func (s *StorageService) forget() {
 }
 
 // ChooseDirectory opens the folder picker and resolves what the pick means: the
-// exact directory Finoka would own, whether it is on the same volume (a move
+// exact directory Nonoka X would own, whether it is on the same volume (a move
 // that costs nothing) and whether the volume has room.
 func (s *StorageService) ChooseDirectory(target string) (Destination, error) {
 	if target != storage.RuntimeTarget && target != storage.VideoTarget {
@@ -315,7 +315,7 @@ func (s *StorageService) Relocate(target, destination string) (RelocationProgres
 	return s.start(target, resolved)
 }
 
-// ResetLocation moves target back under the Finoka data directory.
+// ResetLocation moves target back under the Nonoka X data directory.
 func (s *StorageService) ResetLocation(target string) (RelocationProgress, error) {
 	fallback := storage.Default(s.dataDirectory, target)
 	if fallback == "" {
@@ -439,7 +439,7 @@ func (s *StorageService) run(ctx context.Context, target, source, destination st
 			p.Message = "迁移完成，" + leftovers
 		}
 		if applyErr != nil {
-			p.Message = "迁移完成，但需要重启 Finoka 才能生效"
+			p.Message = "迁移完成，但需要重启 Nonoka X 才能生效"
 			p.Error = applyErr.Error()
 		}
 	})

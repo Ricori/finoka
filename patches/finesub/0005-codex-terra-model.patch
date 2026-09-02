@@ -1,7 +1,7 @@
 Subject: [PATCH 5/5] Add the GPT-5.6 Terra fact and its Codex targets
 
 Reason: Codex CLI serves gpt-5.6-terra alongside luna and sol, but the packaged
-catalog only records the other two, so Finoka's desktop routing has no target
+catalog only records the other two, so Nonoka X's desktop routing has no target
 to point at. LOCAL_CODEX rows are deliberately not auto-wired into targets
 (AUTO_TARGET_LOCAL_AGENT_PROFILES lists dsh only, because an agent CLI's model
 list is the vendor's), so the row has to come with its own completion and

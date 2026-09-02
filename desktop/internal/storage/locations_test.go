@@ -19,7 +19,7 @@ func TestDirectoryFallsBackToTheDataDirectory(t *testing.T) {
 
 func TestSetRecordsAndRestoresLocations(t *testing.T) {
 	data := t.TempDir()
-	elsewhere := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	elsewhere := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	if _, err := Set(data, RuntimeTarget, elsewhere); err != nil {
 		t.Fatalf("set runtime location: %v", err)
 	}
@@ -75,15 +75,15 @@ func TestDestinationForAddsOneContainer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("destination: %v", err)
 	}
-	if want := filepath.Join(root, "Finoka", "finesub"); destination != want {
+	if want := filepath.Join(root, "Nonoka X", "finesub"); destination != want {
 		t.Fatalf("destination = %q, want %q", destination, want)
 	}
 	// Picking the container a previous move made must not nest another one.
-	again, err := DestinationFor(filepath.Join(root, "Finoka"), VideoTarget)
+	again, err := DestinationFor(filepath.Join(root, "Nonoka X"), VideoTarget)
 	if err != nil {
 		t.Fatalf("destination: %v", err)
 	}
-	if want := filepath.Join(root, "Finoka", "videos"); again != want {
+	if want := filepath.Join(root, "Nonoka X", "videos"); again != want {
 		t.Fatalf("destination = %q, want %q", again, want)
 	}
 }
@@ -104,7 +104,7 @@ func TestValidateDestinationRejectsUnusableTargets(t *testing.T) {
 			t.Fatalf("%s was accepted as a destination", name)
 		}
 	}
-	fresh := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	fresh := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	if err := ValidateDestination(data, RuntimeTarget, fresh); err != nil {
 		t.Fatalf("fresh destination rejected: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestValidateDestinationRejectsUnusableTargets(t *testing.T) {
 
 func TestValidateDestinationRejectsANonEmptyDirectory(t *testing.T) {
 	data := t.TempDir()
-	destination := filepath.Join(t.TempDir(), "Finoka", "videos")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "videos")
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		t.Fatalf("create destination: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestValidateDestinationAcceptsItsOwnPartialCopy(t *testing.T) {
 	if err := os.MkdirAll(source, 0o755); err != nil {
 		t.Fatalf("create source: %v", err)
 	}
-	destination := filepath.Join(t.TempDir(), "Finoka", "finesub")
+	destination := filepath.Join(t.TempDir(), "Nonoka X", "finesub")
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		t.Fatalf("create destination: %v", err)
 	}

@@ -62,7 +62,7 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
       <Notice className="plugin-message" message={message} tone={message.includes("失败") ? "warn" : "success"} onDismiss={onDismissMessage} />
       <article className="panel plugin-manager-hero">
         <div>
-          <span className="eyebrow">扩展 Finoka</span>
+          <span className="eyebrow">扩展 Nonoka X</span>
           <h2>插件管理</h2>
           <p>安装的插件会挂载在左侧“工具”板块。停用会隐藏入口，但保留插件和数据。</p>
         </div>
@@ -78,12 +78,12 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
         </>
       )}
 
-      <h3 className="plugin-group-title">已安装的插件<small>你自己安装的 .finoka-plugin 包</small></h3>
+      <h3 className="plugin-group-title">已安装的插件<small>你自己安装的 .nonoka-plugin 包</small></h3>
       {userPlugins.length === 0 ? (
         <article className="panel plugin-empty">
           <span className="plugin-empty-icon">◇</span>
           <h3>还没有安装插件</h3>
-          <p>选择一个 <code>.finoka-plugin</code> 文件，安装后工具入口会立即出现在左侧。</p>
+          <p>选择一个 <code>.nonoka-plugin</code> 文件，安装后工具入口会立即出现在左侧。</p>
           <button className="quiet-button" disabled={busy !== ""} onClick={() => void onInstall()}>选择插件包</button>
         </article>
       ) : (

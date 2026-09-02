@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Ricori/finoka/desktop/internal/managedtools"
-	"github.com/Ricori/finoka/desktop/internal/sidecar"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
+	"github.com/Ricori/nonoka-x/desktop/internal/sidecar"
 )
 
 func TestPythonBootstrapDetectsInstalledLauncher(t *testing.T) {
