@@ -186,7 +186,12 @@ func Run(assets fs.FS) error {
 	shutdownContext, cancel := context.WithTimeout(context.Background(), lifecycleTimeout)
 	stopErr := manager.Stop(shutdownContext)
 	cancel()
-	return errors.Join(runErr, stopErr, libraryService.Close())
+	closeErr := libraryService.Close()
+	// Last thing before the process ends: a build downloaded during this
+	// session is swapped in by a helper that waits for us to exit, so the next
+	// launch comes up on it.
+	selfupdate.InstallOnExit(updateService)
+	return errors.Join(runErr, stopErr, closeErr)
 }
 
 func showDataDirectoryMigrationComplete(migration *dataDirectoryMigration) error {

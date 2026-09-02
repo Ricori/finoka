@@ -47,8 +47,9 @@ function useAppVersion(): string {
   return version;
 }
 
-/** Mirrors the topbar affordance: a staged build only needs a restart, and any
-    earlier stage is worth naming so the version below does not look stale. */
+/** Mirrors the topbar affordance: a staged build installs on exit and only
+    needs a restart to arrive sooner, and any earlier stage is worth naming so
+    the version below does not look stale. */
 function UpdateHint({ update }: { update?: SelfUpdate }) {
   const status = update?.status;
   if (!status || status.mandatory) return null;

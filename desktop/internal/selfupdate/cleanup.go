@@ -11,8 +11,10 @@ import (
 )
 
 // CleanupReplacedExecutables removes the "<name>.exe.old.<timestamp>" copies the
-// Windows update helper leaves behind. The old image is still mapped while the
-// helper exits, so the new build retries for a short window after launch.
+// Windows update helper leaves behind, along with any "<name>.exe.new.<timestamp>"
+// left by a swap that was interrupted before it renamed the file into place. The
+// old image is still mapped while the helper exits, so the new build retries for
+// a short window after launch.
 func CleanupReplacedExecutables() {
 	if runtime.GOOS != "windows" {
 		return
@@ -37,13 +39,9 @@ func removeReplacedExecutables(executable string) int {
 	if err != nil {
 		return 0
 	}
-	prefix := name + ".old."
 	remaining := 0
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
-			continue
-		}
-		if _, err := strconv.ParseInt(strings.TrimPrefix(entry.Name(), prefix), 10, 64); err != nil {
+		if entry.IsDir() || !replacedExecutable(entry.Name(), name) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(directory, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -51,4 +49,19 @@ func removeReplacedExecutables(executable string) int {
 		}
 	}
 	return remaining
+}
+
+// replacedExecutable reports whether entry is one of the timestamped copies the
+// swap makes of name, rather than an unrelated neighbour that happens to share
+// the prefix.
+func replacedExecutable(entry, name string) bool {
+	for _, prefix := range []string{name + ".old.", name + ".new."} {
+		if !strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		if _, err := strconv.ParseInt(strings.TrimPrefix(entry, prefix), 10, 64); err == nil {
+			return true
+		}
+	}
+	return false
 }

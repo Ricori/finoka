@@ -17,7 +17,7 @@ https://livestream.nonoka.online/nonoka-x-updates/wails/latest.json
 
 客户端启动后立即检查一次，此后每 4 小时检查一次。检查到新版本后会在后台下载、校验并暂存安装包：
 
-- 普通更新不会打断当前工作。下载完成后顶部会出现“更新到 vX.Y.Z”按钮；如果用户没有主动安装，则在下次启动时安装并重启。
+- 普通更新不会打断当前工作。下载完成后顶部会出现“更新到 vX.Y.Z”按钮；如果用户没有主动点击，安装会在退出应用时由更新助手完成，下次启动即为新版本，不会重复下载。
 - 强制更新由清单中的 `metadata.minVersion` 决定。当当前版本低于该值时，更新界面会接管主窗口。
 - 强制更新期间如果字幕编辑器仍然打开，应用会提示用户保存并关闭编辑器，关闭后再安装，避免丢失未保存内容。
 - 更新成功后的首次启动会展示一次对应版本的更新说明。
@@ -41,6 +41,7 @@ $env:NONOKA_UPDATE_MANIFEST = "http://127.0.0.1:8080/latest.json"
 主要实现位于：
 
 - `internal/selfupdate/service.go`：检查、下载、强制更新、重启及更新说明。
+- `internal/selfupdate/install.go`：退出时替换可执行文件的更新助手（不重启，仅替换）。
 - `internal/selfupdate/cleanup.go`：清理 Windows 更新替换产生的旧 exe。
 - `frontend/src/components/UpdateCenter.tsx`：下载状态、普通更新按钮、强制更新界面及更新说明。
 - `frontend/src/editor/hooks/useDesktopEvents.ts`：强制更新时保护编辑器中的未保存工作。

@@ -8,7 +8,7 @@ export const stageLabels: Record<string, string> = {
   download: "正在下载新版本…",
   verify: "正在校验安装包…",
   unpack: "正在准备安装…",
-  ready: "新版本已就绪",
+  ready: "新版本已就绪，退出后自动安装",
   "waiting-editor": "关闭字幕工作台后即可完成更新",
   installing: "正在安装，应用即将重启…",
   retry: "下载失败，正在重试…",
@@ -21,8 +21,9 @@ export interface SelfUpdate {
   dismissNotes: () => void;
 }
 
-/** Subscribes once to the updater lifecycle. Downloads run in the background;
-    the renderer only surfaces a staged build and any mandatory gate. */
+/** Subscribes once to the updater lifecycle. Downloads run in the background
+    and the swap happens on exit; the renderer only surfaces a staged build and
+    any mandatory gate. */
 export function useSelfUpdate(): SelfUpdate {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [notes, setNotes] = useState<ReleaseNotes | null>(null);
@@ -52,13 +53,13 @@ export function useSelfUpdate(): SelfUpdate {
   return { status, notes, install, dismissNotes };
 }
 
-/** Topbar affordance for an optional update. The build is already staged, so
-    this only decides when the restart happens. */
+/** Topbar affordance for an optional update. The build is already staged and
+    installs itself when the app exits, so this only offers to bring it forward. */
 export function UpdateButton({ update }: { update: SelfUpdate }) {
   const { status, install } = update;
   if (!status?.ready || status.mandatory || status.stage === "installing") return null;
   return (
-    <button className="update-button" type="button" title="新版本已下载完成，点击重启安装" onClick={install}>
+    <button className="update-button" type="button" title="新版本已下载完成，退出应用后自动安装；点击立即重启安装" onClick={install}>
       <span aria-hidden="true">⭮</span> 更新到 v{status.version}
     </button>
   );

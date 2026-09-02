@@ -1,13 +1,16 @@
 // Package selfupdate keeps the packaged desktop build current from a signed
-// Wails update manifest. Downloads happen in the background; installation is
-// deferred to the next launch so an in-flight editing session is never
-// interrupted, unless the manifest marks the release mandatory.
+// Wails update manifest. Downloads happen in the background and the swap runs
+// as the application exits, so an in-flight editing session is never
+// interrupted and the next launch is already on the new build. A release the
+// manifest marks mandatory, or the update button, installs and restarts
+// straight away instead.
 package selfupdate
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,10 +55,6 @@ type ReleaseNotes struct {
 	Notes   string `json:"notes"`
 }
 
-type pendingUpdate struct {
-	Version string `json:"version"`
-}
-
 type Service struct {
 	mu         sync.Mutex
 	app        *application.App
@@ -63,6 +62,7 @@ type Service struct {
 	status     Status
 	busy       bool
 	tracking   bool
+	handedOff  bool
 	editorOpen func() bool
 }
 
@@ -144,14 +144,11 @@ func Start(s *Service, editorOpen func() bool) {
 	s.editorOpen = editorOpen
 	s.mu.Unlock()
 	s.setStage("checking", false)
-	// Only a marker left by a previous launch authorises installing straight
-	// away; anything found now is downloaded and installed on the next start.
-	installNow := s.consumePending()
+	removeLegacyPendingMarker(s.root)
 	go func() {
-		s.check(context.Background(), installNow)
 		for {
+			s.check(context.Background())
 			time.Sleep(checkInterval)
-			s.check(context.Background(), false)
 		}
 	}()
 }
@@ -167,7 +164,7 @@ func manifestURL() string {
 	return strings.TrimRight(base, "/") + "/wails/latest.json"
 }
 
-func (s *Service) check(ctx context.Context, installIfReady bool) {
+func (s *Service) check(ctx context.Context) {
 	s.mu.Lock()
 	if s.busy || s.status.Ready || s.app == nil {
 		s.mu.Unlock()
@@ -184,7 +181,7 @@ func (s *Service) check(ctx context.Context, installIfReady bool) {
 
 	release, err := app.Updater.Check(ctx)
 	if err != nil {
-		s.retryOrIdle(installIfReady)
+		s.retryOrIdle()
 		return
 	}
 	if release == nil {
@@ -208,7 +205,7 @@ func (s *Service) check(ctx context.Context, installIfReady bool) {
 	s.tracking = false
 	s.mu.Unlock()
 	if err != nil {
-		s.retryOrIdle(installIfReady)
+		s.retryOrIdle()
 		return
 	}
 	if strings.TrimSpace(release.Notes) != "" {
@@ -222,19 +219,14 @@ func (s *Service) check(ctx context.Context, installIfReady bool) {
 	s.publish(status)
 	app.Event.Emit("update:ready", map[string]string{"version": release.Version})
 
-	switch {
-	case mandatory:
+	// An optional release stays staged: InstallOnExit performs the swap during
+	// shutdown unless the user reaches for the update button first.
+	if mandatory {
 		go s.waitAndInstallMandatory()
-	case installIfReady:
-		// Downloaded during a previous session: install now and come back up
-		// on the new build.
-		go s.InstallUpdate()
-	default:
-		s.markPending(release.Version)
 	}
 }
 
-func (s *Service) retryOrIdle(installIfReady bool) {
+func (s *Service) retryOrIdle() {
 	s.mu.Lock()
 	mandatory := s.status.Mandatory
 	s.mu.Unlock()
@@ -245,7 +237,7 @@ func (s *Service) retryOrIdle(installIfReady bool) {
 	s.setStage("retry", false)
 	go func() {
 		time.Sleep(retryInterval)
-		s.check(context.Background(), installIfReady)
+		s.check(context.Background())
 	}()
 }
 
@@ -272,16 +264,42 @@ func (s *Service) InstallUpdate() bool {
 		return false
 	}
 	s.status.Stage = "installing"
+	s.handedOff = true
 	status := s.status
 	app := s.app
 	s.mu.Unlock()
 	s.publish(status)
 
 	if app.Updater.Restart(context.Background()) != nil {
+		s.mu.Lock()
+		s.handedOff = false
+		s.mu.Unlock()
 		s.setStage("ready", true)
 		return false
 	}
 	return true
+}
+
+// InstallOnExit swaps in a staged build while the application shuts down. It
+// is the ordinary path for an optional release: the download already happened
+// during this session, so installing here means the next launch comes up on
+// the new build without downloading it a second time. Called after the event
+// loop has returned, and a no-op when nothing is staged or the update was
+// already handed to the Wails restart helper.
+func InstallOnExit(s *Service) {
+	s.mu.Lock()
+	ready, handedOff, app := s.status.Ready, s.handedOff, s.app
+	s.mu.Unlock()
+	if !ready || handedOff || app == nil {
+		return
+	}
+	staged := app.Updater.DownloadedPath()
+	if staged == "" {
+		return
+	}
+	if err := spawnInstaller(staged); err != nil {
+		log.Printf("auto update: install on exit: %v", err)
+	}
 }
 
 // ConsumeReleaseNotes returns the notes for the running build exactly once.
@@ -346,22 +364,11 @@ func (s *Service) publish(status Status) {
 
 func (s *Service) releaseNotesPath() string { return filepath.Join(s.root, "release-notes.json") }
 
-func (s *Service) pendingUpdatePath() string { return filepath.Join(s.root, "update-pending.json") }
-
-func (s *Service) markPending(version string) {
-	_ = writeJSONAtomic(s.pendingUpdatePath(), pendingUpdate{Version: version})
-}
-
-// consumePending reads and clears the marker a previous session left behind,
-// reporting whether one was present.
-func (s *Service) consumePending() bool {
-	path := s.pendingUpdatePath()
-	var pending pendingUpdate
-	if err := readJSON(path, &pending); err != nil || pending.Version == "" {
-		return false
-	}
-	_ = os.Remove(path)
-	return true
+// removeLegacyPendingMarker clears the marker builds up to 0.2.1 wrote to
+// schedule an install for the next launch. Installing now happens on the way
+// out, so the file is only litter.
+func removeLegacyPendingMarker(root string) {
+	_ = os.Remove(filepath.Join(root, "update-pending.json"))
 }
 
 func releaseMandatory(release *wailsupdater.Release, current string) bool {

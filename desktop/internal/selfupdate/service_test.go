@@ -52,6 +52,7 @@ func TestRemoveReplacedExecutables(t *testing.T) {
 	replaced := []string{
 		executable + ".old.1786267404207847300",
 		executable + ".old.1786267404207847301",
+		executable + ".new.1786267404207847302",
 	}
 	kept := []string{executable, filepath.Join(directory, "keep.old.1")}
 	for _, path := range append(append([]string{}, kept...), replaced...) {
@@ -103,22 +104,75 @@ func TestConsumeReleaseNotesOnce(t *testing.T) {
 	}
 }
 
-// A pending marker is what authorises installing on the following launch, so it
-// has to survive a write and be cleared by the read that consumes it.
-func TestConsumePendingUpdateClearsMarker(t *testing.T) {
-	service, err := New(t.TempDir())
-	if err != nil {
+// The helper that installs on the way out replaces the running executable in
+// place and leaves nothing of the staging directory behind. A parent PID of 0
+// stands for "nothing left to wait for", which is what the swap-only path
+// under test needs.
+func TestRunInstallerReplacesTargetAndClearsStaging(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "Nonoka X.exe")
+	if err := os.WriteFile(target, []byte("previous build"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if service.consumePending() {
-		t.Fatal("pending update reported without a marker")
+	staging := filepath.Join(directory, "wails-update-123")
+	if err := os.Mkdir(staging, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	service.markPending("9.9.9")
-	if !service.consumePending() {
-		t.Fatal("pending marker was not observed")
+	source := filepath.Join(staging, "Nonoka-X-windows-amd64.exe")
+	if err := os.WriteFile(source, []byte("staged build"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if service.consumePending() {
-		t.Fatal("pending marker was not cleared")
+
+	if code := runInstaller(target, source, 0, waitForExit); code != 0 {
+		t.Fatalf("installer exited with %d", code)
+	}
+	installed, err := os.ReadFile(target)
+	if err != nil || string(installed) != "staged build" {
+		t.Fatalf("target = %q, err = %v", installed, err)
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatal("staging directory was not cleared")
+	}
+	asides, _ := filepath.Glob(target + ".old.*")
+	if len(asides) != 0 {
+		t.Fatalf("replaced build was left behind: %v", asides)
+	}
+}
+
+// A swap that cannot put the new build in place has to leave the running one
+// exactly where it was: the retry that follows expects to find it, and so does
+// the user if every retry fails.
+func TestReplaceExecutableRestoresTargetWhenSwapFails(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "Nonoka X.exe")
+	if err := os.WriteFile(target, []byte("previous build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceExecutable(target, filepath.Join(directory, "Nonoka X.exe.new.1")); err == nil {
+		t.Fatal("swap reported success with nothing staged")
+	}
+	if content, err := os.ReadFile(target); err != nil || string(content) != "previous build" {
+		t.Fatalf("target = %q, err = %v", content, err)
+	}
+	asides, _ := filepath.Glob(target + ".old.*")
+	if len(asides) != 0 {
+		t.Fatalf("running build was left aside: %v", asides)
+	}
+}
+
+// A helper that cannot find what it was asked to install must leave the
+// running build alone rather than move it aside for a swap that never lands.
+func TestRunInstallerKeepsTargetWhenSourceIsMissing(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "Nonoka X.exe")
+	if err := os.WriteFile(target, []byte("previous build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if code := runInstaller(target, filepath.Join(directory, "absent"), 0, waitForExit); code == 0 {
+		t.Fatal("installer reported success without a staged build")
+	}
+	if content, err := os.ReadFile(target); err != nil || string(content) != "previous build" {
+		t.Fatalf("target = %q, err = %v", content, err)
 	}
 }
 
@@ -159,7 +213,7 @@ func TestCheckDownloadsAndVerifiesEndpointArtifact(t *testing.T) {
 	if err := Attach(service, app); err != nil {
 		t.Fatal(err)
 	}
-	service.check(t.Context(), false)
+	service.check(t.Context())
 
 	status := service.GetStatus()
 	if !status.Ready || status.Version != updateVersion || status.Stage != "ready" {
@@ -173,10 +227,6 @@ func TestCheckDownloadsAndVerifiesEndpointArtifact(t *testing.T) {
 	var notes ReleaseNotes
 	if err := readJSON(service.releaseNotesPath(), &notes); err != nil || notes.Version != updateVersion {
 		t.Fatalf("release notes = %#v, err = %v", notes, err)
-	}
-	// The optional path defers installation, leaving a marker for next launch.
-	if !service.consumePending() {
-		t.Fatal("optional update did not leave a pending marker")
 	}
 }
 
