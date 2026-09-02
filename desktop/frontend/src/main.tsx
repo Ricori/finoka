@@ -1,4 +1,3 @@
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 // styles.css is the base sheet and must be emitted before the per-page sheets that
 // theme on top of it: bundlers order CSS by module-graph position, so importing it
@@ -11,10 +10,6 @@ import { installWindowsTitlebar } from "./bridge/window.ts";
 const root = document.getElementById("root");
 if (!root) throw new Error("Nonoka X root element is missing");
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+createRoot(root).render(<App />);
 
 void installWindowsTitlebar();
