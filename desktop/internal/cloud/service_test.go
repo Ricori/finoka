@@ -992,3 +992,65 @@ func TestSessionCarriesTheLibraryAndDropsTheExtraRequests(t *testing.T) {
 		})
 	}
 }
+
+// A zero-byte cloud-sync-suppressions.json took the whole desktop down with
+// "unexpected end of JSON input" before main() drew a window. The writer cannot
+// produce that file -- it marshals at least `{}`, writes a temporary and
+// renames -- so the damage arrives from outside the app, and none of the three
+// files is worth refusing to start over: the session is a key the user can
+// enter again, and the links and suppressions rebuild from use.
+func TestDamagedStateFilesDoNotBlockStartup(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		file string
+		body string
+	}{
+		{"empty suppressions", "cloud-sync-suppressions.json", ""},
+		{"truncated suppressions", "cloud-sync-suppressions.json", `{"fingerprint":`},
+		{"empty links", "cloud-tasks.json", ""},
+		{"links of the wrong shape", "cloud-tasks.json", `["not","a","map"]`},
+		{"empty session", "cloud-session.json", ""},
+		{"session with no key", "cloud-session.json", `{"backend":"https://example.test"}`},
+		{"session with a rejected backend", "cloud-session.json", `{"backend":"ftp://example.test","key":"k"}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, testCase.file), []byte(testCase.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			service, err := New(root, fakeProvider{})
+			if err != nil {
+				t.Fatalf("New() = %v, want a service that starts", err)
+			}
+			if service.Session().Authenticated {
+				t.Fatal("damaged state must not authenticate a session")
+			}
+			// Usable, not merely constructed: the maps have to be the empty
+			// ones the rest of the service writes into, never nil.
+			if service.links == nil || service.syncSuppressions == nil {
+				t.Fatalf("links=%#v suppressions=%#v, want empty maps", service.links, service.syncSuppressions)
+			}
+		})
+	}
+}
+
+// The other direction: a file that is intact still has to be read.
+func TestIntactStateIsStillLoaded(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "cloud-session.json"), []byte(`{"backend":"https://example.test","key":"login-key"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "cloud-sync-suppressions.json"), []byte(`{"fingerprint":1234}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(root, fakeProvider{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session := service.Session(); !session.Authenticated || session.Backend != "https://example.test" {
+		t.Fatalf("session = %#v, want the stored one", session)
+	}
+	if service.syncSuppressions["fingerprint"] != 1234 {
+		t.Fatalf("suppressions = %#v, want the stored one", service.syncSuppressions)
+	}
+}

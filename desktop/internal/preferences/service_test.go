@@ -62,3 +62,25 @@ func TestPreferencesSaveWindowThemesIndependently(t *testing.T) {
 		t.Fatalf("themes = %q / %q, want dark / dark", state.HomeTheme, state.EditorTheme)
 	}
 }
+
+// Window bounds and two theme choices are worth one log line and the defaults,
+// never a desktop that will not open. Same rule the cloud state files follow.
+func TestDamagedPreferencesFallBackToDefaults(t *testing.T) {
+	for _, body := range []string{"", "{", `{"homeTheme":`, "not json at all"} {
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "preferences.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		service, err := New(root)
+		if err != nil {
+			t.Fatalf("New() with %q = %v, want a service that starts", body, err)
+		}
+		state := service.Get()
+		if state.HomeTheme != "light" || state.EditorTheme != "dark" || state.LibraryView != "grid" {
+			t.Fatalf("state for %q = %#v, want the first-launch defaults", body, state)
+		}
+		if state.Bounds == nil {
+			t.Fatalf("bounds for %q are nil, want an empty map", body)
+		}
+	}
+}

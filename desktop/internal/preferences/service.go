@@ -3,6 +3,7 @@ package preferences
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -41,9 +42,7 @@ func New(dataDirectory string) (*Service, error) {
 		path: filepath.Join(root, "preferences.json"),
 		data: State{Schema: 2, HomeTheme: "light", EditorTheme: "dark", LibraryView: "grid", Bounds: map[string]WindowBounds{}},
 	}
-	if err := service.load(); err != nil {
-		return nil, err
-	}
+	service.load()
 	return service, nil
 }
 
@@ -117,17 +116,21 @@ func (s *Service) SetWindowBounds(kind string, bounds WindowBounds) error {
 	return nil
 }
 
-func (s *Service) load() error {
-	data, err := os.ReadFile(s.path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
+func (s *Service) load() {
+	// Window bounds and two theme choices. Damaged, they are worth exactly one
+	// log line and the defaults every first launch gets -- the normalisation
+	// below turns the zero State into precisely that, and the next save
+	// rewrites the file. Returning the decode error instead made an empty
+	// preferences file a reason for the desktop not to open at all.
 	var state State
-	if err := json.Unmarshal(data, &state); err != nil {
-		return err
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("preferences: ignoring unreadable %s: %v", filepath.Base(s.path), err)
+		}
+	} else if err := json.Unmarshal(data, &state); err != nil {
+		log.Printf("preferences: ignoring damaged %s: %v", filepath.Base(s.path), err)
+		state = State{}
 	}
 	if state.HomeTheme != "dark" && state.HomeTheme != "light" {
 		state.HomeTheme = "light"
@@ -143,7 +146,6 @@ func (s *Service) load() error {
 		state.Bounds = map[string]WindowBounds{}
 	}
 	s.data = state
-	return nil
 }
 
 func cloneState(state State) State {

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -228,9 +229,7 @@ func New(dataDirectory string, provider providerCaller, resolvers ...mediaResolv
 	if len(resolvers) > 0 {
 		service.media = resolvers[0]
 	}
-	if err := service.load(); err != nil {
-		return nil, err
-	}
+	service.load()
 	return service, nil
 }
 
@@ -1511,48 +1510,56 @@ func validBackend(value string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-func (s *Service) load() error {
-	data, err := os.ReadFile(s.configPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err == nil {
-		var value storedSession
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
+// readState decodes one persisted file. A file that is missing, unreadable or
+// damaged all mean the same thing here -- no state -- and `value` is left as
+// the caller initialised it.
+//
+// Nothing these three files hold is irreplaceable: the session is a key the
+// user can enter again, and the links and suppressions rebuild from use. What
+// refusing to start over one of them costs is the whole desktop, which is how
+// a zero-byte `cloud-sync-suppressions.json` turned into `unexpected end of
+// JSON input` before main() had drawn a window. The writer cannot produce that
+// file -- it marshals at least `{}`, writes a temporary and renames -- so the
+// damage arrives from outside the app, and the app has to survive it.
+// `taskhistory` already treats its own file this way.
+func readState(path string, value any) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("cloud: ignoring unreadable %s: %v", filepath.Base(path), err)
 		}
-		backend, backendErr := validBackend(value.Backend)
-		if backendErr != nil || strings.TrimSpace(value.Key) == "" {
-			return errors.New("stored cloud session is invalid")
-		}
-		value.Backend = backend
-		s.session = value
+		return false
 	}
-	data, err = os.ReadFile(s.linksPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	if err := json.Unmarshal(data, value); err != nil {
+		log.Printf("cloud: ignoring damaged %s: %v", filepath.Base(path), err)
+		return false
 	}
-	if err == nil {
-		if err := json.Unmarshal(data, &s.links); err != nil {
-			return err
-		}
-		if s.links == nil {
-			s.links = map[string]taskLink{}
-		}
-	}
-	data, err = os.ReadFile(s.syncSuppressionsPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err == nil {
-		if err := json.Unmarshal(data, &s.syncSuppressions); err != nil {
-			return err
-		}
-		if s.syncSuppressions == nil {
-			s.syncSuppressions = map[string]int64{}
+	return true
+}
+
+func (s *Service) load() {
+	var stored storedSession
+	if readState(s.configPath, &stored) {
+		backend, backendErr := validBackend(stored.Backend)
+		if backendErr == nil && strings.TrimSpace(stored.Key) != "" {
+			stored.Backend = backend
+			s.session = stored
+		} else if stored != (storedSession{}) {
+			// A stored session that no longer passes the backend rules is a
+			// logged-out start, not a dead app: the user signs in again.
+			log.Printf("cloud: ignoring invalid stored session in %s", filepath.Base(s.configPath))
 		}
 	}
-	return nil
+	// Decoded aside and adopted only whole. `json.Unmarshal` can populate part
+	// of a map before it fails, and half a link table is worse than none.
+	links := map[string]taskLink{}
+	if readState(s.linksPath, &links) && links != nil {
+		s.links = links
+	}
+	suppressions := map[string]int64{}
+	if readState(s.syncSuppressionsPath, &suppressions) && suppressions != nil {
+		s.syncSuppressions = suppressions
+	}
 }
 
 func (s *Service) saveLocked() error {
