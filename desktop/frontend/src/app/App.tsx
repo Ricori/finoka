@@ -21,7 +21,8 @@ import { PipelineController } from "../home/pipelineController.ts";
 import { CloudExecutionProvider } from "../providers/cloudProvider.ts";
 import type { PipelineState } from "../home/pipelineController.ts";
 import { LocalExecutionProvider } from "../providers/localProvider.ts";
-import type { Capabilities, TaskRequest, TaskSnapshot } from "../providers/types.ts";
+import type { Capabilities, TaskAxis, TaskRequest, TaskSnapshot } from "../providers/types.ts";
+import { documents } from "../bridge/documents.ts";
 import { MediaDialog } from "../components/MediaDialog.tsx";
 import type { NoticeTone } from "../components/Notice.tsx";
 import { TranscriptionDialog } from "../components/TranscriptionDialog.tsx";
@@ -348,7 +349,7 @@ export default function App() {
   // This is the set of media that answers to a finished cloud entry and has no
   // local document yet -- derived during render rather than recorded when the
   // download starts, because a card that renders before the effect has run
-  // would offer 开始转写 for that frame and spend a cloud task if clicked.
+  // would offer 开始任务 for that frame and spend a cloud task if clicked.
   const pendingAdoptions = useMemo(() => {
     if (!cloudSession?.authenticated) return [];
     return media
@@ -388,7 +389,7 @@ export default function App() {
           adopted.add(pair.localID);
         } catch {
           // Left for the user to transcribe locally: recording the failure is
-          // what puts 开始转写 back on the card.
+          // what puts 开始任务 back on the card.
           failed.add(pair.key);
         }
       }
@@ -806,7 +807,37 @@ export default function App() {
     setTranscriptionMedia(entry);
   }, []);
 
-  const confirmTranscription = useCallback(async (mode: ExecutionMode, request: TaskRequest) => {
+  // 中文轴 / 双语轴：文字已经齐了，什么都不用算，直接落成可编辑文档。
+  const importAxis = useCallback(async (axis: TaskAxis) => {
+    if (!transcriptionMedia) return;
+    const media = transcriptionMedia;
+    setTranscriptionBusy(true);
+    setTranscriptionError("");
+    try {
+      await documents.importAxis({
+        videoID: media.id,
+        axis,
+        title: media.title,
+        sourcePath: media.sourcePath,
+        fingerprint: media.fingerprint,
+        duration: media.duration,
+      });
+      setTranscriptionMedia(null);
+      setMedia((entries) => entries.map((item) => item.id === media.id
+        ? { ...item, documentAvailable: true, documentRemoved: false }
+        : item));
+      setLibraryMessage(okNotice(`已导入 ${axis.rows.length} 条字幕，可以直接编辑。`));
+      void mediaLibrary.cacheMedia(media.id).then(() => Promise.all([loadLibrary(), loadCacheStatus()])).catch(() => {
+        void loadLibrary();
+      });
+    } catch (value) {
+      setTranscriptionError(value instanceof Error ? value.message : String(value));
+    } finally {
+      setTranscriptionBusy(false);
+    }
+  }, [loadCacheStatus, loadLibrary, transcriptionMedia]);
+
+  const confirmTranscription = useCallback(async (mode: ExecutionMode, request: TaskRequest, axis: TaskAxis | null) => {
     if (!transcriptionMedia) return;
     setTranscriptionBusy(true);
     setTranscriptionError("");
@@ -814,6 +845,10 @@ export default function App() {
       if (mode === "cloud" && !cloudSession?.authenticated) {
         throw new Error("请先使用 Key 登录云端账户");
       }
+      // 投影是消费这条轴的一方，云端任务的产物也在本机投影，所以两种运行环境都记在
+      // 本地文档旁边。没有轴时也要写一次：上一次导入留下的轴不该改变这一次的结果。
+      if (axis) await documents.setAxis(transcriptionMedia.id, axis);
+      else await documents.setAxis(transcriptionMedia.id, null).catch(() => undefined);
       const taskController = mode === "local" ? localController : cloudController;
       setExecutionMode(mode);
       const snapshot = await taskController.start(request);
@@ -1498,6 +1533,7 @@ export default function App() {
         onOpenRuntime={() => { setTranscriptionMedia(null); setSection("runtime"); }}
         onOpenAccount={() => { setTranscriptionMedia(null); setSection("account"); }}
         onOpenKeys={() => { setTranscriptionMedia(null); setSection("keys"); }}
+        onImport={importAxis}
         onStart={confirmTranscription}
       />}
     </div>

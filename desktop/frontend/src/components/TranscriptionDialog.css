@@ -8,7 +8,7 @@
 .transcription-close:disabled { cursor: wait; opacity: .5; }
 .execution-picker { display: grid; gap: 12px; padding: 28px 26px; overflow: auto; }
 .execution-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 15px; width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 18px; background: color-mix(in srgb, var(--bg) 66%, var(--panel)); color: var(--text); cursor: pointer; text-align: left; }
-.execution-card:hover:not(:disabled), .execution-card.preferred:not(:disabled) { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.execution-card:hover:not(:disabled) { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 .execution-card:disabled { cursor: not-allowed; opacity: .58; }
 .execution-card > span:nth-child(2) { display: grid; gap: 5px; }
 .execution-card strong { font-size: 14px; }
@@ -18,6 +18,37 @@
 .execution-icon.cloud { background: color-mix(in srgb, var(--ok) 11%, var(--panel)); color: var(--ok); }
 .execution-unavailable { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 4px 5px; color: var(--faint); font-size: 11px; }
 .execution-unavailable button { border: 0; padding: 2px 0; background: transparent; color: var(--accent); cursor: pointer; }
+.transcription-progress { display: flex; align-items: center; gap: 10px; }
+.step-dots { display: flex; align-items: center; gap: 4px; }
+.step-dots i { width: 6px; height: 6px; border-radius: 999px; background: var(--line); transition: width .18s ease, background-color .18s ease; }
+.step-dots i.done { background: var(--accent-line); }
+.step-dots i.on { width: 16px; background: var(--accent); }
+.axis-chip { max-width: 240px; overflow: hidden; border: 1px solid var(--accent-line); border-radius: 999px; padding: 2px 9px; background: var(--accent-dim); color: var(--accent); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.execution-card.chosen:not(:disabled) { border-color: var(--accent-border); box-shadow: inset 0 0 0 1px var(--accent-line); background: var(--accent-dim); }
+.execution-icon.axis { background: color-mix(in srgb, var(--accent2) 14%, var(--panel)); color: var(--accent2); }
+.execution-unavailable.note { display: block; margin: -6px 4px 2px; line-height: 1.6; }
+.axis-panel { display: grid; gap: 11px; margin-top: -4px; border: 1px solid var(--line-soft); border-radius: 13px; padding: 15px; background: color-mix(in srgb, var(--bg) 52%, var(--panel)); }
+.axis-browse { display: grid; gap: 4px; justify-items: center; border: 1px dashed var(--line); border-radius: 11px; padding: 20px 14px; background: transparent; color: var(--text); cursor: pointer; }
+.axis-browse:hover { border-color: var(--accent-border); background: var(--accent-dim); }
+.axis-browse strong { font-size: 13px; }
+.axis-browse small { color: var(--faint); font-size: 11px; }
+.axis-file-line { display: flex; align-items: center; gap: 10px; }
+.axis-file-line span { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.axis-file-line button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; background: var(--raised); color: var(--mut); cursor: pointer; font-size: 11px; }
+.axis-file-line button:hover { border-color: var(--accent-border); color: var(--text); }
+.axis-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border-radius: 10px; overflow: hidden; background: var(--line-soft); }
+.axis-stats > div { display: grid; gap: 3px; padding: 9px 11px; background: color-mix(in srgb, var(--bg) 70%, var(--panel)); }
+.axis-stats span { color: var(--faint); font-size: 11px; }
+.axis-stats strong { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.axis-panel label { display: grid; gap: 7px; color: var(--mut); font-size: 11px; }
+.axis-hint { margin: 0; color: var(--faint); font-size: 11px; line-height: 1.6; }
+.axis-hint.ok { color: var(--ok); }
+.axis-hint.bad { color: var(--warn); }
+.axis-hint.warn { color: var(--accent2); }
+.transcription-note { margin: 10px 2px 0; border-left: 2px solid var(--accent-line); padding: 1px 0 1px 10px; color: var(--mut); font-size: 11px; line-height: 1.65; }
+/* 网格自己有间距，这两块在设置页里带的外边距会在这里叠成一道空档 */
+.execution-picker .transcription-summary { margin-top: 2px; }
+.execution-picker .transcription-error { margin-top: 0; }
 .transcription-settings { padding: 5px 26px 24px; overflow: auto; }
 .transcription-section { padding: 19px 0; border-bottom: 1px solid var(--line-soft); }
 .transcription-section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }

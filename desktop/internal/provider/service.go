@@ -166,6 +166,33 @@ func (s *Service) SaveDocument(videoID string, document map[string]any) (map[str
 	return result, err
 }
 
+// SetDocumentAxis records the imported subtitle axis a run on this video must
+// land on, or clears it when axis is nil. It is stored beside the document
+// rather than carried in the TaskRequest because the projection consumes it,
+// and a cloud task's artifacts are projected locally without its request ever
+// reaching the sidecar.
+func (s *Service) SetDocumentAxis(videoID string, axis map[string]any) (map[string]any, error) {
+	endpoint, err := documentEndpoint(videoID, "axis")
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err = s.provider.DoJSON(context.Background(), http.MethodPut, endpoint, map[string]any{"axis": axis}, &result)
+	return result, err
+}
+
+// ImportDocument turns a finished subtitle axis into an editable document
+// without running a task: a bilingual or translated file has nothing left for
+// the engine to compute.
+func (s *Service) ImportDocument(payload map[string]any) (map[string]any, error) {
+	if payload == nil {
+		return nil, errors.New("import payload is required")
+	}
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/documents/import", payload, &result)
+	return result, err
+}
+
 func (s *Service) StartTask(request map[string]any) (map[string]any, error) {
 	if request == nil {
 		return nil, errors.New("task request is required")

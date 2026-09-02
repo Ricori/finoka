@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MediaEntry } from "../bridge/library.ts";
 import { cloudTaskRequest, localTaskRequest } from "../home/defaultRequest.ts";
-import type { Capabilities, TaskRequest } from "../providers/types.ts";
+import type { Capabilities, TaskAxis, TaskRequest } from "../providers/types.ts";
 import type { FineSubSettingsState } from "../bridge/settings.ts";
 import type { ExecutionMode } from "../app/types.ts";
 import { CustomSelect } from "./CustomSelect.tsx";
+import {
+  AXIS_KIND_HINT, AXIS_KIND_LABEL, AXIS_KIND_SHORT, parseAxisFile, recolumn,
+  type AxisKind, type AxisParse,
+} from "../subtitles/assAxis.ts";
 import { routeServesMedia, type MediaCapability } from "./llmRouting.ts";
 import "./TranscriptionDialog.css";
 
@@ -24,7 +28,8 @@ interface TranscriptionDialogProps {
   onOpenRuntime: () => void;
   onOpenAccount: () => void;
   onOpenKeys: () => void;
-  onStart: (mode: ExecutionMode, request: TaskRequest) => Promise<void>;
+  onImport: (axis: TaskAxis) => Promise<void>;
+  onStart: (mode: ExecutionMode, request: TaskRequest, axis: TaskAxis | null) => Promise<void>;
 }
 
 const languageOptions = [
@@ -38,6 +43,8 @@ const LLM_KEY_HINT = "尚未配置模型提供商：请到设置里选择提供�
 const RETRIEVAL_KEY_HINT = "需要 Exa、Tavily 或 Gemini 免费池 Key 才能进行本地联网检索。";
 const NATIVE_SEARCH_HINT = "需要 Gemini Key：模型原生检索依赖 Gemini 内置搜索。";
 
+type Step = "axis" | "mode" | "settings";
+
 interface KeyLimits {
   llm: boolean;
   gemini: boolean;
@@ -45,6 +52,14 @@ interface KeyLimits {
   audio: boolean;
   video: boolean;
 }
+
+/** 一条轴动辄两三个小时，只有分秒会把「覆盖到 2:41:00」显示成「161:00」。 */
+const clock = (seconds: number) => {
+  const whole = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(whole / 60);
+  const tail = `${String(minutes % 60).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
+  return minutes < 60 ? `${minutes}:${String(whole % 60).padStart(2, "0")}` : `${Math.floor(minutes / 60)}:${tail}`;
+};
 
 function requestFor(mode: ExecutionMode, entry: MediaEntry, capabilities: Capabilities | null): TaskRequest {
   const request = mode === "local" ? localTaskRequest(entry) : cloudTaskRequest(entry);
@@ -73,12 +88,37 @@ function withinLimits(request: TaskRequest, limits: KeyLimits): TaskRequest {
 export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const {
     entry, initialMode, localReady, localCapabilities, cloudCapabilities, settings, localIssue, cloudAuthenticated,
-    cloudRemaining, busy, error, onClose, onOpenRuntime, onOpenAccount, onOpenKeys, onStart,
+    cloudRemaining, busy, error, onClose, onOpenRuntime, onOpenKeys, onImport, onStart,
   } = props;
+  // `onOpenAccount` 仍在 props 上、App 也仍在传，只是它唯一的用处——未登录时那条
+  const [step, setStep] = useState<Step>("axis");
+  const [axisOn, setAxisOn] = useState(false);
+  const [axisFile, setAxisFile] = useState("");
+  const [axisParse, setAxisParse] = useState<AxisParse | null>(null);
+  const [axisKind, setAxisKind] = useState<AxisKind>("empty");
+  const [axisIssue, setAxisIssue] = useState("");
+  const [axisReading, setAxisReading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const primaryAction = useRef<HTMLButtonElement>(null);
+
+  // 三种产物走三条完全不同的路（见 subtitles/assAxis.ts 顶部），所以后面每一屏
+  // 显示什么、能选什么，都得先看这里判出来的是哪一种。
+  const axis: TaskAxis | null = useMemo(
+    () => axisOn && axisParse ? { kind: axisKind, filename: axisFile, rows: recolumn(axisParse, axisKind) } : null,
+    [axisFile, axisKind, axisOn, axisParse],
+  );
+  // 中文轴 / 双语轴什么都不必算，连运行环境都不用问；日文轴两种环境都跑得了，
+  // 但两边都只做翻译那一段。
+  const importOnly = axis !== null && (axis.kind === "zh" || axis.kind === "bi");
+  const translateOnly = axis?.kind === "ja";
+  const axisBlocked = axisOn && axisParse === null;
+  const totalSteps = importOnly ? 1 : 3;
+  const stepIndex = step === "axis" ? 1 : step === "mode" ? 2 : 3;
+
+  // 只用来定第 2 步一开始选中哪张卡（轴要到第 1 步选完才存在，所以这里无须看它）
   const preferredMode = initialMode === "local"
     ? localReady ? "local" : cloudAuthenticated ? "cloud" : "local"
     : cloudAuthenticated ? "cloud" : localReady ? "local" : "cloud";
-  const [step, setStep] = useState<"mode" | "settings">("mode");
   const [mode, setMode] = useState<ExecutionMode>(preferredMode);
   const [request, setRequest] = useState<TaskRequest>(() => requestFor(preferredMode, entry, localCapabilities));
   const selectedReady = mode === "local" ? localReady : cloudAuthenticated;
@@ -87,6 +127,7 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const supportsKnowledge = selectedCapabilities?.features.knowledge === true;
   const finalOutput = request.target === "final-srt";
   const devices = localCapabilities?.devices ?? [];
+  const speakers = axisParse && axisParse.speakers.length >= 2 ? axisParse.speakers : [];
 
   const limitsFor = useCallback((target: ExecutionMode, retrieval: TaskRequest["correction"]["retrieval"]): KeyLimits => {
     // 云端运行的凭据由 Nonoka Cloud 管理；读不到本地设置时也不做限制，避免误锁死。
@@ -127,33 +168,110 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   }, [limits.gemini, settings]);
 
   const summary = useMemo(() => {
+    if (axis && importOnly) return `直接导入 ${axis.rows.length} 条字幕，不做任何处理`;
+    if (axis && translateOnly) return `按你的轴补中文译文，不做识别（${axis.rows.length} 条）`;
     const output = finalOutput ? "AI 纠错与翻译后的最终字幕" : "识别与断句后的原始字幕";
     const source = request.language === "auto" ? "自动检测语言" : languageOptions.find(([id]) => id === request.language)?.[1] ?? request.language;
-    return `${source} · ${output}`;
-  }, [finalOutput, request.language]);
+    return `${source} · ${output}${axis ? " · 按导入的轴重排" : ""}`;
+  }, [axis, finalOutput, importOnly, request.language, translateOnly]);
+
+  const back = useCallback(() => {
+    if (step === "settings") setStep("mode");
+    else if (step === "mode") setStep("axis");
+    else onClose();
+  }, [onClose, step]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || busy) return;
-      event.preventDefault();
-      if (step === "settings") setStep("mode");
-      else onClose();
+      if (busy) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        back();
+        return;
+      }
+      if (event.key !== "Enter" || event.defaultPrevented) return;
+      // 回车推进当前这一步。焦点在按钮上时浏览器自己会点它，在下拉或输入框里时
+      // 回车另有含义（CustomSelect 已经 preventDefault 过），两种都不能再抢。
+      const tag = event.target instanceof HTMLElement ? event.target.tagName : "";
+      if (tag === "BUTTON" || tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+      const action = primaryAction.current;
+      if (action && !action.disabled) {
+        event.preventDefault();
+        action.click();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [busy, onClose, step]);
+  }, [back, busy]);
+
+  // 每一步的主操作接管焦点：回车即推进，读屏也从这一步真正的落点开始念。
+  useEffect(() => {
+    primaryAction.current?.focus({ preventScroll: true });
+  }, [step]);
 
   useEffect(() => {
     setRequest((current) => withinLimits(current, limits));
   }, [limits]);
 
-  const chooseMode = (nextMode: ExecutionMode) => {
-    const ready = nextMode === "local" ? localReady : cloudAuthenticated;
-    if (!ready) return;
+  /** 换运行环境就换一整份默认请求：两边的 source 形态、目标和显存项都不一样。 */
+  const applyMode = useCallback((nextMode: ExecutionMode) => {
     setMode(nextMode);
     const next = requestFor(nextMode, entry, localCapabilities);
     setRequest(withinLimits(next, limitsFor(nextMode, next.correction.retrieval)));
-    setStep("settings");
+  }, [entry, limitsFor, localCapabilities]);
+
+  // 日文轴只有翻译这一件事可做。钉在这里而不是选运行环境时，是因为轴型可以在第 1
+  // 步改回来——退两步换成日文轴再走回来，请求里若还留着 raw-srt，任务会被两端一致地
+  // 以 invalid_axis 拒掉。
+  useEffect(() => {
+    if (!translateOnly) return;
+    setRequest((current) => current.target === "final-srt" ? current : {
+      ...current,
+      target: "final-srt",
+      // 纠错参考默认退回纯文本：原文是人写的、已经校对过，再切一遍音频窗只是
+      // 多花钱多花时间，需要时用户自己往上加（云端本就只有纯文本这一档）。
+      correction: { ...current.correction, enabled: true, media: "text" },
+    });
+  }, [mode, translateOnly]);
+
+  const readAxisFile = async (file: File) => {
+    setAxisFile(file.name);
+    setAxisParse(null);
+    setAxisIssue("");
+    setAxisReading(true);
+    try {
+      const parsed = parseAxisFile(await file.text(), file.name);
+      if (parsed.rows.length === 0) {
+        setAxisIssue("这个文件里没有解析出任何时间轴，换一份试试");
+        return;
+      }
+      setAxisParse(parsed);
+      setAxisKind(parsed.kind);
+    } catch (value) {
+      setAxisIssue(`读取失败：${value instanceof Error ? value.message : String(value)}`);
+    } finally {
+      setAxisReading(false);
+    }
+  };
+
+  // 卡片只负责选中，翻页一律走「下一步」：这几张卡的差别（跑不跑识别、上不上云）
+  // 大到值得让用户看清选中态再确认，点一下就跳走会翻错页。
+  const chooseNoAxis = () => {
+    // 解析结果留着：改主意再回来时不必重挑一次文件，`axis` 本来就只在选中时才成立。
+    setAxisOn(false);
+  };
+
+  // 选了「我已有轴」
+  const chooseAxis = () => {
+    setAxisOn(true);
+    // if (!axisParse && !axisReading) fileInput.current?.click();
+  };
+
+  const chooseMode = (nextMode: ExecutionMode) => {
+    const ready = nextMode === "local" ? localReady : cloudAuthenticated;
+    // 重选同一张卡不该把设置清回默认：从第 3 步退回来再确认是常见动作。
+    if (!ready || nextMode === mode) return;
+    applyMode(nextMode);
   };
 
   const setTarget = (target: TaskRequest["target"]) => {
@@ -168,50 +286,143 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
     }));
   };
 
+  // 日文轴不跑识别，target 已经被钉死；本地缺 LLM 时它整条路都走不通（云端的模型
+  // 由 Nonoka Cloud 提供，limits.llm 在那一侧恒为 true）。
+  const startBlocked = busy || !selectedReady || (translateOnly && !limits.llm);
+  const coverage = axisParse ? clock(Math.max(...axisParse.rows.map((row) => row.t1))) : "";
+  const notes = axisParse && axisParse.skipped > 0 ? `跳过 ${axisParse.skipped} 条注释或无效行` : "";
+  // 只有空轴会经过识别，所以只有它会踩到这件事：转写引擎不区分说话人，重叠区间里
+  // 每个词落在哪一行只能按时间判，两人同时说话时必然有一边串台。其余轴型的文字是
+  // 用户自己写好的，重叠再多也无害。
+  const overlaps = axisParse && axisKind === "empty" ? axisParse.overlaps : 0;
+
   return (
     <div className="modal-backdrop transcription-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
       <section className="transcription-dialog" role="dialog" aria-modal="true" aria-labelledby="transcription-title">
         <header className="transcription-head">
           <div>
-            <span className="eyebrow">{step === "mode" ? "第 1 步，共 2 步" : "第 2 步，共 2 步"}</span>
-            <h2 id="transcription-title">{step === "mode" ? "选择运行位置" : "转写设置"}</h2>
+            <div className="transcription-progress">
+              <span className="step-dots" aria-hidden="true">
+                {Array.from({ length: totalSteps }, (_, index) => (
+                  <i key={index} className={index + 1 === stepIndex ? "on" : index + 1 < stepIndex ? "done" : ""} />
+                ))}
+              </span>
+              <span className="eyebrow">{`第 ${stepIndex} 步，共 ${totalSteps} 步`}</span>
+              {/* 第 1 步选完就离开视野，可它决定了后面两步的形态，得一直看得见 */}
+              {/* {step !== "axis" && axis && <span className="axis-chip" title={axis.filename}>{`${AXIS_KIND_SHORT[axis.kind]} · ${axis.filename}`}</span>} */}
+            </div>
+            <h2 id="transcription-title">{step === "axis" ? "选择已有产物" : step === "mode" ? "选择运行环境" : "转写设置"}</h2>
             <p title={entry.sourcePath}>{entry.title}</p>
           </div>
           <button type="button" className="transcription-close" aria-label="关闭" disabled={busy} onClick={onClose}>×</button>
         </header>
 
-        {step === "mode" ? (
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".ass,.ssa,.srt"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // 清掉 value：同一个文件改完再选一次也要触发 change
+            event.target.value = "";
+            if (file) void readAxisFile(file);
+          }}
+        />
+
+        {step === "axis" ? (
           <div className="execution-picker">
-            <button className={`execution-card ${preferredMode === "local" ? "preferred" : ""}`} disabled={!localReady} onClick={() => chooseMode("local")}>
+            <button className={`execution-card ${axisOn ? "" : "chosen"}`} onClick={chooseNoAxis}>
+              <span className="execution-icon local">✧</span>
+              <span><strong>我没有轴</strong><small>从头识别与断句，再按继续纠错和翻译</small></span>
+              <em>默认</em>
+            </button>
+
+            <button className={`execution-card ${axisOn ? "chosen" : ""}`} onClick={chooseAxis}>
+              <span className="execution-icon axis">≡</span>
+              <span><strong>我已有轴</strong><small>空轴 / 单语轴 / 双语轴，成片保持你打好的时间</small></span>
+              <em>{axisParse ? AXIS_KIND_SHORT[axisKind] : "选择文件"}</em>
+            </button>
+
+            {axisOn && <div className="axis-panel">
+              {axisReading ? <p className="axis-hint">{`正在解析「${axisFile}」…`}</p>
+                : axisIssue ? <>
+                  <p className="axis-hint bad">{axisIssue}</p>
+                  <button type="button" className="axis-browse" onClick={() => fileInput.current?.click()}><strong>换一份文件</strong></button>
+                </>
+                  : axisParse ? <>
+                    <div className="axis-file-line">
+                      <span title={axisFile}>{axisFile}</span>
+                      <button type="button" onClick={() => fileInput.current?.click()}>换一份</button>
+                    </div>
+                    {/* 用 div 而不是 dl/dt/dd：全局样式表里有一份给别处写的
+                        无类名 dl/dd 规则（styles.css 的 65% 宽 + 省略号），
+                        在这里会把数字截成「2…」 */}
+                    <div className="axis-stats">
+                      <div><span>行数</span><strong>{axisParse.rows.length}</strong></div>
+                      <div><span>覆盖到</span><strong>{coverage}</strong></div>
+                      <div><span>说话人</span><strong>{speakers.length > 0 ? `${speakers.length} 位` : "未标注"}</strong></div>
+                    </div>
+                    <label>产物类型<CustomSelect value={axisKind} options={(["empty", "ja", "zh", "bi"] as AxisKind[]).map((value) => ({ value, label: AXIS_KIND_LABEL[value] }))} onChange={(value) => setAxisKind(value)} /></label>
+                    <p className="axis-hint">{AXIS_KIND_HINT[axisKind]}；判断错了就在上面改</p>
+                    {speakers.length > 0 && <p className="axis-hint ok">{`按 ${speakers.join("、")} 自动分轨`}</p>}
+                    {overlaps > 0 && <p className="axis-hint warn">{`${overlaps} 处两人同时说话：识别不区分说话人，重叠处的词可能落到相邻那一行，导入后需人工校对`}</p>}
+                    {notes && <p className="axis-hint">{notes}</p>}
+                  </>
+                    : <button type="button" className="axis-browse" onClick={() => fileInput.current?.click()}>
+                      <strong>选择字幕文件</strong>
+                      <small>支持 .ass / .ssa / .srt</small>
+                    </button>}
+            </div>}
+
+            {axis && importOnly && <div className="transcription-summary"><span>将要执行</span><strong>{summary}</strong></div>}
+            {error && <p className="transcription-error" role="alert">{error}</p>}
+          </div>
+        ) : step === "mode" ? (
+          <div className="execution-picker">
+            <button className={`execution-card ${mode === "local" && localReady ? "chosen" : ""}`} disabled={!localReady} onClick={() => chooseMode("local")}>
               <span className="execution-icon local">⌁</span>
               <span><strong>本地运行</strong><small>原视频不离开电脑，使用本机转写引擎 与 GPU</small></span>
               <em>{localReady ? "可用" : "未就绪"}</em>
             </button>
             {!localReady && <p className="execution-unavailable">{localIssue || "本地运行环境尚未就绪"}<button onClick={onOpenRuntime}>检查运行环境</button></p>}
 
-            <button className={`execution-card ${preferredMode === "cloud" ? "preferred" : ""}`} disabled={!cloudAuthenticated} onClick={() => chooseMode("cloud")}>
+            <button className={`execution-card ${mode === "cloud" && cloudAuthenticated ? "chosen" : ""}`} disabled={!cloudAuthenticated} onClick={() => chooseMode("cloud")}>
               <span className="execution-icon cloud">☁</span>
-              <span><strong>云端运行</strong><small>提取音轨后交给 Nonoka Cloud 处理</small></span>
+              <span><strong>云端运行</strong><small>{translateOnly ? "不上传音轨，只把这条轴交给 Nonoka Cloud 补译文" : "提取音轨后交给 Nonoka Cloud 处理"}</small></span>
               <em>{cloudAuthenticated ? cloudRemaining === undefined ? "已登录" : `剩余 ${cloudRemaining} 次` : "未登录"}</em>
             </button>
-            {!cloudAuthenticated && <p className="execution-unavailable">需要先登录云端账户<button onClick={onOpenAccount}>前往登录</button></p>}
+            {/* {!cloudAuthenticated && <p className="execution-unavailable">需要先登录云端账户<button onClick={onOpenAccount}>前往登录</button></p>} */}
           </div>
         ) : (
           <div className="transcription-settings">
-            <section className="transcription-section">
-              <div className="transcription-section-title"><strong>输出内容</strong><span>{mode === "local" ? "本地运行" : "云端运行"}</span></div>
-              <div className="option-cards two-columns">
-                <button className={request.target === "raw-srt" ? "selected" : ""} onClick={() => setTarget("raw-srt")}><strong>原始字幕</strong><small>完成识别与断句，不调用 LLM</small></button>
-                <button className={`${request.target === "final-srt" ? "selected" : ""} ${limits.llm ? "" : "unavailable"}`.trim()} aria-disabled={!limits.llm || undefined} title={limits.llm ? undefined : LLM_KEY_HINT} onClick={() => setTarget("final-srt")}><strong>最终字幕</strong><small>继续进行纠错、翻译与知识处理</small></button>
-              </div>
-              {!limits.llm && <p className="option-unavailable">{LLM_KEY_HINT}<button onClick={onOpenKeys}>前往配置</button></p>}
-            </section>
+            {translateOnly ? (
+              <section className="transcription-section">
+                <div className="transcription-section-title"><strong>输出内容</strong><span>{mode === "local" ? "本地运行" : "云端运行"}</span></div>
+                <p className="transcription-note">{mode === "local"
+                  ? "这份轴的原文已经齐了：不做识别，只补中文译文，每一行的时间原样保留。"
+                  : "这份轴的原文已经齐了：只补中文译文，每一行的时间原样保留。"}</p>
+                {!limits.llm && <p className="option-unavailable">{LLM_KEY_HINT}<button onClick={onOpenKeys}>前往配置</button></p>}
+              </section>
+            ) : (
+              <section className="transcription-section">
+                <div className="transcription-section-title"><strong>输出内容</strong><span>{mode === "local" ? "本地运行" : "云端运行"}</span></div>
+                <div className="option-cards two-columns">
+                  <button className={request.target === "raw-srt" ? "selected" : ""} onClick={() => setTarget("raw-srt")}><strong>原始字幕</strong><small>完成识别与断句，不调用 LLM</small></button>
+                  <button className={`${request.target === "final-srt" ? "selected" : ""} ${limits.llm ? "" : "unavailable"}`.trim()} aria-disabled={!limits.llm || undefined} title={limits.llm ? undefined : LLM_KEY_HINT} onClick={() => setTarget("final-srt")}><strong>最终字幕</strong><small>继续进行纠错、翻译与知识处理</small></button>
+                </div>
+                {!limits.llm && <p className="option-unavailable">{LLM_KEY_HINT}<button onClick={onOpenKeys}>前往配置</button></p>}
+                {/* 空轴只保证「行落在你的时间上」。纠错阶段会合并被切碎的句子，合并后的一行
+                    只能落在它重叠最多的那一行——要求逐行严格对应时得选原始字幕。 */}
+                {/* {axis && finalOutput && <p className="transcription-note">AI 纠错会合并被切碎的句子，合并后的整句落在与它重叠最多的那一行上；要每一行都严格对应你的轴，请选「原始字幕」。</p>} */}
+              </section>
+            )}
 
-            <section className="transcription-section form-grid">
+            {!translateOnly && <section className="transcription-section form-grid">
               <label>原始语言<CustomSelect value={request.language} options={languageOptions.map(([value, label]) => ({ value, label }))} onChange={(language) => setRequest((current) => ({ ...current, language }))} /></label>
               {mode === "local" && <label>计算设备<CustomSelect value={request.device} options={devices.length > 0 ? devices.map((device) => ({ value: device.id, label: `${device.name} · ${Math.round(device.memory_mb / 1024)} GB` })) : [{ value: "cuda", label: "自动选择 NVIDIA GPU" }]} onChange={(device) => setRequest((current) => ({ ...current, device }))} /></label>}
               {mode === "local" && <label>显存预算<CustomSelect value={request.gpu_budget_gb} options={([4, 8, 12, 16] as const).map((value) => ({ value, label: `${value} GB` }))} onChange={(gpu_budget_gb) => setRequest((current) => ({ ...current, gpu_budget_gb }))} /></label>}
-            </section>
+            </section>}
 
             {finalOutput && <>
               <section className="transcription-section form-grid">
@@ -235,8 +446,12 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
         )}
 
         <footer className="transcription-actions">
-          {step === "settings" ? <button disabled={busy} onClick={() => setStep("mode")}>上一步</button> : <button disabled={busy} onClick={onClose}>取消</button>}
-          {step === "settings" && <button className="primary-button" disabled={busy || !selectedReady} onClick={() => void onStart(mode, request)}>{busy ? "正在启动…" : "开始转写"}</button>}
+          <button disabled={busy} onClick={back}>{step === "axis" ? "取消" : "上一步"}</button>
+          {step === "axis" && (axis && importOnly
+            ? <button ref={primaryAction} className="primary-button" disabled={busy} onClick={() => void onImport(axis)}>{busy ? "正在导入…" : "导入"}</button>
+            : <button ref={primaryAction} className="primary-button" disabled={busy || axisBlocked} onClick={() => setStep("mode")}>下一步</button>)}
+          {step === "mode" && <button ref={primaryAction} className="primary-button" disabled={busy || !selectedReady} onClick={() => setStep("settings")}>下一步</button>}
+          {step === "settings" && <button ref={primaryAction} className="primary-button" disabled={startBlocked} onClick={() => void onStart(mode, translateOnly && axis ? { ...request, axis } : request, axis)}>{busy ? "正在启动…" : "开始任务"}</button>}
         </footer>
       </section>
     </div>

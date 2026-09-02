@@ -226,13 +226,24 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 		return nil, err
 	}
 	defer os.RemoveAll(work)
-	audio := filepath.Join(work, "source.m4a")
-	if err := s.extractor(context.Background(), path, audio); err != nil {
-		return nil, err
-	}
-	stat, err := os.Stat(audio)
-	if err != nil {
-		return nil, err
+	// A source-text axis is the recognition result: the cloud runs only the LLM
+	// leg over it and never opens an audio file, so extracting and shipping one
+	// would be minutes and hundreds of megabytes spent on bytes nothing reads.
+	// The upload slot is still claimed -- it carries ownership, the library's
+	// cover, and the id the task record is keyed by.
+	axis := axisOption(options)
+	audio := ""
+	var audioBytes int64
+	if axis == nil {
+		audio = filepath.Join(work, "source.m4a")
+		if err := s.extractor(context.Background(), path, audio); err != nil {
+			return nil, err
+		}
+		stat, err := os.Stat(audio)
+		if err != nil {
+			return nil, err
+		}
+		audioBytes = stat.Size()
 	}
 	var initialized struct {
 		ObjectID       string `json:"objectId"`
@@ -240,15 +251,17 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 		ContentType    string `json:"contentType"`
 		ThumbUploadURL string `json:"thumbUploadUrl"`
 	}
-	if err := s.authenticatedDo(context.Background(), http.MethodPost, "/v1/uploads/init", map[string]any{"filename": filepath.Base(path) + ".m4a", "bytes": stat.Size()}, &initialized); err != nil {
+	if err := s.authenticatedDo(context.Background(), http.MethodPost, "/v1/uploads/init", map[string]any{"filename": filepath.Base(path) + ".m4a", "bytes": audioBytes}, &initialized); err != nil {
 		return nil, err
 	}
 	if !validUploadID.MatchString(initialized.ObjectID) {
 		return nil, errors.New("cloud returned an invalid upload object id")
 	}
-	if err := s.putAudio(context.Background(), initialized.UploadURL, initialized.ContentType, audio, stat.Size()); err != nil {
-		s.abortUpload(initialized.ObjectID)
-		return nil, err
+	if audio != "" {
+		if err := s.putAudio(context.Background(), initialized.UploadURL, initialized.ContentType, audio, audioBytes); err != nil {
+			s.abortUpload(initialized.ObjectID)
+			return nil, err
+		}
 	}
 	// Best-effort, unlike the audio: a cover is decoration, and a source with
 	// no video stream or a missing ffmpeg legitimately has none. The declared
@@ -258,6 +271,12 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 	target := "final-srt"
 	if value, ok := options["target"].(string); ok && value == "raw-srt" {
 		target = value
+	}
+	// An axis only reaches here in its source-text shape (the desktop refuses
+	// the others before this call), and that shape has nothing to recognize --
+	// only a translation to add.
+	if axis != nil {
+		target = "final-srt"
 	}
 	request := map[string]any{
 		"schema":               1,
@@ -271,6 +290,9 @@ func (s *Service) StartTask(localID string, options map[string]any) (map[string]
 		"correction":           map[string]any{"enabled": target == "final-srt", "media": "text", "retrieval": "none", "difficulty": "quality", "fast": "auto", "extra_info": "", "extra_style": ""},
 		"knowledge":            stringOption(options, "knowledge", "update"),
 		"cleanup_intermediate": false,
+	}
+	if axis != nil {
+		request["axis"] = axis
 	}
 	if correction, ok := options["correction"].(map[string]any); ok {
 		cleaned := request["correction"].(map[string]any)
@@ -1458,4 +1480,25 @@ func (s *Service) saveSyncSuppressionsLocked() error {
 		return err
 	}
 	return nil
+}
+
+// axisOption returns the imported axis a cloud task must run over, or nil.
+//
+// Only the source-text shape is forwarded: an empty axis is applied locally
+// when the artifacts are projected, and the finished shapes never start a task.
+// Passing another kind through would have the backend reject the whole request,
+// so it is dropped here and the run proceeds as an ordinary transcription.
+func axisOption(options map[string]any) map[string]any {
+	axis, ok := options["axis"].(map[string]any)
+	if !ok || axis == nil {
+		return nil
+	}
+	if kind, _ := axis["kind"].(string); kind != "ja" {
+		return nil
+	}
+	rows, ok := axis["rows"].([]any)
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	return map[string]any{"kind": "ja", "filename": stringOption(axis, "filename", ""), "rows": rows}
 }

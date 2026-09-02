@@ -104,6 +104,100 @@ class WorkerAdapterTests(unittest.TestCase):
             self.assertEqual(set(manifest["artifacts"]), {"stable_json", "raw_srt"})
             self.assertEqual(len(manifest["artifacts"]["stable_json"]["sha256"]), 64)
 
+    def test_source_text_axis_skips_recognition_and_only_runs_the_llm_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            task_dir = Path(temp) / "task"
+            source = Path(temp) / "video.mp4"
+            source.write_bytes(b"media")
+            captured: dict = {}
+
+            def run_full_correction(**kwargs):
+                captured.update(kwargs)
+                output = Path(kwargs["output_path"])
+                output.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+                output.with_name(f"{output.stem}-annotated.csv").write_text("# header\n", encoding="utf-8")
+                return output
+
+            @contextlib.contextmanager
+            def passthrough(_value):
+                yield
+
+            finesub = types.ModuleType("finesub")
+            finesub.__path__ = []
+            llm = types.ModuleType("finesub.llm")
+            llm.__path__ = []
+            routing = types.ModuleType("finesub.llm.routing")
+            routing.__path__ = []
+            correction = types.ModuleType("finesub.llm.correction_translation")
+            correction.run_full_correction = run_full_correction
+            profiles = types.ModuleType("finesub.llm.routing.profiles")
+            profiles.resolve_profile = lambda *args: SimpleNamespace(id="-".join(args))
+            pipeline = types.ModuleType("finesub.pipeline")
+            pipeline.run_pipeline = lambda *args, **kwargs: self.fail("recognition must not run for a source-text axis")
+            pipeline.resolve_llm_media_for_source = lambda path, **kwargs: (kwargs["llm_media"], None, "")
+            reporting = types.ModuleType("finesub.reporting")
+            reporting.reporting_to = passthrough
+            reporting.quieted_libraries = passthrough
+            names = (
+                "finesub", "finesub.llm", "finesub.llm.routing", "finesub.llm.correction_translation",
+                "finesub.llm.routing.profiles", "finesub.pipeline", "finesub.reporting",
+            )
+            previous = {name: sys.modules.get(name) for name in names}
+            sys.modules.update({
+                "finesub": finesub,
+                "finesub.llm": llm,
+                "finesub.llm.routing": routing,
+                "finesub.llm.correction_translation": correction,
+                "finesub.llm.routing.profiles": profiles,
+                "finesub.pipeline": pipeline,
+                "finesub.reporting": reporting,
+            })
+            request = {
+                "schema": 1,
+                "provider": "local",
+                "source": {"kind": "local_file", "path": str(source), "title": "video"},
+                "target": "final-srt",
+                "language": "ja",
+                "device": "cuda",
+                "gpu_budget_gb": 8,
+                "correction": {"media": "text", "retrieval": "none", "difficulty": "quality"},
+                "knowledge": "none",
+                "axis": {
+                    "kind": "ja",
+                    "filename": "轴.ass",
+                    "rows": [
+                        {"t0": 0.0, "t1": 1.0, "ja": "こんにちは", "zh": "", "spk": ""},
+                        {"t0": 1.0, "t1": 2.0, "ja": "", "zh": "", "spk": ""},
+                    ],
+                },
+            }
+            output = io.StringIO()
+            old_stdin = sys.stdin
+            try:
+                sys.stdin = io.StringIO(json.dumps(request) + "\n")
+                with contextlib.redirect_stdout(output):
+                    result = worker.main([
+                        "--task-id", "abc123", "--task-dir", str(task_dir),
+                        "--vendor", str(ROOT / "third_party/finesub"),
+                    ])
+            finally:
+                sys.stdin = old_stdin
+                for name, value in previous.items():
+                    if value is None:
+                        sys.modules.pop(name, None)
+                    else:
+                        sys.modules[name] = value
+            self.assertEqual(result, 0)
+            # The axis replaces recognition outright: no audio is decoded when
+            # the correction reference is text, and the blank row is not handed
+            # to the model as something to correct.
+            self.assertIsNone(captured["audio_path"])
+            stable = json.loads(Path(captured["stable_json"]).read_text(encoding="utf-8"))
+            self.assertEqual(stable["segments"], [{"id": "1", "start": 0.0, "end": 1.0, "text": "こんにちは"}])
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            manifest = next(event for event in events if event["type"] == "completed")["payload"]["artifacts"]
+            self.assertEqual(set(manifest["artifacts"]), {"stable_json", "annotated_csv", "final_srt"})
+
     def test_uncalibrated_vector_notice_is_dropped_but_siblings_still_speak(self) -> None:
         # Driven through the engine's own `profile_warnings` rather than a
         # hand-written string: the suppression matches on wording, so an

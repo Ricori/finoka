@@ -168,6 +168,33 @@ interface ExecutionProvider {
 | `correction.extra_info` / `extra_style` | `string` | — | 用户补充的背景信息与风格要求 |
 | `knowledge` | `none` \| `collect` \| `update` | — | 需 `features.knowledge=true` |
 | `cleanup_intermediate` | `boolean` | — | 完成后是否清理中间产物 |
+| `axis` | `Axis` | — | 用户导入的已有产物；见 4.2.2。只在 `kind="ja"` 时出现，其余轴型不进任务请求 |
+
+#### 4.2.2 Axis（导入已有产物）
+
+用户可以带着自己打好的轴开工。四种产物走三条路，只有一种会进 `TaskRequest`：
+
+| 轴型 | 含义 | 走法 |
+| :--- | :--- | :--- |
+| `empty` | 只有时间，没有文字 | 识别照常跑；宿主在投影阶段把结果重排到这条轴上，Provider 不必知道它的存在 |
+| `ja` | 有原文、缺译文 | 以 `axis` 进入 `TaskRequest`：Provider 跳过整条识别链，只跑 LLM 翻译。宿主自带的两个 Provider 都支持——云端连音轨都不上传。不支持时必须以 `invalid_axis` 显式拒绝，**禁止**忽略该字段后照常识别 |
+| `zh` / `bi` | 译文齐了 | 不启动任何任务，宿主直接落成 EditDocument |
+
+```ts
+interface Axis {
+  kind: "empty" | "ja" | "zh" | "bi";
+  filename: string;
+  rows: Array<{
+    t0: number;    // 秒，t1 > t0 ≥ 0
+    t1: number;
+    ja: string;    // 原文，空串表示这一行没有
+    zh: string;    // 译文
+    spk: string;   // 说话人（取自 ASS 的 Style 名）；"" 表示这份轴没标
+  }>;
+}
+```
+
+收到 `kind` 不是 `ja` 的 `axis`、或 `kind="ja"` 却搭配 `target="raw-srt"` 时，一律以 `invalid_axis` 拒绝——两者都意味着宿主与 Provider 对这条轴的理解不一致，静默跑完的代价是白花一次识别。
 
 #### 4.2.1 Source 变体
 
@@ -352,6 +379,7 @@ interface UploadedAudioSource {
 | `unsupported_target` | 400 | `target` 不在枚举内 |
 | `invalid_source` | 400 | `source.kind` / 路径 / `video_id` 非法 |
 | `source_not_found` | 400 | 源文件不存在 |
+| `invalid_axis` | 400 | 导入的轴不合法，或它的轴型不该启动任务（见 4.2.2） |
 | `invalid_session` | 401 | Sidecar 会话令牌校验失败 |
 | `not_found` | 404 | 路由不存在 |
 | `task_not_found` | 404 | 未知 `task_id` |

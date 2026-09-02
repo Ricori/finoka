@@ -62,6 +62,13 @@ export interface CloudSource {
   duration?: number;
 }
 
+/** 用户导入的已有产物；解析与判型见 subtitles/assAxis.ts。 */
+export interface TaskAxis {
+  kind: "empty" | "ja" | "zh" | "bi";
+  filename: string;
+  rows: Array<{ t0: number; t1: number; ja: string; zh: string; spk: string }>;
+}
+
 export interface TaskRequest {
   schema: 1;
   provider: ProviderID;
@@ -82,6 +89,8 @@ export interface TaskRequest {
   };
   knowledge: "none" | "collect" | "update";
   cleanup_intermediate: boolean;
+  /** 只在日文轴上出现：worker 据它跳过识别，直接补译文。其余轴型不进任务请求 */
+  axis?: TaskAxis;
 }
 
 export interface TaskProgress {

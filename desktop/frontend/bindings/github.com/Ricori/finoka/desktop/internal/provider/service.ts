@@ -34,6 +34,15 @@ export function DocumentPeaks(videoID: string): $CancellablePromise<{ [_ in stri
     return $Call.ByID(1291765324, videoID);
 }
 
+/**
+ * ImportDocument turns a finished subtitle axis into an editable document
+ * without running a task: a bilingual or translated file has nothing left for
+ * the engine to compute.
+ */
+export function ImportDocument(payload: { [_ in string]?: any } | null): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(594730557, payload);
+}
+
 export function InstallPython(): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(1411586738);
 }
@@ -84,6 +93,17 @@ export function SaveDocument(videoID: string, document: { [_ in string]?: any } 
 
 export function SaveKeys(keys: { [_ in string]?: any } | null): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(2193389684, keys);
+}
+
+/**
+ * SetDocumentAxis records the imported subtitle axis a run on this video must
+ * land on, or clears it when axis is nil. It is stored beside the document
+ * rather than carried in the TaskRequest because the projection consumes it,
+ * and a cloud task's artifacts are projected locally without its request ever
+ * reaching the sidecar.
+ */
+export function SetDocumentAxis(videoID: string, axis: { [_ in string]?: any } | null): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(422148627, videoID, axis);
 }
 
 export function Settings(): $CancellablePromise<{ [_ in string]?: any } | null> {

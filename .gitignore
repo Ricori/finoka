@@ -19,3 +19,4 @@ desktop/internal/app/bundled/finoka/*
 !desktop/internal/app/bundled/finoka/.gitkeep
 .temp
 upstream-prs
+test_data/*

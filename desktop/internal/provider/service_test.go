@@ -163,3 +163,43 @@ func TestServiceRejectsPathInjectionBeforeTransport(t *testing.T) {
 		t.Fatalf("invalid input reached transport: %#v", transport.calls)
 	}
 }
+
+func TestServiceMapsAxisEndpoints(t *testing.T) {
+	transport := &fakeCaller{}
+	service, err := New(transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	axis := map[string]any{"kind": "empty", "rows": []any{}}
+	payload := map[string]any{"video_id": "loc_1", "axis": axis}
+	_, _ = service.SetDocumentAxis("loc_1", axis)
+	_, _ = service.SetDocumentAxis("loc_1", nil)
+	_, _ = service.ImportDocument(payload)
+
+	want := []call{
+		{method: "PUT", endpoint: "/v1/documents/loc_1/axis", body: map[string]any{"axis": axis}},
+		// Clearing is a write of nothing, not a skipped call: a stale axis left
+		// behind would re-seat the next run on this video.
+		{method: "PUT", endpoint: "/v1/documents/loc_1/axis", body: map[string]any{"axis": map[string]any(nil)}},
+		{method: "POST", endpoint: "/v1/documents/import", body: payload},
+	}
+	if !reflect.DeepEqual(transport.calls, want) {
+		t.Fatalf("calls = %#v\nwant  = %#v", transport.calls, want)
+	}
+}
+
+func TestServiceRejectsAxisPathInjectionBeforeTransport(t *testing.T) {
+	transport := &fakeCaller{}
+	service, _ := New(transport)
+	for _, value := range []string{"", "../capabilities", "loc_1/axis"} {
+		if _, err := service.SetDocumentAxis(value, nil); err == nil {
+			t.Fatalf("expected document id %q to fail", value)
+		}
+	}
+	if _, err := service.ImportDocument(nil); err == nil {
+		t.Fatal("expected an empty import payload to fail")
+	}
+	if len(transport.calls) != 0 {
+		t.Fatalf("invalid input reached transport: %#v", transport.calls)
+	}
+}

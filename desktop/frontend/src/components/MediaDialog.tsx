@@ -21,7 +21,7 @@ export function MediaDialog({ dialog, busy, setDialog, onSubmit }: MediaDialogPr
         ) : isCloudRemove ? (
           <p>将永久删除“{dialog.entry.title}”的云端字幕。本机视频和本机字幕不会受到影响。</p>
         ) : isSubtitleRemove ? (
-          <p>将删除“{dialog.entry.title}”的本机字幕文档。视频仍保留在媒体库，之后可以重新转写或从云端取回字幕。</p>
+          <p>将删除“{dialog.entry.title}”的本机字幕文档。视频仍保留在媒体库，之后可以重跑任务或从云端取回字幕。</p>
         ) : (
           <p>将“{dialog.entry.title}”从本机媒体库移除，卡片将不再显示。原视频文件不会被删除。</p>
         )}

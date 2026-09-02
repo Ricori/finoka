@@ -9,7 +9,7 @@ interface LocalMediaCardProps {
   thumbnail?: string;
   running: boolean;
   /** The cloud already holds subtitles for this media and they are being
-      pulled down right now. Offering 开始转写 over that spends a cloud task on
+      pulled down right now. Offering 开始任务 over that spends a cloud task on
       text the app is seconds away from having. */
   adopting: boolean;
   runningProgress: number;
@@ -82,7 +82,7 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
   };
   const menuActions: MenuAction[] = [
     { label: "重命名", onSelect: () => onRename(entry) },
-    ...(entry.documentAvailable && entry.available ? [{ label: "重新转写", disabled: !canStart || adopting, onSelect: () => void onStart(entry) }] : []),
+    ...(entry.documentAvailable && entry.available ? [{ label: "重跑任务", disabled: !canStart || adopting, onSelect: () => void onStart(entry) }] : []),
     ...(entry.available ? [{ label: "在文件夹中显示", onSelect: () => void mediaLibrary.revealInFolder(entry.sourcePath) }] : []),
     ...(entry.documentAvailable ? [{ label: "删除本地字幕", danger: true, onSelect: () => onDeleteSubtitles(entry) }] : []),
     ...(cloudEntry ? [{ label: "删除云端字幕", danger: true, disabled: cloudEntry.status === "queued" || cloudEntry.status === "running", onSelect: () => onDeleteCloud(cloudEntry) }] : []),
@@ -112,10 +112,10 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
           ) : !entry.documentAvailable && cloudEntry?.status === "completed" ? (
             <>
               <button className="primary-card-action" disabled={adopting} onClick={() => void onAdoptCloud(entry, cloudEntry)}>{adopting ? "取回云端字幕…" : "取回云端字幕"}</button>
-              <button className="secondary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>重新转写</button>
+              <button className="secondary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>重跑任务</button>
             </>
           ) : !entry.documentAvailable ? (
-            <button className="primary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>开始转写</button>
+            <button className="primary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>开始任务</button>
           ) : null}
         </div>
       </div>

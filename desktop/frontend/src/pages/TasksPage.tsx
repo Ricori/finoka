@@ -117,7 +117,7 @@ export function TasksPage(props: TasksPageProps) {
         <div className="panel task-empty">
           <div className="task-empty-art" aria-hidden="true"><span /><span /><i>▶</i></div>
           <h2>从第一个视频开始</h2>
-          <p>在媒体库选择视频并开始转写，任务进度、运行位置和历史结果都会集中显示在这里。</p>
+          <p>在媒体库选择视频并开始任务，任务进度、运行位置和历史结果都会集中显示在这里。</p>
           <button className="primary-button" onClick={onNavigateLibrary}>前往媒体库</button>
         </div>
       ) : (

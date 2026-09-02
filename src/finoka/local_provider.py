@@ -19,6 +19,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
+from .axis import AxisError, axis_projection, conform_to_axis, normalize_axis
 from .document_store import (
     DocumentNotFound,
     DocumentStore,
@@ -352,6 +353,25 @@ def validate_request(value: Mapping[str, Any]) -> dict[str, Any]:
         )
     request.setdefault("knowledge", "update")
     request.setdefault("cleanup_intermediate", False)
+    # An imported axis reaches the worker only when it carries source text: the
+    # `ja` shape replaces recognition outright. An empty axis is applied after
+    # the run instead (see `_project_manifest`), and the finished shapes never
+    # start a task at all, so both are refused here rather than accepted and
+    # quietly ignored.
+    try:
+        axis = normalize_axis(request.get("axis"))
+    except AxisError as exc:
+        raise ProviderError("invalid_axis", str(exc)) from exc
+    if axis is None:
+        request.pop("axis", None)
+    elif axis["kind"] != "ja":
+        raise ProviderError(
+            "invalid_axis", f"axis.kind={axis['kind']} does not start a task; import it instead"
+        )
+    elif request["target"] != "final-srt":
+        raise ProviderError("invalid_axis", "a source-text axis only runs the final-srt target")
+    else:
+        request["axis"] = axis
     return request
 
 
@@ -598,6 +618,76 @@ class LocalProvider:
             raise ProviderError("peaks_not_found", "Waveform is not ready", http_status=404) from exc
         return value
 
+    def _axis_path(self, video_id: str) -> Path:
+        return self.documents.directory(video_id) / "axis.json"
+
+    def _read_axis(self, video_id: str) -> dict[str, Any] | None:
+        try:
+            value = _read_json_when_free(self._axis_path(video_id))
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            return None
+        try:
+            return normalize_axis(value)
+        except AxisError:
+            return None
+
+    def document_axis(self, video_id: str) -> dict[str, Any]:
+        if not _safe_component(video_id):
+            raise ProviderError("invalid_document", "Invalid document id")
+        return {"schema": 1, "video_id": video_id, "axis": self._read_axis(video_id)}
+
+    def set_document_axis(self, video_id: str, value: Mapping[str, Any]) -> dict[str, Any]:
+        """Record (or clear) the axis a run on this video must land on.
+
+        Kept beside the document rather than inside the TaskRequest because the
+        projection is what consumes it, and a cloud run's artifacts are
+        projected here too without its request ever reaching this process.
+        """
+
+        if not _safe_component(video_id) or not isinstance(value, Mapping):
+            raise ProviderError("invalid_document", "Invalid axis payload")
+        try:
+            axis = normalize_axis(value.get("axis"))
+        except AxisError as exc:
+            raise ProviderError("invalid_axis", str(exc)) from exc
+        if axis is None:
+            self._axis_path(video_id).unlink(missing_ok=True)
+        else:
+            _atomic_json(self._axis_path(video_id), axis)
+        return {"schema": 1, "video_id": video_id, "axis": axis}
+
+    def import_axis(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Turn a finished axis into an EditDocument without running anything."""
+
+        if not isinstance(payload, Mapping):
+            raise ProviderError("invalid_document", "Invalid import payload")
+        video_id = str(payload.get("video_id") or "")
+        if not _safe_component(video_id):
+            raise ProviderError("invalid_document", "Invalid document id")
+        try:
+            axis = normalize_axis(payload.get("axis"))
+            if axis is None:
+                raise AxisError("axis is required")
+            projection = axis_projection(
+                axis["rows"],
+                kind=axis["kind"],
+                video_id=video_id,
+                title=str(payload.get("title") or video_id),
+                source=str(payload.get("source_path") or ""),
+                fingerprint=str(payload.get("fingerprint") or "") or None,
+            )
+        except AxisError as exc:
+            raise ProviderError("invalid_axis", str(exc)) from exc
+        document = self.documents.create(video_id, projection, replace_default=True)
+        # Nothing was decoded for this video, so no waveform exists yet. The
+        # editor's timeline falls back to a synthetic envelope without one,
+        # which is exactly the case an import lands in most often.
+        self._write_optional_peaks(
+            video_id, str(payload.get("source_path") or ""), float(payload.get("duration") or 0)
+        )
+        self._axis_path(video_id).unlink(missing_ok=True)
+        return document
+
     def save_document(self, video_id: str, value: Mapping[str, Any]) -> dict[str, Any]:
         if not _safe_component(video_id) or not isinstance(value, Mapping):
             raise ProviderError("invalid_document", "Invalid document payload")
@@ -839,6 +929,15 @@ class LocalProvider:
             fingerprint=str(metadata.get("fingerprint") or "") or None,
             relaxed_srt=relaxed_srt,
         )
+        # An imported axis outranks the engine's own segmentation: every line
+        # the user timed comes back with its exact timing, whether the run was
+        # local or a cloud task whose artifacts are being projected here.
+        axis = self._read_axis(video_id)
+        if axis is not None and axis["kind"] in {"empty", "ja"}:
+            try:
+                projection = conform_to_axis(projection, axis["rows"])
+            except AxisError as exc:
+                raise ProjectionError(f"cannot apply the imported axis: {exc}") from exc
         return self.documents.create(video_id, projection, artifacts=manifest, replace_default=True)
 
     def _write_optional_peaks(self, video_id: str, source: str, duration: float) -> None:

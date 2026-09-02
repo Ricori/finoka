@@ -89,6 +89,8 @@ class SidecarHandler(BaseHTTPRequestHandler):
             self._json(202, provider.start(self._body()))
         elif self.command == "POST" and parts == ["v1", "documents", "project"]:
             self._json(200, provider.project_contents(self._body()))
+        elif self.command == "POST" and parts == ["v1", "documents", "import"]:
+            self._json(200, provider.import_axis(self._body()))
         elif len(parts) >= 3 and parts[:2] == ["v1", "documents"]:
             video_id = parts[2]
             if self.command == "GET" and len(parts) == 3:
@@ -97,6 +99,10 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 self._json(200, provider.save_document(video_id, self._body()))
             elif self.command == "GET" and parts[3:] == ["peaks"]:
                 self._json(200, provider.document_peaks(video_id))
+            elif self.command == "GET" and parts[3:] == ["axis"]:
+                self._json(200, provider.document_axis(video_id))
+            elif self.command == "PUT" and parts[3:] == ["axis"]:
+                self._json(200, provider.set_document_axis(video_id, self._body()))
             else:
                 raise ProviderError("not_found", "Route not found", http_status=404)
         elif len(parts) >= 3 and parts[:2] == ["v1", "tasks"]:

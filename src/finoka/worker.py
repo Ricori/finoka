@@ -12,6 +12,8 @@ import traceback
 from pathlib import Path
 from typing import Any, Mapping
 
+from .axis import AxisTranslation, translate_axis as translate_rows
+
 
 def _normalize_engine_device(device_value: Any) -> tuple[str, str | None]:
     """Map TaskRequest device into (finesub_device, cuda_visible_devices).
@@ -82,6 +84,29 @@ def artifact(path: Path) -> dict[str, Any]:
     return {"uri": path.resolve().as_uri(), "sha256": digest, "bytes": path.stat().st_size}
 
 
+def translate_axis(request: Mapping[str, Any], axis: Mapping[str, Any], output: Path, task_id: str, task_artifact_dir: Path) -> AxisTranslation:
+    """Local entry to the shared source-text-axis run.
+
+    The run itself lives in `finoka.axis` because the cloud's LLM container
+    performs exactly the same one -- keeping a second copy here is how the two
+    modes would drift into producing different subtitles from the same axis.
+    The media file never left this machine and is still on disk, so an audio or
+    video correction reference works here as it does after a real recognition
+    run; the windows are simply cut on the user's own timings.
+    """
+
+    return translate_rows(
+        axis["rows"],
+        output_path=output,
+        task_id=task_id,
+        task_artifact_dir=task_artifact_dir,
+        correction=request.get("correction") or {},
+        knowledge=request.get("knowledge", "none"),
+        source_path=Path(request["source"]["path"]),
+        on_notice=lambda notice: emit("log", {"message": notice}),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", required=True)
@@ -98,34 +123,46 @@ def main(argv: list[str] | None = None) -> int:
         engine_device, visible_devices = _normalize_engine_device(request.get("device"))
         if visible_devices is not None and "CUDA_VISIBLE_DEVICES" not in os.environ:
             os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
-        from finesub.pipeline import run_pipeline
         from finesub.reporting import quieted_libraries, reporting_to
 
-        with reporting_to(FinokaReporter()), quieted_libraries("normal"):
-            paths = run_pipeline(
-                source["path"],
-                output_path=output,
-                stage=request["target"],
-                language=request.get("language", "ja"),
-                device=engine_device,
-                gpu_budget_gb=int(request.get("gpu_budget_gb", 8)),
-                llm_media=correction.get("media", "audio"),
-                llm_retrieval=correction.get("retrieval", "local"),
-                llm_difficulty=correction.get("difficulty", "quality"),
-                llm_fast=correction.get("fast", "auto"),
-                extra_info=correction.get("extra_info", ""),
-                extra_style=correction.get("extra_style", ""),
-                knowledge=request.get("knowledge", "update"),
-                task_id=args.task_id,
-                task_artifact_dir=args.task_dir / "workspace" / "llm-artifacts",
-                resume=True,
-            )
-        candidates = {
-            "stable_json": Path(paths.stable_json),
-            "raw_srt": Path(paths.raw_srt),
-            "annotated_csv": Path(paths.final_srt).with_name(f"{Path(paths.final_srt).stem}-annotated.csv"),
-            "final_srt": Path(paths.final_srt),
-        }
+        axis = request.get("axis") if isinstance(request.get("axis"), dict) else None
+        artifact_dir = args.task_dir / "workspace" / "llm-artifacts"
+        if axis is not None and axis.get("kind") == "ja":
+            with reporting_to(FinokaReporter()), quieted_libraries("normal"):
+                translated = translate_axis(request, axis, output, args.task_id, artifact_dir)
+            candidates = {
+                "stable_json": translated.stable_json,
+                "annotated_csv": translated.annotated_csv,
+                "final_srt": translated.final_srt,
+            }
+        else:
+            from finesub.pipeline import run_pipeline
+
+            with reporting_to(FinokaReporter()), quieted_libraries("normal"):
+                paths = run_pipeline(
+                    source["path"],
+                    output_path=output,
+                    stage=request["target"],
+                    language=request.get("language", "ja"),
+                    device=engine_device,
+                    gpu_budget_gb=int(request.get("gpu_budget_gb", 8)),
+                    llm_media=correction.get("media", "audio"),
+                    llm_retrieval=correction.get("retrieval", "local"),
+                    llm_difficulty=correction.get("difficulty", "quality"),
+                    llm_fast=correction.get("fast", "auto"),
+                    extra_info=correction.get("extra_info", ""),
+                    extra_style=correction.get("extra_style", ""),
+                    knowledge=request.get("knowledge", "update"),
+                    task_id=args.task_id,
+                    task_artifact_dir=artifact_dir,
+                    resume=True,
+                )
+            candidates = {
+                "stable_json": Path(paths.stable_json),
+                "raw_srt": Path(paths.raw_srt),
+                "annotated_csv": Path(paths.final_srt).with_name(f"{Path(paths.final_srt).stem}-annotated.csv"),
+                "final_srt": Path(paths.final_srt),
+            }
         upstream = json.loads((args.vendor / "UPSTREAM.json").read_text(encoding="utf-8"))
         manifest = {
             "schema": 1,
