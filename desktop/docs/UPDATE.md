@@ -166,8 +166,6 @@ desktop/bin/update/0.2.0/
 # 复用现有 Windows 构建并发布
 .\scripts\release-update.ps1 -Version 0.2.0 -Platform windows -SkipBuild -Publish
 
-# 仅在首次品牌迁移版本使用：同时把同一版本发布到旧更新路径
-.\scripts\release-update.ps1 -Version 0.2.0 -Platform windows -Publish -PublishLegacyUpdatePathOnce
 ```
 
 首次使用前安装发布脚本依赖：
