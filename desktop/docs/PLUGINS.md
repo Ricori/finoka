@@ -1,6 +1,6 @@
-# Nonoka X 插件开发（API v1）
+# Nonoka Sub X 插件开发（API v1）
 
-Nonoka X 插件在主页左侧的“工具”分组中贡献入口。插件代码、持久数据和缓存相互分离，因此插件可以独立启用、停用、升级和卸载。
+Nonoka Sub X 插件在主页左侧的“工具”分组中贡献入口。插件代码、持久数据和缓存相互分离，因此插件可以独立启用、停用、升级和卸载。
 
 ## 系统插件与用户插件
 
@@ -8,7 +8,7 @@ Nonoka X 插件在主页左侧的“工具”分组中贡献入口。插件代�
 
 | | 系统插件 | 用户插件 |
 | --- | --- | --- |
-| 来源 | 编译进 Nonoka X 二进制，启动时发布到 `system-plugins/<id>/` | 用户选择 `.nonoka-plugin` 安装到 `plugins/<id>/` |
+| 来源 | 编译进 Nonoka Sub X 二进制，启动时发布到 `system-plugins/<id>/` | 用户选择 `.nonoka-plugin` 安装到 `plugins/<id>/` |
 | 默认状态 | 启用 | 安装后启用 |
 | 停用 | 可以 | 可以 |
 | 卸载 | 不可以，属于程序的一部分 | 可以 |
@@ -123,8 +123,8 @@ window.nonoka.post("host.getInfo", {});
 - `subtitle.ass` / `subtitle.srt`：需要 `document.read` 权限。参数 `{ mediaId, t0?, t1?, lang? }`，返回 `{ text, rev }`。字幕由宿主用编辑器那条拼装管线现拼，因此与编辑器导出的逐字相同；给了 `t0`/`t1` 就裁成区间并把时间轴平移到 0，`lang` 只对 SRT 有效（`both` / `zh` / `ja`）。
 - `subtitle.save`：需要 `subtitle.export` 权限。参数 `{ fileName, content }`，宿主弹保存对话框并落盘，返回最终路径；用户取消时返回空串。扩展名只接受 `.ass` 和 `.srt`，目录由对话框决定。
 - `media.exportVideo`：需要 `media.export-video` 权限。参数 `{ mediaId, ass, fileName?, t0?, t1?, height? }`，宿主用托管的 FFmpeg 把 ASS 压制进视频，返回 `{ path, format, size }`。编码参数（CRF 21、preset medium、AAC 192k）由宿主固定，`height` 只能是 0（原分辨率）或 240–4320。压制期间宿主会向页面推送 `media.progress` 消息（`{ done, total }`，单位秒）。
-- `ffmpeg.extractAudio`：需要 `ffmpeg.extract-audio` 权限。参数为 `{ mediaId, format }`，其中格式只能是 `wav`、`flac`、`mp3` 或 `m4a`。Nonoka X 负责解析输入、选择输出位置、构造 FFmpeg 参数和原子发布结果。
-- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Nonoka X 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。yt-dlp 以 Python wheel 形式安装，因此该能力同时依赖 Nonoka X 的 Python 运行时。下载单次上限 20 分钟，超时会结束子进程并报错，避免卡住的分片服务器一直占着媒体任务锁。下载期间宿主向页面推送 `download.progress` 消息（`{ done, total }`，`total` 恒为 100，即百分比），节流到 400ms 一条。
+- `ffmpeg.extractAudio`：需要 `ffmpeg.extract-audio` 权限。参数为 `{ mediaId, format }`，其中格式只能是 `wav`、`flac`、`mp3` 或 `m4a`。Nonoka Sub X 负责解析输入、选择输出位置、构造 FFmpeg 参数和原子发布结果。
+- `tools.runYtDLP`：需要 `tools.yt-dlp` 和 `media.import` 权限。插件传入 `{ url, args }`，自行决定受支持的 yt-dlp 参数；Nonoka Sub X 解析项目托管的 yt-dlp/FFmpeg、让用户选择输出位置，并在命令成功后自动导入媒体库。yt-dlp 以 Python wheel 形式安装，因此该能力同时依赖 Nonoka Sub X 的 Python 运行时。下载单次上限 20 分钟，超时会结束子进程并报错，避免卡住的分片服务器一直占着媒体任务锁。下载期间宿主向页面推送 `download.progress` 消息（`{ done, total }`，`total` 恒为 100，即百分比），节流到 400ms 一条。
 
 字幕文档能力有几条固定规则：
 

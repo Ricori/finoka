@@ -52,18 +52,18 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 foreach ($target in $targets) {
     if ($target -eq "windows") {
-        $source = Join-Path $binDir "Nonoka X.exe"
+        $source = Join-Path $binDir "Nonoka Sub X.exe"
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
             throw "Missing Windows build artifact: $source"
         }
-        $artifact = Join-Path $outputDir "Nonoka-X-$Version-windows-$Arch.exe"
+        $artifact = Join-Path $outputDir "Nonoka-Sub-X-$Version-windows-$Arch.exe"
         Copy-Item -LiteralPath $source -Destination $artifact -Force
     } else {
-        $source = Join-Path $binDir "Nonoka X.app"
+        $source = Join-Path $binDir "Nonoka Sub X.app"
         if (-not (Test-Path -LiteralPath $source -PathType Container)) {
             throw "Missing macOS app bundle: $source"
         }
-        $artifact = Join-Path $outputDir "Nonoka-X-$Version-darwin-universal.zip"
+        $artifact = Join-Path $outputDir "Nonoka-Sub-X-$Version-darwin-universal.zip"
         New-DarwinBundleZip -Source $source -Destination $artifact
     }
     $artifacts += $artifact
@@ -73,7 +73,7 @@ $arguments = @(
     "updater", "manifest",
     "-version", $Version,
     "-channel", "stable",
-    "-name", "Nonoka X $Version",
+    "-name", "Nonoka Sub X $Version",
     "-output", $manifest
 )
 $notesPath = Join-Path $projectRoot $NotesFile

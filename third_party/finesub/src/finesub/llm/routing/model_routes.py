@@ -1165,7 +1165,7 @@ def load_model_routes(
         synthetic_id = "nonoka-routed"
         presets[synthetic_id] = Preset(
             synthetic_id,
-            "Nonoka X 模型路由",
+            "Nonoka Sub X 模型路由",
             base_preset.test_target_id,
             MappingProxyType(bindings),
             base_preset.thinking,

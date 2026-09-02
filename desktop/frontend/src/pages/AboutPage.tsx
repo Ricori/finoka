@@ -6,7 +6,7 @@ import { stageLabels } from "../components/UpdateCenter.tsx";
 import type { SelfUpdate } from "../components/UpdateCenter.tsx";
 import "./AboutPage.css";
 
-const projectUrl = "https://github.com/Ricori/nonoka-x";
+const projectUrl = "https://github.com/Ricori/nonoka-sub-x";
 const acknowledgementUrl = "https://github.com/caca2331/finesub";
 
 function ExternalLink({ href, children }: { href: string; children: string }) {
@@ -71,7 +71,7 @@ export function AboutPage({ update }: { update?: SelfUpdate }) {
       <article className="panel about-hero">
         <div className="about-mark" aria-hidden="true">N</div>
         <div className="about-heading">
-          <span className="eyebrow">Nonoka X</span>
+          <span className="eyebrow">Nonoka Sub X</span>
           <h2>让字幕创作更轻松</h2>
           <p>一款面向视频字幕工作流的桌面工具</p>
         </div>
@@ -93,7 +93,7 @@ export function AboutPage({ update }: { update?: SelfUpdate }) {
           <strong>伊波千果</strong>
         </Row>
         <Row label="项目源码">
-          <ExternalLink href={projectUrl}>github.com/Ricori/nonoka-x</ExternalLink>
+          <ExternalLink href={projectUrl}>github.com/Ricori/nonoka-sub-x</ExternalLink>
         </Row>
         <Row label="鸣谢" note="感谢 finesub 项目带来的顶尖转写引擎。">
           <ExternalLink href={acknowledgementUrl}>caca2331/finesub</ExternalLink>

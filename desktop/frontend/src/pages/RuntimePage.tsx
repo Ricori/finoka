@@ -372,7 +372,7 @@ export function RuntimePage({ capabilities, message, provisionMessage, provision
               <h3>Python 3.12</h3>
               <p>{bootstrapBroken && !pythonInstalling
                 ? "当前本地服务运行在版本不符或缺少依赖的系统 Python 上。安装隔离的 Python 3.12 后会自动重启服务。"
-                : pythonBootstrap?.message || "Nonoka X 将自动下载隔离的 Python，不会修改系统 Python。"}</p>
+                : pythonBootstrap?.message || "Nonoka Sub X 将自动下载隔离的 Python，不会修改系统 Python。"}</p>
             </div>
             <div className="required-dependency-action">
               <small>{pythonInstalling ? "↓ 正在安装" : pythonBootstrap?.state === "failed" ? "! 安装失败" : pythonBootstrap?.state === "ready" ? "✓ 已安装" : "! 尚未安装"}</small>

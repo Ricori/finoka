@@ -62,7 +62,7 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
       <Notice className="plugin-message" message={message} tone={message.includes("失败") ? "warn" : "success"} onDismiss={onDismissMessage} />
       <article className="panel plugin-manager-hero">
         <div>
-          <span className="eyebrow">扩展 Nonoka X</span>
+          <span className="eyebrow">扩展 Nonoka Sub X</span>
           <h2>插件管理</h2>
           <p>安装的插件会挂载在左侧“工具”板块。停用会隐藏入口，但保留插件和数据。</p>
         </div>

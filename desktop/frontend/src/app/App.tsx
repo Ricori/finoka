@@ -560,7 +560,7 @@ export default function App() {
   const importMedia = useCallback(async (paths?: string[]) => {
     if (mediaDependencyMissing) {
       setSection("runtime");
-      setMessage("导入视频需要 FFmpeg 与 FFprobe，正在准备下载到 Nonoka X 缓存目录。");
+      setMessage("导入视频需要 FFmpeg 与 FFprobe，正在准备下载到 Nonoka Sub X 缓存目录。");
       if (runtimeProvision?.media_supported && runtimeProvision.job.state !== "running") {
         try {
           setRuntimeProvision(await fineSubRuntime.install("media"));
@@ -1263,8 +1263,8 @@ export default function App() {
       <UpdateOverlay update={selfUpdate} />
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-glyph">F</span>
-          <span className="brand-name">Nonoka X</span>
+          <span className="brand-glyph">N</span>
+          <span className="brand-name">Nonoka Sub X</span>
           <button className="sidebar-collapse" aria-label={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"} title={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"} onClick={() => setSidebarCollapsed((value) => !value)}>{sidebarCollapsed ? "›" : "‹"}</button>
         </div>
         <span className="nav-label">工作区</span>
@@ -1331,7 +1331,7 @@ export default function App() {
           </div>
         </section>
         <button className="sidebar-account" aria-busy={cloudLoading} disabled={cloudLoading} onClick={() => setSection("account")} title="云端账户">
-          <span className={`account-avatar ${cloudLoading ? "loading" : ""}`}>{cloudLoading ? <span className="account-spinner" aria-hidden="true" /> : "F"}</span>
+          <span className={`account-avatar ${cloudLoading ? "loading" : ""}`}>{cloudLoading ? <span className="account-spinner" aria-hidden="true" /> : "N"}</span>
           <span className="account-copy">
             <strong>{cloudLoading ? "正在验证账户" : cloudSession?.authenticated ? cloudSession.name || "未命名 Key" : "未登录云端"}</strong>
             <small>{cloudLoading ? "同步中" : cloudSession?.authenticated ? `已同步 ${cloudMedia.length} 个字幕记录` : "登录后同步媒体库"}</small>

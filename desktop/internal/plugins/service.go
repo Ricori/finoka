@@ -193,9 +193,9 @@ func (s *Service) PickAndInstall() (InstalledPlugin, error) {
 		return InstalledPlugin{}, errors.New("application window is not ready")
 	}
 	path, err := app.Dialog.OpenFile().
-		SetTitle("安装 Nonoka X 插件").
+		SetTitle("安装 Nonoka Sub X 插件").
 		AttachToWindow(home).
-		AddFilter("Nonoka X 插件", "*.nonoka-plugin").
+		AddFilter("Nonoka Sub X 插件", "*.nonoka-plugin").
 		PromptForSingleSelection()
 	if err != nil && !dialogCancelled(err) {
 		return InstalledPlugin{}, err
@@ -337,7 +337,7 @@ func (s *Service) Uninstall(id string, removeData bool) error {
 	}
 	if system {
 		s.mu.Unlock()
-		return errors.New("system plugins are built into Nonoka X and can only be disabled")
+		return errors.New("system plugins are built into Nonoka Sub X and can only be disabled")
 	}
 	if err := os.RemoveAll(pluginRoot); err != nil {
 		s.mu.Unlock()

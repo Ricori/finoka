@@ -1,5 +1,5 @@
 {
-  "content_sha256": "714b3bffb5e4a8d1571584ed7e2a8ee88266e9daff67b8e5bb321a54b734d282",
+  "content_sha256": "c193978565f69f8940481ee71df1991fdcddeb8bcf6c187d500bf8db2994b6fb",
   "files": [
     {
       "bytes": 1734,
@@ -32,9 +32,9 @@
       "sha256": "dc458d5e113e4e840852d79b60176272876546ec493f8a6086db387d39ddca42"
     },
     {
-      "bytes": 4692,
+      "bytes": 4696,
       "path": "resources/runtime-manifest.json",
-      "sha256": "1a89d6d065d82718d0b3a21212fbe3156cfb38208ff9fd4ab2606fd0b1f4aa84"
+      "sha256": "fd0606dbf285c061cd9d3cbda14a4e41eb928eba28e826f8790720c2568d4957"
     },
     {
       "bytes": 57868,
@@ -762,9 +762,9 @@
       "sha256": "d1522df634af1db340f0c1ae168f7ddabe633db513b3da52e657eeb9051a4a2f"
     },
     {
-      "bytes": 63653,
+      "bytes": 63657,
       "path": "src/finesub/llm/routing/model_routes.py",
-      "sha256": "21912b67d8cee81ac6c06c668d9933d73223702301001d7f1aeced12ae1dd851"
+      "sha256": "f5f7b2d7212391de06e0fcded8f61961090a967a11ec78e05070210ec13e37e6"
     },
     {
       "bytes": 16641,

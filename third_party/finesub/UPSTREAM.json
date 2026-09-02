@@ -1,10 +1,10 @@
 {
   "archive_sha256": "c927e0f103d4a7cb9a8733a4e23c333bad6ecbb418d98aaa6dce8a383544cea8",
   "commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
-  "content_sha256": "714b3bffb5e4a8d1571584ed7e2a8ee88266e9daff67b8e5bb321a54b734d282",
+  "content_sha256": "c193978565f69f8940481ee71df1991fdcddeb8bcf6c187d500bf8db2994b6fb",
   "engine_bundle_id": "finesub-0.4.2+8a33092a40ab",
   "engine_version": "0.4.2",
-  "files_manifest_sha256": "645fbe694da321460e0ba71d0cf0ad23bf91b1d2535adfaa2043d39966de5db3",
+  "files_manifest_sha256": "3522c2190e822ee5b6f9229ab1a10179196492bd5c3c6c2d319adb31edf29308",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
@@ -16,7 +16,7 @@
     },
     {
       "path": "0003-desktop-model-routing.patch",
-      "sha256": "b6e2ff2b960133f3659c58171151a727ffd31afbca9a17779616b9e4e394cc33"
+      "sha256": "60fd7ce2437808ee60814feabdd46acfb316c131e4a3c472244fc28f34265528"
     },
     {
       "path": "0004-subprocess-text-encoding-and-msvc-include.patch",
@@ -28,7 +28,7 @@
     },
     {
       "path": "0006-runtime-tool-manifest.patch",
-      "sha256": "96093f9a108f2bf929e47d1a5b437111943eb1058b8f4da3cacf2f3341394fcd"
+      "sha256": "ce27ce197c71adaf0e82c5689a1dce5992dc7bb37ea2b995486f3917af7d71b3"
     },
     {
       "path": "0007-agy-workspace-read-grant.patch",
@@ -37,7 +37,7 @@
   ],
   "ref": "v0.4.2",
   "repository": "https://github.com/caca2331/finesub",
-  "runtime_manifest_sha256": "1a89d6d065d82718d0b3a21212fbe3156cfb38208ff9fd4ab2606fd0b1f4aa84",
+  "runtime_manifest_sha256": "fd0606dbf285c061cd9d3cbda14a4e41eb928eba28e826f8790720c2568d4957",
   "sync_schema": 1,
   "synced_at": "2026-08-26T08:02:23Z"
 }

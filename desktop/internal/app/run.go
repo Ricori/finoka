@@ -121,7 +121,7 @@ func Run(assets fs.FS) error {
 	}
 
 	applicationInstance := application.New(application.Options{
-		Name:        "Nonoka X",
+		Name:        "Nonoka Sub X",
 		Description: "Local-first subtitle production",
 		Services: []application.Service{
 			application.NewService(providerService),
@@ -145,7 +145,7 @@ func Run(assets fs.FS) error {
 	})
 	homeOptions := applyWindowOptions(preferencesService, "home", applyWindowTheme(preferencesService, "home", application.WebviewWindowOptions{
 		Name:            "home",
-		Title:           "Nonoka X",
+		Title:           "Nonoka Sub X",
 		Width:           1180,
 		Height:          760,
 		MinWidth:        960,
@@ -191,19 +191,19 @@ func Run(assets fs.FS) error {
 
 func showDataDirectoryMigrationComplete(migration *dataDirectoryMigration) error {
 	instance := application.New(application.Options{
-		Name:   "Nonoka X",
+		Name:   "Nonoka Sub X",
 		Assets: application.AlphaAssets,
 	})
 	instance.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "Nonoka X",
+		Title:  "Nonoka Sub X",
 		Width:  1,
 		Height: 1,
 		Hidden: true,
 	})
 	instance.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		instance.Dialog.Info().
-			SetTitle("Nonoka X 数据迁移完成").
-			SetMessage("数据已从旧目录迁移到：\n" + migration.Destination + "\n\n请重新启动 Nonoka X。").
+			SetTitle("Nonoka Sub X 数据迁移完成").
+			SetMessage("数据已从旧目录迁移到：\n" + migration.Destination + "\n\n请重新启动 Nonoka Sub X。").
 			Show()
 		instance.Quit()
 	})

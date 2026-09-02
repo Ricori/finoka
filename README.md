@@ -1,8 +1,8 @@
 <div align="center">
-  <h1>Nonoka X</h1>
+  <h1>Nonoka Sub X</h1>
   <p><b>本地 AI 视频字幕生成与专业编辑桌面工作站</b></p>
-  <a href="https://github.com/Ricori/nonoka-x/releases/latest"><img src="https://img.shields.io/github/v/release/Ricori/nonoka-x?label=Release&color=4c1&sort=semver" alt="Release"></a>
-  <a href="https://github.com/Ricori/nonoka-x/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS-2ea44f?logo=github&logoColor=white" alt="Download"></a>
+  <a href="https://github.com/Ricori/nonoka-sub-x/releases/latest"><img src="https://img.shields.io/github/v/release/Ricori/nonoka-sub-x?label=Release&color=4c1&sort=semver" alt="Release"></a>
+  <a href="https://github.com/Ricori/nonoka-sub-x/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS-2ea44f?logo=github&logoColor=white" alt="Download"></a>
   <br>
   <a href="https://wails.io/"><img src="https://img.shields.io/badge/Wails-v3-blue.svg" alt="Wails"></a>
   <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8.svg" alt="Go"></a>
@@ -11,18 +11,18 @@
 
 <br>
 
-Nonoka X 是专为外语视频翻译与高质量字幕制作打造的桌面应用。项目深度整合了高精度转写流水线与专业字幕编辑器，兼具 Aegisub 的精准可控与剪映的直观便捷，支持**本地离线**与**云端**双模式无缝切换。
+Nonoka Sub X 是专为外语视频翻译与高质量字幕制作打造的桌面应用。项目深度整合了高精度转写流水线与专业字幕编辑器，兼具 Aegisub 的精准可控与剪映的直观便捷，支持**本地离线**与**云端**双模式无缝切换。
 
 ---
 
 ## ⬇️ 下载安装
 
-前往 **[Releases 最新发布页](https://github.com/Ricori/nonoka-x/releases/latest)** 获取对应平台的安装包：
+前往 **[Releases 最新发布页](https://github.com/Ricori/nonoka-sub-x/releases/latest)** 获取对应平台的安装包：
 
 | 平台 | 文件名 | 说明 |
 | :--- | :--- | :--- |
-| **Windows** | `Nonoka-X-<版本>-windows-amd64.exe` | 免安装单文件，自带环境引导，双击即用 |
-| **macOS** | `Nonoka-X-<版本>-macOS.zip` | 适配 Apple Silicon 与 Intel 架构 |
+| **Windows** | `Nonoka-Sub-X-<版本>-windows-amd64.exe` | 免安装单文件，自带环境引导，双击即用 |
+| **macOS** | `Nonoka-Sub-X-<版本>-macOS.zip` | 适配 Apple Silicon 与 Intel 架构 |
 
 > Windows 用户初次使用本地转写时，应用会自动引导下载 `uv` 并部署隔离的 Python 3.12 运行环境，无需手动安装 Python 或配置系统 PATH。
 
@@ -74,7 +74,7 @@ task dev
 | `task dev` | 启动开发模式（Wails 运行时 + 前端热重载，端口 9245） |
 | `task verify` | 自动生成 bindings、装配 sidecar 资源并执行完整桌面校验 |
 | `task build` | 构建当前平台的生产可执行文件到 `bin/` |
-| `task package` | 产出分发包（Windows 单文件 `Nonoka X.exe`，macOS `Nonoka X.app`） |
+| `task package` | 产出分发包（Windows 单文件 `Nonoka Sub X.exe`，macOS `Nonoka Sub X.app`） |
 | `task run` | 运行已构建的桌面应用产物 |
 | `go test ./...` | 运行 Go 后端单元测试 |
 | `npm --prefix frontend run typecheck` | 前端 TypeScript 类型检查 |
@@ -91,7 +91,7 @@ task dev
 
 ## 🧩 插件开发
 
-Nonoka X 插件可以在左侧“工具”菜单中增加独立页面，并通过权限受控的宿主 API 复用媒体库、FFmpeg 和 yt-dlp 等能力。插件可单独安装、启用、停用和卸载。
+Nonoka Sub X 插件可以在左侧“工具”菜单中增加独立页面，并通过权限受控的宿主 API 复用媒体库、FFmpeg 和 yt-dlp 等能力。插件可单独安装、启用、停用和卸载。
 
 ### 1. 创建最小插件
 
@@ -163,20 +163,20 @@ Compress-Archive -Path .\nonoka-plugin.json,.\ui -DestinationPath .\hello-tool.z
 Rename-Item .\hello-tool.zip hello-tool.nonoka-plugin
 ```
 
-启动 Nonoka X，在左侧进入“工具 → 插件管理”，选择生成的 `.nonoka-plugin` 文件。安装后插件贡献的页面会自动出现在“工具”分组下。
+启动 Nonoka Sub X，在左侧进入“工具 → 插件管理”，选择生成的 `.nonoka-plugin` 文件。安装后插件贡献的页面会自动出现在“工具”分组下。
 
 ### 3. 完整 Demo：YouTube / Twitch 下载器
 
 [`desktop/examples/plugins/video-downloader`](desktop/examples/plugins/video-downloader) 提供了一个可直接打包安装的完整示例。它演示了：
 
 - 插件自行构造安全的 yt-dlp 参数；
-- 通过 `tools.runYtDLP` 请求 Nonoka X 执行项目托管的 yt-dlp 与 FFmpeg；
+- 通过 `tools.runYtDLP` 请求 Nonoka Sub X 执行项目托管的 yt-dlp 与 FFmpeg；
 - 选择视频清晰度、显示下载结果，并在完成后自动导入媒体库；
 - 使用 `tools.yt-dlp` 和 `media.import` 权限隔离高风险能力。
 
-运行 Demo 前，请先在 Nonoka X“运行环境”页面安装 FFmpeg 和可选工具 yt-dlp。当前示例支持公开的 YouTube 视频、Twitch VOD 和 Twitch Clips，不读取浏览器 Cookie，也不支持需要登录的内容。
+运行 Demo 前，请先在 Nonoka Sub X“运行环境”页面安装 FFmpeg 和可选工具 yt-dlp。当前示例支持公开的 YouTube 视频、Twitch VOD 和 Twitch Clips，不读取浏览器 Cookie，也不支持需要登录的内容。
 
-更多 manifest 字段、权限、消息协议和生命周期说明请阅读 **[Nonoka X 插件开发文档](desktop/docs/PLUGINS.md)**。另有 **[最小 Hello Tool 示例](desktop/examples/plugins/hello-tool)** 可用于快速复制修改。
+更多 manifest 字段、权限、消息协议和生命周期说明请阅读 **[Nonoka Sub X 插件开发文档](desktop/docs/PLUGINS.md)**。另有 **[最小 Hello Tool 示例](desktop/examples/plugins/hello-tool)** 可用于快速复制修改。
 
 ---
 
@@ -220,7 +220,7 @@ nonoka-x/
 ## 📚 进阶架构与规范
 
 - 🏗️ **[系统架构与契约规范](docs/architecture.md)**：深入了解 Provider 执行协议、EditDocument 投影规则、云端同步契约与后端 API。
-- 🔌 **[Nonoka X Provider 接口规范](docs/provider-spec.md)**：自建执行后端的完整接口契约——数据模型、状态机、事件流、错误码、产物格式与一致性检查清单。
+- 🔌 **[Nonoka Sub X Provider 接口规范](docs/provider-spec.md)**：自建执行后端的完整接口契约——数据模型、状态机、事件流、错误码、产物格式与一致性检查清单。
 - ⚙️ **[FineSub 引擎同步与构建规范](docs/engine.md)**：了解上游引擎同步白名单、补丁栈管理与 CTranslate2 构建规范。
 
 ---

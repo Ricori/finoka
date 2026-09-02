@@ -69,7 +69,7 @@ export function RelocationConfirm({ pending, busy, empty = false, onConfirm, onD
             目标磁盘剩余 {formatStorageBytes(pending.freeBytes)}。
             {pending.sameVolume
               ? "同一磁盘内移动，瞬间完成。"
-              : "跨磁盘复制期间请不要关闭 Nonoka X；本地服务会自动停止并在完成后重启。中途取消或失败都不会删掉已复制的部分，也不会动原目录。"}
+              : "跨磁盘复制期间请不要关闭 Nonoka Sub X；本地服务会自动停止并在完成后重启。中途取消或失败都不会删掉已复制的部分，也不会动原目录。"}
           </p>
         )}
       </div>

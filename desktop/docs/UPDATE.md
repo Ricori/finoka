@@ -1,6 +1,6 @@
-# Nonoka X 桌面端更新与发布
+# Nonoka Sub X 桌面端更新与发布
 
-Nonoka X 桌面端的发布分为两条互不冲突的通道：GitHub Releases 面向手动下载，Cloudflare R2 面向应用内自动更新。两条通道使用相同版本号和 `CHANGELOG.md`，但分别由 GitHub Actions 和本地发布脚本执行。
+Nonoka Sub X 桌面端的发布分为两条互不冲突的通道：GitHub Releases 面向手动下载，Cloudflare R2 面向应用内自动更新。两条通道使用相同版本号和 `CHANGELOG.md`，但分别由 GitHub Actions 和本地发布脚本执行。
 
 | 通道 | 产物 | 更新说明 | 执行方 |
 | --- | --- | --- | --- |
@@ -98,8 +98,8 @@ git push origin main
 
 1. 从 `desktop/build/config.yml` 读取版本号。
 2. 检查 `v<版本>` Release 是否已经存在；正常推送时已存在则跳过。
-3. 在 Windows runner 构建 `Nonoka X.exe`（amd64）。
-4. 在 macOS runner 构建 universal `Nonoka X.app`，使用 `ditto` 打包 zip，以保留权限和符号链接。
+3. 在 Windows runner 构建 `Nonoka Sub X.exe`（amd64）。
+4. 在 macOS runner 构建 universal `Nonoka Sub X.app`，使用 `ditto` 打包 zip，以保留权限和符号链接。
 5. 合并两个 runner 的产物并创建 GitHub Release 和 tag。
 6. 优先使用 `CHANGELOG.md` 对应小节作为 Release 正文；缺失时自动生成说明。
 
@@ -134,7 +134,7 @@ cd D:\Development\nonoka-x\desktop
 
 1. 同步全部版本字段。
 2. 调用 Wails 构建目标平台。
-3. 从 `bin/Nonoka X.exe` 或 `bin/Nonoka X.app` 收集产物。
+3. 从 `bin/Nonoka Sub X.exe` 或 `bin/Nonoka Sub X.app` 收集产物。
 4. 将更新文件写入 `bin/update/<版本>/`。
 5. 调用 `wails3 updater manifest` 生成带摘要的 `latest.json`。
 6. 从 `CHANGELOG.md` 摘取对应版本说明；使用其他 `-NotesFile` 时读取整份文件。
@@ -145,8 +145,8 @@ cd D:\Development\nonoka-x\desktop
 
 ```text
 desktop/bin/update/0.2.0/
-├── Nonoka-X-0.2.0-windows-amd64.exe
-├── Nonoka-X-0.2.0-darwin-universal.zip
+├── Nonoka-Sub-X-0.2.0-windows-amd64.exe
+├── Nonoka-Sub-X-0.2.0-darwin-universal.zip
 └── latest.json
 ```
 
@@ -245,8 +245,8 @@ cd desktop
 ### `prepare-update.ps1` 报找不到产物
 
 - 不使用 `-SkipBuild`，让脚本重新构建。
-- Windows 应存在 `desktop/bin/Nonoka X.exe`。
-- macOS 应存在 `desktop/bin/Nonoka X.app`。
+- Windows 应存在 `desktop/bin/Nonoka Sub X.exe`。
+- macOS 应存在 `desktop/bin/Nonoka Sub X.app`。
 
 ### 发布器报缺少 R2 凭证
 

@@ -1,6 +1,6 @@
-# Nonoka X Execution Provider 接口规范 (v1)
+# Nonoka Sub X Execution Provider 接口规范 (v1)
 
-本文档是 Nonoka X **执行提供方（Execution Provider）** 的标准接口规范。任何第三方只要完整实现本规范，即可作为独立的转写执行后端接入 Nonoka X 桌面端，复用其媒体库、任务视图、Projector 投影层与 JASSUB 字幕编辑器。
+本文档是 Nonoka Sub X **执行提供方（Execution Provider）** 的标准接口规范。任何第三方只要完整实现本规范，即可作为独立的转写执行后端接入 Nonoka Sub X 桌面端，复用其媒体库、任务视图、Projector 投影层与 JASSUB 字幕编辑器。
 
 内置的 Local Provider（本地 Python sidecar）与 Cloud Provider（Nonoka 云端）是本规范的两个参考实现，二者与自建 Provider 处于完全同等的地位，前端不对任何 Provider 做特判。
 

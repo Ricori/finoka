@@ -104,15 +104,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item "desktop/bin/Nonoka X.exe" "dist/Nonoka-X-$env:VERSION-windows-amd64.exe"
+          Copy-Item "desktop/bin/Nonoka Sub X.exe" "dist/Nonoka-Sub-X-$env:VERSION-windows-amd64.exe"
 
       - name: Collect macOS artifacts
         if: matrix.target == 'darwin'
         run: |
           mkdir -p dist
           # ditto 保留 .app 的可执行权限与符号链接，普通 zip 会破坏 bundle
-          ditto -c -k --keepParent "desktop/bin/Nonoka X.app" \
-            "dist/Nonoka-X-$VERSION-macOS.zip"
+          ditto -c -k --keepParent "desktop/bin/Nonoka Sub X.app" \
+            "dist/Nonoka-Sub-X-$VERSION-macOS.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -168,5 +168,5 @@ jobs:
           if [ "${{ steps.notes.outputs.manual }}" = "true" ]; then generate=""; fi
           gh release create "v$VERSION" dist/* \
             --target "$GITHUB_SHA" \
-            --title "Nonoka X $VERSION" \
+            --title "Nonoka Sub X $VERSION" \
             --notes-file notes.md $generate
