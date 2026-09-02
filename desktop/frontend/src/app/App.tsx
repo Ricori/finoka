@@ -1263,7 +1263,7 @@ export default function App() {
       <UpdateOverlay update={selfUpdate} />
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-glyph">N</span>
+          <img className="brand-glyph" src="./assets/icon.png" alt="Nonoka Sub X" draggable={false} />
           <span className="brand-name">Nonoka Sub X</span>
           <button className="sidebar-collapse" aria-label={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"} title={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"} onClick={() => setSidebarCollapsed((value) => !value)}>{sidebarCollapsed ? "›" : "‹"}</button>
         </div>

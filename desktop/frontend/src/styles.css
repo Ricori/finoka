@@ -52,15 +52,15 @@ button:focus-visible {
 }
 
 .brand-glyph {
-  display: grid;
-  place-items: center;
-  width: 31px;
-  height: 31px;
-  border-radius: 10px;
-  background: linear-gradient(145deg, #80c8ff, #3477ff);
-  color: #06111f;
-  box-shadow: 0 8px 24px #2879ff44;
-  font-weight: 800;
+  display: block;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 nav {
@@ -1707,10 +1707,11 @@ html.wails-fullscreen #wails-window-controls {
   flex: 0 0 auto;
   width: 30px;
   height: 30px;
-  border-radius: 10px;
-  background: var(--grad);
-  color: var(--on-grad);
-  box-shadow: 0 8px 24px var(--accent-dim);
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .brand-name {

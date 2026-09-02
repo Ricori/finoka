@@ -69,16 +69,25 @@ export function AboutPage({ update }: { update?: SelfUpdate }) {
   return (
     <section className="about-layout">
       <article className="panel about-hero">
-        <div className="about-mark" aria-hidden="true">N</div>
-        <div className="about-heading">
-          <span className="eyebrow">Nonoka Sub X</span>
-          <h2>让字幕创作更轻松</h2>
-          <p>一款面向视频字幕工作流的桌面工具</p>
+        <div className="about-hero-copy">
+          <div className="about-heading">
+            <span className="eyebrow">Nonoka Sub X</span>
+            <h2>烤肉就交给 Nonoka</h2>
+            <p>一款面向视频字幕工作流的桌面工具</p>
+          </div>
+          <div className="about-chips">
+            <span className="about-chip about-chip-accent">{version ? `v${version}` : "读取版本…"}</span>
+            <span className="about-chip">GPL-3.0</span>
+            <span className="about-chip">© 2026 Ricori</span>
+          </div>
         </div>
-        <div className="about-chips">
-          <span className="about-chip about-chip-accent">{version ? `v${version}` : "读取版本…"}</span>
-          <span className="about-chip">GPL-3.0</span>
-          <span className="about-chip">© 2026 Ricori</span>
+        <div className="about-mascot-wrapper" aria-hidden="true">
+          <img
+            className="about-mascot-img"
+            src="./assets/nonoka.png"
+            alt="Nonoka"
+            draggable={false}
+          />
         </div>
       </article>
 

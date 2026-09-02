@@ -52,11 +52,6 @@
 .state-badge.missing { border-color: color-mix(in srgb, var(--warn) 38%, transparent); background: color-mix(in srgb, #422131 86%, transparent); color: #ffc0d2; }
 .card-progress { position: absolute; z-index: 2; left: 0; bottom: 0; height: 4px; border-radius: 0 99px 99px 0; background: var(--grad); transition: width .3s ease; }
 
-/* 缩略图斜向高光：平时看不见，hover 时从左下扫到右上。这是卡片上唯一的动效，
-   亮度压得很低——缩略图本身才是主角，扫光只是提示"这张卡是活的"。 */
-.media-thumb::before { content: ""; position: absolute; z-index: 1; top: -60%; left: -70%; width: 42%; height: 220%; pointer-events: none; rotate: 17deg; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .17), transparent); translate: 0 0; transition: translate .6s ease; }
-.media-card:hover .media-thumb::before { translate: 330% 0; }
-
 /* 处理中的角标带一颗呼吸的点，和列表里静态的"字幕可编辑"一眼分得开 */
 .state-badge.running::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 5px; vertical-align: 1px; border-radius: 50%; background: currentColor; animation: state-badge-breathe 1.7s ease-in-out infinite; }
 @keyframes state-badge-breathe { 50% { opacity: .28; scale: .68; } }
@@ -109,7 +104,5 @@ body.light .duration-badge { border-color: rgba(255, 255, 255, .30); background:
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .media-thumb::before { transition: none; }
-  .media-card:hover .media-thumb::before { translate: 0 0; }
   .state-badge.running::before { animation: none; }
 }
