@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "0.1.5"
+		"file_version": "0.2.0"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.1.5",
+			"ProductVersion": "0.2.0",
 			"CompanyName": "Ricori",
 			"FileDescription": "Local-first subtitle production",
 			"LegalCopyright": "© 2026 Ricori",
