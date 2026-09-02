@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
@@ -76,4 +77,58 @@ func TestBootstrapUVPinMatchesFineSubManifest(t *testing.T) {
 		}
 	}
 	t.Fatal("FineSub runtime manifest has no uv resource")
+}
+
+func TestGitHubDownloadURLsOrderAndEnvironment(t *testing.T) {
+	raw := "https://github.com/example/repo/releases/download/v1.0/file.zip"
+
+	// Default without environment override: official URL first, followed by default mirrors
+	urls := gitHubDownloadURLs(raw)
+	if len(urls) < 2 {
+		t.Fatalf("expected multiple URLs, got %d", len(urls))
+	}
+	if urls[0] != raw {
+		t.Fatalf("first URL = %s, want %s", urls[0], raw)
+	}
+	for _, prefix := range defaultGitHubMirrorPrefixes {
+		mirrorURL := prefix + raw
+		if !containsString(urls, mirrorURL) {
+			t.Errorf("expected mirror URL %s in list", mirrorURL)
+		}
+	}
+
+	// With NONOKA_GITHUB_PROXY environment variable
+	t.Setenv("NONOKA_GITHUB_PROXY", "https://custom-proxy.example.com")
+	urlsCustom := gitHubDownloadURLs(raw)
+	if len(urlsCustom) == 0 || urlsCustom[0] != "https://custom-proxy.example.com/"+raw {
+		t.Fatalf("custom proxy not prioritized: %#v", urlsCustom)
+	}
+}
+
+func TestDownloadWithFallbackFailsWithManualInstructions(t *testing.T) {
+	data := t.TempDir()
+	bootstrap := NewPythonBootstrap(data, sidecar.New(sidecar.Config{}))
+	destination := filepath.Join(data, "uv.zip")
+
+	// Invalid candidate URLs that cannot be connected to
+	candidateURLs := []string{
+		"http://127.0.0.1:54321/nonexistent1.zip",
+		"http://127.0.0.1:54321/nonexistent2.zip",
+	}
+
+	err := bootstrap.downloadWithFallback(candidateURLs, destination, 100, "dummy-digest")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "手动下载") {
+		t.Errorf("expected manual download guidance in error message, got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, destination) {
+		t.Errorf("expected destination path in error message, got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, bootstrapUVURL) {
+		t.Errorf("expected official download link in error message, got: %s", errMsg)
+	}
 }

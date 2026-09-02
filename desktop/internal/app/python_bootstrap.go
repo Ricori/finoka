@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,7 +27,49 @@ const (
 	bootstrapUVURL               = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-pc-windows-msvc.zip"
 	bootstrapUVSize        int64 = 25726255
 	bootstrapUVSHA256            = "acfde570451cfdb8689fa159a138ee805ba4e241c466432750302c86254b0984"
+	bootstrapPyPIIndex           = "https://pypi.tuna.tsinghua.edu.cn/simple"
+	bootstrapPythonMirror        = "https://ghproxy.net/https://github.com/astral-sh/python-build-standalone/releases/download"
 )
+
+var defaultGitHubMirrorPrefixes = []string{
+	"https://ghproxy.net/",
+	"https://gh-proxy.com/",
+	"https://mirror.ghproxy.com/",
+}
+
+func gitHubDownloadURLs(rawURL string) []string {
+	var urls []string
+	if custom := strings.TrimSpace(os.Getenv("NONOKA_GITHUB_PROXY")); custom != "" {
+		if !strings.HasSuffix(custom, "/") {
+			custom += "/"
+		}
+		urls = append(urls, custom+rawURL)
+	} else if customFine := strings.TrimSpace(os.Getenv("FINESUB_GITHUB_FILE_PROXY")); customFine != "" {
+		if !strings.HasSuffix(customFine, "/") {
+			customFine += "/"
+		}
+		urls = append(urls, customFine+rawURL)
+	}
+
+	urls = append(urls, rawURL)
+
+	for _, prefix := range defaultGitHubMirrorPrefixes {
+		mirrorURL := prefix + rawURL
+		if !containsString(urls, mirrorURL) {
+			urls = append(urls, mirrorURL)
+		}
+	}
+	return urls
+}
+
+func containsString(slice []string, target string) bool {
+	for _, item := range slice {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
 
 type bootstrapProgress struct {
 	Completed      int64   `json:"completed"`
@@ -224,8 +267,8 @@ func (b *PythonBootstrap) installPython() error {
 	}
 	uvArchive := filepath.Join(downloads, "uv-0.11.32-windows-x64.zip")
 	if !fileMatches(uvArchive, bootstrapUVSize, bootstrapUVSHA256) {
-		b.update("downloading", "正在下载 Python 安装器", &bootstrapProgress{Total: bootstrapUVSize, Unit: "bytes"})
-		if err := b.download(bootstrapUVURL, uvArchive, bootstrapUVSize, bootstrapUVSHA256); err != nil {
+		candidateURLs := gitHubDownloadURLs(bootstrapUVURL)
+		if err := b.downloadWithFallback(candidateURLs, uvArchive, bootstrapUVSize, bootstrapUVSHA256); err != nil {
 			return err
 		}
 	}
@@ -245,14 +288,52 @@ func (b *PythonBootstrap) installPython() error {
 		"UV_PYTHON_INSTALL_DIR="+filepath.Join(root, "python-installations"),
 		"UV_NO_PROGRESS=1",
 	)
+	if os.Getenv("UV_PYTHON_INSTALL_MIRROR") == "" {
+		environment = append(environment, "UV_PYTHON_INSTALL_MIRROR="+bootstrapPythonMirror)
+	}
+	if os.Getenv("UV_DEFAULT_INDEX") == "" && os.Getenv("UV_INDEX_URL") == "" && os.Getenv("PIP_INDEX_URL") == "" {
+		environment = append(environment, "UV_DEFAULT_INDEX="+bootstrapPyPIIndex)
+	}
+
 	b.update("installing_python", "正在下载并安装 Python "+bootstrapPythonVersion, nil)
 	if output, err := runBootstrapCommand(uv, environment, "venv", staging, "--python", bootstrapPythonVersion, "--managed-python", "--no-project"); err != nil {
-		return fmt.Errorf("安装 Python 失败：%w%s", err, commandDetail(output))
+		// If mirror failed, retry once with standard environment without mirror variable
+		if os.Getenv("UV_PYTHON_INSTALL_MIRROR") == "" {
+			_ = os.RemoveAll(staging)
+			cleanEnv := make([]string, 0, len(environment))
+			for _, envItem := range environment {
+				if !strings.HasPrefix(envItem, "UV_PYTHON_INSTALL_MIRROR=") {
+					cleanEnv = append(cleanEnv, envItem)
+				}
+			}
+			if retryOutput, retryErr := runBootstrapCommand(uv, cleanEnv, "venv", staging, "--python", bootstrapPythonVersion, "--managed-python", "--no-project"); retryErr == nil {
+				output = retryOutput
+				err = nil
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("安装 Python 失败：%w%s", err, commandDetail(output))
+		}
 	}
 	stagingPython := filepath.Join(staging, "Scripts", "python.exe")
 	b.update("installing_dependencies", "正在安装本地服务基础依赖", nil)
 	if output, err := runBootstrapCommand(uv, environment, "pip", "install", "--python", stagingPython, "--require-hashes", "-r", b.requirements); err != nil {
-		return fmt.Errorf("安装 Python 基础依赖失败：%w%s", err, commandDetail(output))
+		// If custom index failed, retry once with standard index
+		if os.Getenv("UV_DEFAULT_INDEX") == "" {
+			cleanEnv := make([]string, 0, len(environment))
+			for _, envItem := range environment {
+				if !strings.HasPrefix(envItem, "UV_DEFAULT_INDEX=") {
+					cleanEnv = append(cleanEnv, envItem)
+				}
+			}
+			if retryOutput, retryErr := runBootstrapCommand(uv, cleanEnv, "pip", "install", "--python", stagingPython, "--require-hashes", "-r", b.requirements); retryErr == nil {
+				output = retryOutput
+				err = nil
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("安装 Python 基础依赖失败：%w%s", err, commandDetail(output))
+		}
 	}
 	if output, err := runBootstrapCommand(stagingPython, environment, "-I", "-c", "import httpx, pydantic"); err != nil {
 		return fmt.Errorf("验证 Python 启动环境失败：%w%s", err, commandDetail(output))
@@ -266,24 +347,71 @@ func (b *PythonBootstrap) installPython() error {
 	return nil
 }
 
-func (b *PythonBootstrap) download(url, destination string, size int64, digest string) error {
+func (b *PythonBootstrap) downloadWithFallback(candidateURLs []string, destination string, size int64, digest string) error {
+	var attempts []string
+
+	for i, candidateURL := range candidateURLs {
+		sourceLabel := "官方源"
+		if i > 0 {
+			sourceLabel = "加速镜像"
+			if parsed, err := url.Parse(candidateURL); err == nil && parsed.Host != "" {
+				sourceLabel = parsed.Host
+			}
+		}
+
+		progressMsg := "正在下载 Python 安装器"
+		if i > 0 {
+			progressMsg = fmt.Sprintf("官方下载失败，正在切换至加速镜像 (%s)", sourceLabel)
+		}
+		b.update("downloading", progressMsg, &bootstrapProgress{Total: size, Unit: "bytes"})
+
+		err := b.downloadSingle(candidateURL, destination, size, digest)
+		if err == nil {
+			return nil
+		}
+
+		attempts = append(attempts, fmt.Sprintf("[%s]: %v", sourceLabel, err))
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	primaryMirror := defaultGitHubMirrorPrefixes[0] + bootstrapUVURL
+	return fmt.Errorf("下载 Python 安装器失败（已尝试官方及所有加速镜像）。\n"+
+		"您可以手动下载该文件并放入指定目录后重试：\n"+
+		"• 官方下载链接：%s\n"+
+		"• 镜像加速链接：%s\n"+
+		"• 目标放置路径：%s\n"+
+		"• 详细错误日志：%s",
+		bootstrapUVURL, primaryMirror, destination, strings.Join(attempts, "；"))
+}
+
+func (b *PythonBootstrap) downloadSingle(urlStr, destination string, size int64, digest string) error {
 	partial := destination + ".part"
-	request, err := http.NewRequest(http.MethodGet, url, nil)
+	_ = os.Remove(partial)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return err
 	}
+	request.Header.Set("User-Agent", "nonoka-sub-x-bootstrap")
+
 	response, err := b.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("下载 Python 安装器失败：%w", err)
+		return fmt.Errorf("网络请求失败：%w", err)
 	}
 	defer response.Body.Close()
+
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载 Python 安装器失败：HTTP %d", response.StatusCode)
+		return fmt.Errorf("HTTP 响应码 %d", response.StatusCode)
 	}
+
 	output, err := os.OpenFile(partial, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
+
 	started := time.Now()
 	buffer := make([]byte, 128<<10)
 	var completed int64
@@ -292,6 +420,7 @@ func (b *PythonBootstrap) download(url, destination string, size int64, digest s
 		if count > 0 {
 			if _, err = output.Write(buffer[:count]); err != nil {
 				output.Close()
+				_ = os.Remove(partial)
 				return err
 			}
 			completed += int64(count)
@@ -305,20 +434,27 @@ func (b *PythonBootstrap) download(url, destination string, size int64, digest s
 		}
 		if readErr != nil {
 			output.Close()
+			_ = os.Remove(partial)
 			return readErr
 		}
 	}
 	if err := output.Close(); err != nil {
+		_ = os.Remove(partial)
 		return err
 	}
+
 	b.update("verifying", "正在校验 Python 安装器", nil)
 	if !fileMatches(partial, size, digest) {
+		_ = os.Remove(partial)
 		return errors.New("Python 安装器大小或 SHA-256 校验失败")
 	}
+
 	if err := os.Remove(destination); err != nil && !errors.Is(err, os.ErrNotExist) {
+		_ = os.Remove(partial)
 		return err
 	}
 	if err := os.Rename(partial, destination); err != nil {
+		_ = os.Remove(partial)
 		return err
 	}
 	return nil
