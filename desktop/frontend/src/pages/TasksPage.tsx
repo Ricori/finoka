@@ -18,9 +18,8 @@ interface TasksPageProps {
   message: string;
   messageTone: NoticeTone;
   pipelineError?: string;
-  /** Only the local provider keeps per-line engine output, so only local rows
-      offer a log toggle; omitting the source hides it everywhere. */
-  logSource?: TaskLogSource;
+  /** Each task must read events from the provider that owns it. */
+  logSources?: Partial<Record<TaskHistoryEntry["provider"], TaskLogSource>>;
   onNavigateLibrary: () => void;
   onOpenEditor: (entry: MediaEntry) => void;
   onClearTasks: () => Promise<void>;
@@ -86,7 +85,7 @@ function TaskActivityText({ snapshot }: { snapshot: TaskHistoryEntry["snapshot"]
 }
 
 export function TasksPage(props: TasksPageProps) {
-  const { tasks, media, activeCount, message, messageTone, pipelineError, logSource, onNavigateLibrary, onOpenEditor, onClearTasks, onTaskAction, onDismissMessage } = props;
+  const { tasks, media, activeCount, message, messageTone, pipelineError, logSources, onNavigateLibrary, onOpenEditor, onClearTasks, onTaskAction, onDismissMessage } = props;
   const clearableCount = tasks.filter((item) => !activeStates.has(item.snapshot.state)).length;
   const [openLogs, setOpenLogs] = useState<ReadonlySet<string>>(() => new Set());
   const toggleLog = (taskId: string) => setOpenLogs((current) => {
@@ -131,7 +130,8 @@ export function TasksPage(props: TasksPageProps) {
             // refresh/cloud sync round finishes, which must not delay editing.
             const subtitlesEditable = localEntry !== undefined
               && (localEntry.documentAvailable || item.provider === "local" && snapshot.state === "completed");
-            const logsAvailable = logSource !== undefined && item.provider === "local";
+            const logSource = logSources?.[item.provider];
+            const logsAvailable = logSource !== undefined;
             const logsOpen = logsAvailable && openLogs.has(item.taskId);
             return (
               <article className={`task-row task-${snapshot.state}`} key={item.taskId}>
@@ -148,7 +148,7 @@ export function TasksPage(props: TasksPageProps) {
                       aria-expanded={logsOpen}
                       className={logsOpen ? "task-log-toggle open" : "task-log-toggle"}
                       onClick={() => toggleLog(item.taskId)}
-                      title="查看本机引擎的逐行输出"
+                      title={item.provider === "cloud" ? "查看云端任务事件" : "查看本机引擎的逐行输出"}
                     >
                       日志 {logsOpen ? "▴" : "▾"}
                     </button>
@@ -159,7 +159,7 @@ export function TasksPage(props: TasksPageProps) {
                   {snapshot.state === "completed" && !subtitlesEditable && <button onClick={onNavigateLibrary}>查看媒体</button>}
                 </div>
                 {logsOpen && logSource !== undefined && (
-                  <TaskLogPanel active={activeStates.has(snapshot.state)} source={logSource} taskId={item.taskId} />
+                  <TaskLogPanel active={activeStates.has(snapshot.state)} provider={item.provider} source={logSource} taskId={item.taskId} />
                 )}
               </article>
             );

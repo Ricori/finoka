@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { hasCloudSubtitles } from "../bridge/cloud.ts";
 import type { CloudEntry } from "../bridge/cloud.ts";
 import { mediaLibrary } from "../bridge/library.ts";
 import type { MediaEntry } from "../bridge/library.ts";
@@ -109,7 +110,7 @@ export function LocalMediaCard(props: LocalMediaCardProps) {
             <button className="secondary-card-action" onClick={() => void onRelink(entry)}>{entry.documentAvailable || subtitleOnly ? "关联视频" : "重新定位"}</button>
           ) : running ? (
             <button className="cancel-card-action" disabled={cancelling} onClick={() => void cancel()} title="停止本次处理；已完成的环节会保留，之后可以继续">{cancelling ? "正在取消…" : "取消处理"}</button>
-          ) : !entry.documentAvailable && cloudEntry?.status === "completed" ? (
+          ) : !entry.documentAvailable && hasCloudSubtitles(cloudEntry) ? (
             <>
               <button className="primary-card-action" disabled={adopting} onClick={() => void onAdoptCloud(entry, cloudEntry)}>{adopting ? "取回云端字幕…" : "取回云端字幕"}</button>
               <button className="secondary-card-action" disabled={!canStart || adopting} onClick={() => void onStart(entry)}>重跑任务</button>
@@ -132,8 +133,8 @@ export function CloudMediaCard({ entry, thumbnail, adopting, onEdit, onAssociate
         <span className="media-meta">{entry.status} · {formatDate(entry.updatedAt)}</span>
         <div className="media-chips"><small className="cloud-badge">{entry.source === "local_sync" ? "由本机自动同步" : "云端容器任务"}</small>{entry.ownerName && <small className="cloud-badge">{entry.ownerName}</small>}</div>
         <div className="media-card-actions">
-          {entry.status === "completed" && <button className="secondary-card-action" disabled={adopting} onClick={() => void onEdit(entry)} title="不需要本地视频，字幕会取回本机后直接打开编辑器">{adopting ? "取回字幕…" : "编辑字幕"}</button>}
-          <button className="secondary-card-action" disabled={adopting || entry.status !== "completed"} onClick={() => void onAssociate(entry)}>关联本地视频</button>
+          {hasCloudSubtitles(entry) && <button className="secondary-card-action" disabled={adopting} onClick={() => void onEdit(entry)} title="不需要本地视频，字幕会取回本机后直接打开编辑器">{adopting ? "取回字幕…" : "编辑字幕"}</button>}
+          <button className="secondary-card-action" disabled={adopting || !hasCloudSubtitles(entry)} onClick={() => void onAssociate(entry)}>关联本地视频</button>
         </div>
       </div>
     </article>

@@ -73,6 +73,15 @@
 .cleanup-check span { display: grid; gap: 3px; }
 .cleanup-check strong { color: var(--text); font-size: 12px; }
 .cleanup-check small { color: var(--faint); font-size: 11px; }
+.cloud-submit-progress { display: grid; gap: 12px; margin-top: 18px; border: 1px solid var(--accent-line); border-radius: 12px; padding: 13px 14px; background: var(--accent-dim); }
+.cloud-submit-progress > div { display: flex; align-items: center; gap: 11px; }
+.cloud-submit-icon { display: grid; flex: 0 0 34px; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 13%, var(--panel)); color: var(--accent); font-size: 16px; }
+.cloud-submit-progress > div > span:last-child { display: grid; gap: 3px; }
+.cloud-submit-progress strong { color: var(--text); font-size: 12px; }
+.cloud-submit-progress small { color: var(--mut); font-size: 11px; line-height: 1.5; }
+.cloud-submit-track { position: relative; display: block; height: 4px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--accent) 15%, var(--raised)); }
+.cloud-submit-track i { position: absolute; inset-block: 0; width: 38%; border-radius: inherit; background: var(--accent); animation: cloud-submit-flow 1.25s ease-in-out infinite; }
+@keyframes cloud-submit-flow { from { transform: translateX(-110%); } to { transform: translateX(365%); } }
 .transcription-summary { display: flex; justify-content: space-between; gap: 18px; margin-top: 18px; border-radius: 10px; padding: 11px 12px; background: var(--raised); color: var(--mut); font-size: 11px; }
 .transcription-summary strong { color: var(--text); font-size: 12px; text-align: right; }
 .transcription-error { margin: 12px 0 0; border: 1px solid color-mix(in srgb, var(--warn) 38%, transparent); border-radius: 9px; padding: 10px 11px; background: color-mix(in srgb, var(--warn) 8%, var(--panel)); color: var(--warn); font-size: 12px; line-height: 1.5; }
@@ -84,4 +93,8 @@
 @media (max-height: 700px) {
   .transcription-dialog { max-height: calc(100vh - 20px); }
   .transcription-head { padding-block: 17px 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cloud-submit-track i { width: 100%; animation: none; opacity: .72; }
 }

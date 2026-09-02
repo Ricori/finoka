@@ -5,7 +5,7 @@ import { mediaLibrary } from "../bridge/library.ts";
 import type { CacheStatus, ImportResult, MediaEntry } from "../bridge/library.ts";
 import type { RelocationProgress, StorageDestination, StorageStatus, StorageTarget } from "../bridge/storage.ts";
 import { storageLocations } from "../bridge/storage.ts";
-import { cloudAccount, DEFAULT_CLOUD_BACKEND } from "../bridge/cloud.ts";
+import { cloudAccount, DEFAULT_CLOUD_BACKEND, hasCloudSubtitles } from "../bridge/cloud.ts";
 import type { CloudEntry, CloudSession } from "../bridge/cloud.ts";
 import { fineSubSettings } from "../bridge/settings.ts";
 import type { FineSubSettingsState } from "../bridge/settings.ts";
@@ -145,6 +145,7 @@ export default function App() {
   const adoptedCloudEntries = useRef(new Set<string>());
   const syncedTasks = useRef(new Set<string>());
   const reconciledLocalTasks = useRef(new Set<string>());
+  const reconciledCloudTasks = useRef(new Set<string>());
   const taskHistoryHydrated = useRef(false);
   const preferencesHydrated = useRef(false);
   // History persists to its own file, so it needs a hydration gate of its own:
@@ -358,7 +359,7 @@ export default function App() {
       // paths would otherwise download the same artifacts at once.
       .filter((entry) => entry.available && !entry.documentAvailable && !entry.documentRemoved && entry.fingerprint && entry.id !== activeMedia?.id)
       .flatMap((entry) => {
-        const remote = cloudMedia.find((item) => item.status === "completed" && item.fingerprint === entry.fingerprint);
+        const remote = cloudMedia.find((item) => hasCloudSubtitles(item) && item.fingerprint === entry.fingerprint);
         return remote ? [{ key: `${remote.id}:${entry.id}`, localID: entry.id, videoID: remote.id }] : [];
       })
       .filter((pair) => !adoptFailed.has(pair.key));
@@ -768,12 +769,12 @@ export default function App() {
     }
   }, [controller, pipeline.snapshot?.task_id]);
 
-  // Cloud tasks report stages, not engine output, so the log reader is wired
-  // to the local provider alone and the task list hides the toggle elsewhere.
-  const localTaskLogs = useCallback(
-    (taskId: string, afterCursor: number) => localProvider.events(taskId, afterCursor),
-    [localProvider],
-  );
+  // History can contain local and cloud tasks at the same time. Keep both
+  // readers available so every log panel follows the provider that owns it.
+  const taskLogSources = useMemo(() => ({
+    local: (taskId: string, afterCursor: number) => localProvider.events(taskId, afterCursor),
+    cloud: (taskId: string, afterCursor: number) => cloudProvider.events(taskId, afterCursor),
+  }), [cloudProvider, localProvider]);
 
   const clearTaskHistory = useCallback(async () => {
     const active = taskHistoryRef.current.filter((item) => activeStates.has(item.snapshot.state));
@@ -926,6 +927,77 @@ export default function App() {
     void Promise.all([loadLibrary(), loadCacheStatus()]);
   }, [loadCacheStatus, loadLibrary, pipeline.snapshot?.task_id, taskHistory]);
 
+  // Fetch cloud artifacts as a durable completion side effect, independent of
+  // which poller observed "completed". The active pipeline normally projects
+  // them itself, but its first manifest request can race the backend publishing
+  // the files; history polling and app restarts must reach the same outcome.
+  useEffect(() => {
+    if (!cloudSession?.authenticated) return;
+    const latestByMedia = new Map<string, TaskHistoryEntry>();
+    for (const item of taskHistory) {
+      if (item.provider !== "cloud" || item.snapshot.state !== "completed" || !item.mediaId) continue;
+      const entry = media.find((candidate) => candidate.id === item.mediaId);
+      if (!entry || entry.documentAvailable || entry.documentRemoved) continue;
+      const existing = latestByMedia.get(item.mediaId);
+      if (!existing || Date.parse(item.snapshot.updated_at) > Date.parse(existing.snapshot.updated_at)) {
+        latestByMedia.set(item.mediaId, item);
+      }
+    }
+    // Only the newest completed run for a media item may write its document;
+    // replaying older history afterward would silently replace fresh subtitles.
+    const completed = [...latestByMedia.values()].filter((item) =>
+      !reconciledCloudTasks.current.has(item.taskId)
+      // Let the active controller finish its own status/artifact round first,
+      // avoiding two projections writing the same local document concurrently.
+      && !(item.taskId === pipeline.snapshot?.task_id && activeStates.has(pipeline.snapshot.state)));
+    if (completed.length === 0) return;
+    completed.forEach((item) => reconciledCloudTasks.current.add(item.taskId));
+    void (async () => {
+      const adopted = new Set<string>();
+      const failed: Array<{ item: TaskHistoryEntry; error: unknown }> = [];
+      for (const item of completed) {
+        try {
+          const alreadyProjected = item.taskId === pipeline.snapshot?.task_id && pipeline.artifacts !== null;
+          if (!alreadyProjected) {
+            // A completed snapshot can briefly precede artifact availability.
+            // Retry a few times here because active-task polling stops at the
+            // terminal state and would otherwise never attempt the download again.
+            let lastError: unknown;
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+              try {
+                await cloudProvider.artifacts(item.taskId);
+                lastError = undefined;
+                break;
+              } catch (value) {
+                lastError = value;
+                if (attempt < 3) await new Promise<void>((resolve) => window.setTimeout(resolve, 1500));
+              }
+            }
+            if (lastError !== undefined) throw lastError;
+          }
+          adopted.add(item.mediaId);
+        } catch (error) {
+          reconciledCloudTasks.current.delete(item.taskId);
+          failed.push({ item, error });
+        }
+      }
+      if (adopted.size > 0) {
+        await Promise.all([loadLibrary(), loadCacheStatus()]);
+        setMedia((entries) => entries.map((entry) => adopted.has(entry.id)
+          ? { ...entry, documentAvailable: true, documentRemoved: false }
+          : entry));
+        setTaskHistoryMessage(okNotice(adopted.size === 1
+          ? "云端任务已完成，字幕已自动取回，可以直接编辑。"
+          : `${adopted.size} 个云端任务的字幕已自动取回，可以直接编辑。`));
+      }
+      if (failed.length > 0) {
+        const first = failed[0];
+        const detail = first.error instanceof Error ? first.error.message : String(first.error);
+        setTaskHistoryMessage(warnNotice(`“${first.item.title}”已完成，但自动取回字幕失败：${detail}`));
+      }
+    })();
+  }, [cloudProvider, cloudSession?.authenticated, loadCacheStatus, loadLibrary, media, pipeline.artifacts, pipeline.snapshot, taskHistory]);
+
   // Sync from the reconciled media document, not from activeMedia. This also
   // repairs a completed run discovered after restart. A remote local-sync entry
   // newer than the task is treated as its acknowledgement so reopening the app
@@ -1004,7 +1076,10 @@ export default function App() {
       } else if (dialog.kind === "remove") {
         await mediaLibrary.remove(dialog.entry.id, false);
       } else if (dialog.kind === "delete-subtitles") {
-        const remote = cloudMedia.find((entry) => entry.status === "completed" && entry.fingerprint === dialog.entry.fingerprint);
+        // Same predicate the auto-adoption loop above matches on: suppressing
+        // an entry it would not have picked up leaves the deleted subtitles
+        // being pulled straight back down.
+        const remote = cloudMedia.find((entry) => hasCloudSubtitles(entry) && entry.fingerprint === dialog.entry.fingerprint);
         if (remote) {
           const key = `${remote.id}:${dialog.entry.id}`;
           adoptedCloudEntries.current.add(key);
@@ -1424,7 +1499,7 @@ export default function App() {
               message={taskHistoryMessage.text}
               messageTone={taskHistoryMessage.tone}
               pipelineError={pipeline.error?.message}
-              logSource={localTaskLogs}
+              logSources={taskLogSources}
               onNavigateLibrary={navigateLibrary}
               onOpenEditor={(entry) => void openEditor(entry)}
               onClearTasks={clearTaskHistory}

@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -114,6 +115,74 @@ func TestPlaceholderRecordsMediaWithoutAFileAndImportAttachesIt(t *testing.T) {
 	}
 	if !entries[0].Available || entries[0].SourcePath != source || entries[0].Width != 1920 || !entries[0].ThumbnailAvailable {
 		t.Fatalf("attached entry = %#v", entries[0])
+	}
+}
+
+// The cover of media this machine has no file of can only come from the cloud
+// entry the subtitles were adopted from. It must never displace a frame cut
+// from a real video, though: import and relink write one the moment a file is
+// attached, and that is the better picture of the two.
+func TestEnsureThumbnailCoversPlaceholdersWithoutReplacingLocalFrames(t *testing.T) {
+	root := t.TempDir()
+	tools := fixtureTools{metadata: Metadata{Duration: 42.5, Width: 1920, Height: 1080, HasVideo: true, HasAudio: true}}
+	service, err := newServiceWithTools(filepath.Join(root, "data"), tools, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jpegDataURL := func(image string) string {
+		return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString([]byte(image))
+	}
+	cover := jpegDataURL("\xFF\xD8\xFFcover")
+
+	placeholder, err := service.AddPlaceholder("demo", "cloud-fingerprint", 42.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.EnsureThumbnail(placeholder.ID, cover); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := service.ThumbnailDataURL(placeholder.ID); err != nil || stored != cover {
+		t.Fatalf("stored cover = %q, %v", stored, err)
+	}
+	if listed := service.List(); len(listed) != 1 || !listed[0].ThumbnailAvailable {
+		t.Fatalf("listed placeholder = %#v", listed)
+	}
+	// Re-adopting the same subtitles, or adopting a second entry onto media that
+	// already has its own frame, leaves the cover that is there.
+	if err := service.EnsureThumbnail(placeholder.ID, jpegDataURL("\xFF\xD8\xFFother")); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _ := service.ThumbnailDataURL(placeholder.ID); stored != cover {
+		t.Fatalf("cover was replaced: %q", stored)
+	}
+
+	// ThumbnailDataURL labels whatever is on disk as image/jpeg, so anything the
+	// backend answered with that is not one has to be refused here.
+	second, err := service.AddPlaceholder("other", "other-fingerprint", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{
+		"not a data URL": "https://example.invalid/cover.jpg",
+		"not a JPEG URL": "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n")),
+		"not JPEG bytes": jpegDataURL("<html>error</html>"),
+		"empty":          jpegDataURL(""),
+	} {
+		if err := service.EnsureThumbnail(second.ID, value); err == nil {
+			t.Fatalf("%s was accepted as a cover", name)
+		}
+	}
+	if err := service.EnsureThumbnail("loc_not-an-id", cover); err == nil {
+		t.Fatal("invalid media id was accepted")
+	}
+	if listed := service.List(); len(listed) != 2 {
+		t.Fatalf("library size = %d", len(listed))
+	} else {
+		for _, entry := range listed {
+			if entry.ID == second.ID && entry.ThumbnailAvailable {
+				t.Fatal("a rejected cover was written anyway")
+			}
+		}
 	}
 }
 

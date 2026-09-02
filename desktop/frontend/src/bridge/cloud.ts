@@ -3,6 +3,20 @@ import type { AdminKey as CloudAdminKey, Entry as CloudEntry, IssuedAdminKey, Se
 
 export type { CloudAdminKey, CloudEntry, CloudSession, IssuedAdminKey };
 
+// Whether a cloud entry has subtitles to hand back, which is not the same
+// question as whether its newest attempt succeeded. Re-transcribing media
+// reuses the library id, so `status` follows the new run while the previous
+// run's artifacts stay in place until a completing run replaces them --
+// reading the status instead made a finished subtitle set unreachable for as
+// long as the retry was queued, running, or failed. Mirrors `Entry.HasSubtitles`
+// on the Go side; both ends have to agree or the button and the call disagree.
+//
+// A type predicate, so a card guarding on it gets the entry narrowed the way
+// the `status === "completed"` comparison it replaced used to.
+export function hasCloudSubtitles(entry: CloudEntry | null | undefined): entry is CloudEntry {
+  return (entry?.artifactNames?.length ?? 0) > 0;
+}
+
 export const DEFAULT_CLOUD_BACKEND = "https://ricori--nonoka-x-cloud-api.modal.run";
 
 export const cloudAccount = {

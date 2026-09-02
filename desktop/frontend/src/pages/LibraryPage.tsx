@@ -49,6 +49,13 @@ interface LibraryPageProps {
 
 export function LibraryPage(props: LibraryPageProps) {
   const { items, visibleItems, thumbnails, cloudThumbnails, remoteByFingerprint, filter, filterCounts, sort, view, busy, message, messageTone, localRunningID, adoptingMedia, adoptingCloud, runningProgress, taskActive, syncing, setFilter, setSort, setView, onClearQuery, onImport, onOpen, onStart, onCancel, onRename, onDeleteSubtitles, onRemove, onAdoptCloud, onEditCloud, onAssociateCloud, onDeleteCloud, onRelink, onDismissMessage } = props;
+  // A local card's cover comes from the library's own thumbnail directory, which
+  // adoption now fills for media this machine has no file of. Entries adopted
+  // before it did -- and media whose frame ffmpeg never produced -- fall back to
+  // the cloud entry's cover, which is already in hand: it is fetched for every
+  // cloud entry, merged into a local card or not.
+  const coverOf = (entry: MediaEntry) =>
+    thumbnails[entry.id] ?? cloudThumbnails[remoteByFingerprint.get(entry.fingerprint)?.id ?? ""];
   return (
     <section className="library-view">
       <div className="library-toolbar">
@@ -78,7 +85,7 @@ export function LibraryPage(props: LibraryPageProps) {
       ) : (
         <div className={`media-grid ${view === "list" ? "list-view" : ""}`}>
           {visibleItems.map((item) => item.kind === "local" ? (
-            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={thumbnails[item.entry.id]} running={item.entry.id === localRunningID} adopting={adoptingMedia.has(item.entry.id)} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive} onOpen={onOpen} onStart={onStart} onCancel={onCancel} onRename={onRename} onDeleteSubtitles={onDeleteSubtitles} onRemove={onRemove} onAdoptCloud={onAdoptCloud} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
+            <LocalMediaCard key={`local:${item.entry.id}`} entry={item.entry} thumbnail={coverOf(item.entry)} running={item.entry.id === localRunningID} adopting={adoptingMedia.has(item.entry.id)} runningProgress={runningProgress} cloudEntry={remoteByFingerprint.get(item.entry.fingerprint)} canStart={item.entry.available && !taskActive} onOpen={onOpen} onStart={onStart} onCancel={onCancel} onRename={onRename} onDeleteSubtitles={onDeleteSubtitles} onRemove={onRemove} onAdoptCloud={onAdoptCloud} onDeleteCloud={onDeleteCloud} onRelink={onRelink} />
           ) : <CloudMediaCard key={`cloud:${item.entry.id}`} entry={item.entry} thumbnail={cloudThumbnails[item.entry.id]} adopting={adoptingCloud.has(item.entry.id)} onEdit={onEditCloud} onAssociate={onAssociateCloud} onDelete={onDeleteCloud} />)}
         </div>
       )}

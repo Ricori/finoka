@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TaskEvent, TaskEventPage } from "../providers/types.ts";
+import type { ProviderID, TaskEvent, TaskEventPage } from "../providers/types.ts";
 import "./TaskLogPanel.css";
 
-/** Reading a task's events is a provider capability, and only the local
-    provider streams engine output line by line. The page therefore takes the
-    reader as a prop instead of importing a provider: a cloud task has no such
-    log to show, and passing no source is how the caller says so. */
+/** Reading a task's events is a provider capability. The page passes in the
+    matching provider's reader rather than coupling the panel to either one. */
 export type TaskLogSource = (taskId: string, afterCursor: number) => Promise<TaskEventPage>;
 
 const logPollIntervalMs = 1200;
@@ -51,7 +49,7 @@ function eventTime(value: string): string {
   return new Date(parsed).toLocaleTimeString("zh-CN", { hour12: false });
 }
 
-export function TaskLogPanel({ taskId, active, source }: { taskId: string; active: boolean; source: TaskLogSource }) {
+export function TaskLogPanel({ taskId, active, provider, source }: { taskId: string; active: boolean; provider: ProviderID; source: TaskLogSource }) {
   const [events, setEvents] = useState<TaskEvent[]>([]);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -108,7 +106,7 @@ export function TaskLogPanel({ taskId, active, source }: { taskId: string; activ
     <section className="task-log-panel">
       <header className="task-log-heading">
         <strong>详细日志</strong>
-        <small>{active ? "本机引擎实时输出" : `共 ${events.length} 条记录`}</small>
+        <small>{active ? provider === "cloud" ? "云端任务实时事件" : "本机引擎实时输出" : `共 ${events.length} 条记录`}</small>
         <button disabled={lines.length === 0} onClick={copy} type="button">{copied ? "已复制" : "复制全部"}</button>
       </header>
       <div

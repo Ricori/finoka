@@ -21,11 +21,23 @@ export interface Entry {
     "source": string;
 
     /**
-     * Reported by whichever desktop started the task, not probed by the
-     * backend. False for entries synced from a local run: those never went
-     * through an upload, so the bucket has no frame for them.
+     * Reported by whichever desktop put the cover there, not probed by the
+     * backend: a cloud task PUTs it to a presigned slot the backend never sees
+     * the body of, and a local run sends it with the subtitles it syncs. False
+     * wherever neither could produce one -- a source with no video stream, or a
+     * machine without ffmpeg -- and the library then asks for no frame at all.
      */
     "thumbnailAvailable"?: boolean;
+
+    /**
+     * Which subtitle artifacts the entry holds, written by whichever run last
+     * published a set. Status describes the newest attempt; this describes what
+     * is actually retrievable, and the two come apart whenever a re-transcribe
+     * of the same media is queued, running, or has failed -- the backend reuses
+     * the library id for those, and the previous run's files stay in place until
+     * a completing run replaces them.
+     */
+    "artifactNames"?: string[] | null;
     "engineCommit"?: string;
     "createdAt": string;
     "updatedAt": string;

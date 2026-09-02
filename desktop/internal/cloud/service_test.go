@@ -27,6 +27,9 @@ type fakeProvider struct {
 type fakeMedia struct {
 	path      string
 	thumbnail string
+	// Covers handed to the library by an adoption, keyed by local media id. A
+	// map so the value receiver the other methods use can still record.
+	covers map[string]string
 }
 
 type fakeCatalog struct {
@@ -54,6 +57,17 @@ func (f fakeMedia) ThumbnailDataURL(id string) (string, error) {
 		return "", os.ErrNotExist
 	}
 	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString([]byte(f.thumbnail)), nil
+}
+
+func (f fakeMedia) EnsureThumbnail(id, dataURL string) error {
+	if f.covers == nil {
+		return os.ErrInvalid
+	}
+	// Same rule as the real library: an entry that already has a cover keeps it.
+	if _, exists := f.covers[id]; !exists {
+		f.covers[id] = dataURL
+	}
+	return nil
 }
 
 type projectingProvider struct {
@@ -343,6 +357,8 @@ func TestLoginMergesExistingLocalDocumentsAndSkipsRemoteFingerprints(t *testing.
 
 	remote := []Entry{}
 	syncCalls := 0
+	cover := "ÿØÿcover"
+	var syncedCover []byte
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer login-key" {
 			http.Error(writer, `{"detail":"key 无效"}`, http.StatusUnauthorized)
@@ -361,6 +377,7 @@ func TestLoginMergesExistingLocalDocumentsAndSkipsRemoteFingerprints(t *testing.
 				http.Error(writer, `{"detail":"invalid sync"}`, http.StatusBadRequest)
 				return
 			}
+			syncedCover = body.Thumbnail
 			entry := Entry{ID: "vid_1", Title: body.Title, Fingerprint: body.Fingerprint, Duration: body.Duration, Status: "completed", Source: "local_sync", CreatedAt: "now", UpdatedAt: "now"}
 			remote = append(remote, entry)
 			_ = json.NewEncoder(writer).Encode(entry)
@@ -371,7 +388,7 @@ func TestLoginMergesExistingLocalDocumentsAndSkipsRemoteFingerprints(t *testing.
 	defer server.Close()
 
 	catalog := fakeCatalog{
-		fakeMedia: fakeMedia{path: artifactPath},
+		fakeMedia: fakeMedia{path: artifactPath, thumbnail: cover},
 		entries: []library.Entry{{
 			ID: localID, Title: "demo.mp4", Fingerprint: "fingerprint", Duration: 60,
 			DocumentAvailable: true, Available: true,
@@ -384,6 +401,13 @@ func TestLoginMergesExistingLocalDocumentsAndSkipsRemoteFingerprints(t *testing.
 	session, err := service.Login(server.URL, "login-key")
 	if err != nil || session.Synced != 1 || session.SyncFailed != 0 || session.CloudVideos != 1 || syncCalls != 1 {
 		t.Fatalf("first merge = %#v, calls=%d, err=%v", session, syncCalls, err)
+	}
+	// The cover rides the sync. Nothing else uploads one for a locally
+	// transcribed entry -- a local run never goes through /v1/uploads/init --
+	// so without it the subtitles reach every other machine with no frame to
+	// show and no video there to draw one from.
+	if string(syncedCover) != cover {
+		t.Fatalf("synced cover = %q", syncedCover)
 	}
 	session, err = service.RefreshSession()
 	if err != nil || session.Synced != 0 || session.SyncSkipped != 1 || session.CloudVideos != 1 || syncCalls != 1 {
@@ -476,6 +500,43 @@ func TestArtifactPathCannotEscapeTaskRoot(t *testing.T) {
 	}
 	if _, err := service.safeArtifactPath("file:///etc/passwd"); err == nil {
 		t.Fatal("expected escaped artifact to fail")
+	}
+}
+
+func TestArtifactPathRebasesMovedDataDirectory(t *testing.T) {
+	root := t.TempDir()
+	taskID := "0123456789abcdef0123456789abcdef"
+	workspace := filepath.Join(root, "tasks", taskID, "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filepath.Join(workspace, "final.srt")
+	if err := os.WriteFile(artifact, []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(root, fakeProvider{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The manifest still names the data directory the run wrote it under.
+	previous := filepath.Join(filepath.Dir(root), "Finoka", "tasks", taskID, "workspace", "final.srt")
+	resolved, err := service.safeArtifactPath(localFileURI(previous))
+	if err != nil {
+		t.Fatalf("stale artifact path = %v", err)
+	}
+	if resolved != artifact {
+		t.Fatalf("rebased artifact = %q, want %q", resolved, artifact)
+	}
+	missing := filepath.Join(filepath.Dir(root), "Finoka", "tasks", taskID, "workspace", "absent.srt")
+	if _, err := service.safeArtifactPath(localFileURI(missing)); err == nil {
+		t.Fatal("expected a stale path with no current file to fail")
+	}
+	if err := os.WriteFile(filepath.Join(root, "secret.srt"), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(filepath.Dir(root), "Finoka", "tasks", taskID, "..", "..", "secret.srt")
+	if _, err := service.safeArtifactPath(localFileURI(outside)); err == nil {
+		t.Fatal("expected a traversing stale path to fail")
 	}
 }
 
@@ -633,6 +694,7 @@ func TestAdoptLibraryEntryProjectsSubtitlesTranscribedElsewhere(t *testing.T) {
 	const taskID = "vid_0123456789abcdef01234567"
 	const foreignID = "vid_ffffffffffffffffffffffff"
 	const subtitles = `{"segments":[{"id":1,"start":0,"end":1,"text":"fixture"}]}`
+	cover := "\xFF\xD8\xFFcover"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch {
@@ -640,8 +702,11 @@ func TestAdoptLibraryEntryProjectsSubtitlesTranscribedElsewhere(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"authenticated":true,"remaining":2,"running":0}`))
 		case request.URL.Path == "/v1/library":
 			_, _ = writer.Write([]byte(`{"videos":[` +
-				`{"id":"` + taskID + `","title":"demo","fingerprint":"fingerprint","duration":60,"status":"completed","source":"local_sync"},` +
-				`{"id":"` + foreignID + `","title":"other","fingerprint":"other","duration":60,"status":"completed","source":"local_sync"}]}`))
+				`{"id":"` + taskID + `","title":"demo","fingerprint":"fingerprint","duration":60,"status":"completed","source":"cloud_audio","thumbnailAvailable":true,"artifactNames":["stable_json"]},` +
+				`{"id":"` + foreignID + `","title":"other","fingerprint":"other","duration":60,"status":"completed","source":"local_sync","artifactNames":["stable_json"]}]}`))
+		case request.URL.Path == "/v1/library/"+taskID+"/thumbnail":
+			writer.Header().Set("Content-Type", "image/jpeg")
+			_, _ = writer.Write([]byte(cover))
 		case request.URL.Path == "/v1/tasks/"+taskID+"/artifacts":
 			_, _ = writer.Write([]byte(`{"schema":1,"task_id":"` + taskID + `","engine_commit":"commit","artifacts":{"stable_json":{"uri":"/v1/tasks/` + taskID + `/artifacts/stable_json","sha256":"97bfe45dfecd80477bc6cafdd457b5f23045d8715fbdc98f6da175f6f2ec6b4f","bytes":58}}}`))
 		case request.URL.Path == "/v1/tasks/"+taskID+"/artifacts/stable_json":
@@ -653,7 +718,8 @@ func TestAdoptLibraryEntryProjectsSubtitlesTranscribedElsewhere(t *testing.T) {
 	defer server.Close()
 
 	projector := &projectingProvider{}
-	service, err := New(root, projector, fakeMedia{path: source})
+	media := fakeMedia{path: source, covers: map[string]string{}}
+	service, err := New(root, projector, media)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -663,6 +729,13 @@ func TestAdoptLibraryEntryProjectsSubtitlesTranscribedElsewhere(t *testing.T) {
 	// No StartTask ran here, so there is no task link to resolve the media by.
 	if err := service.AdoptLibraryEntry(taskID, "loc_0123456789ab"); err != nil {
 		t.Fatal(err)
+	}
+	// The cover follows the subtitles down. A cloud-only card draws it from the
+	// bucket and a local card from the library, so leaving it behind would blank
+	// the very card the adoption just filled in.
+	expectedCover := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString([]byte(cover))
+	if media.covers["loc_0123456789ab"] != expectedCover {
+		t.Fatalf("adopted cover = %q", media.covers["loc_0123456789ab"])
 	}
 	if projector.projected == nil || projector.projected["video_id"] != "loc_0123456789ab" {
 		t.Fatalf("projection = %#v", projector.projected)
@@ -688,6 +761,11 @@ func TestAdoptLibraryEntryProjectsSubtitlesTranscribedElsewhere(t *testing.T) {
 	}
 	if projector.projected["fingerprint"] != "fingerprint" || projector.projected["title"] != "demo" {
 		t.Fatalf("cloud-only projection metadata = %#v", projector.projected)
+	}
+	// The placeholder has no video at all, so this cover is the only one it can
+	// ever have until a real file is associated with it.
+	if media.covers[localID] != expectedCover {
+		t.Fatalf("placeholder cover = %q", media.covers[localID])
 	}
 
 	// A cloud entry for different media must never be projected onto this one:
@@ -769,5 +847,61 @@ func TestUncompressedSourcesAreDetectedForLosslessReencode(t *testing.T) {
 		if got := isUncompressedCodec(codec); got != uncompressed {
 			t.Fatalf("codec %q: uncompressed=%v, want %v", codec, got, uncompressed)
 		}
+	}
+}
+
+// A re-transcribe of the same media reuses the cloud library id, so the entry's
+// status describes the new attempt while the previous run's subtitles are still
+// on the backend's volume and still named by the manifest. Gating adoption on
+// the status made those unreachable for as long as the new attempt had not
+// succeeded -- and permanently, if the user gave up on it.
+func TestAdoptLibraryEntryServesSubtitlesWhileANewAttemptIsUnfinished(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "video.mp4")
+	if err := os.WriteFile(source, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const taskID = "vid_0123456789abcdef01234567"
+	const emptyID = "vid_ffffffffffffffffffffffff"
+	const subtitles = `{"segments":[{"id":1,"start":0,"end":1,"text":"fixture"}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.URL.Path == "/v1/session":
+			_, _ = writer.Write([]byte(`{"authenticated":true,"remaining":2,"running":0}`))
+		case request.URL.Path == "/v1/library":
+			_, _ = writer.Write([]byte(`{"videos":[` +
+				`{"id":"` + taskID + `","title":"demo","fingerprint":"fingerprint","duration":60,"status":"failed","source":"cloud_audio","artifactNames":["stable_json"]},` +
+				`{"id":"` + emptyID + `","title":"never ran","fingerprint":"fingerprint","duration":60,"status":"failed","source":"cloud_audio"}]}`))
+		case request.URL.Path == "/v1/tasks/"+taskID+"/artifacts":
+			_, _ = writer.Write([]byte(`{"schema":1,"task_id":"` + taskID + `","engine_commit":"commit","artifacts":{"stable_json":{"uri":"/v1/tasks/` + taskID + `/artifacts/stable_json","sha256":"97bfe45dfecd80477bc6cafdd457b5f23045d8715fbdc98f6da175f6f2ec6b4f","bytes":58}}}`))
+		case request.URL.Path == "/v1/tasks/"+taskID+"/artifacts/stable_json":
+			_, _ = writer.Write([]byte(subtitles))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	projector := &projectingProvider{}
+	service, err := New(root, projector, fakeMedia{path: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Login(server.URL, "login-key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AdoptLibraryEntry(taskID, "loc_0123456789ab"); err != nil {
+		t.Fatalf("adopting an entry whose newest attempt failed: %v", err)
+	}
+	if artifacts, ok := projector.projected["artifacts"].(map[string]string); !ok || artifacts["stable_json"] != subtitles {
+		t.Fatalf("projected artifacts = %#v", projector.projected["artifacts"])
+	}
+
+	// An entry that never published a set is still refused: the widened gate
+	// asks what is retrievable, not merely whether an attempt has ended.
+	projector.projected = nil
+	if err := service.AdoptLibraryEntry(emptyID, "loc_0123456789ab"); err == nil || projector.projected != nil {
+		t.Fatalf("adopting an entry with no artifacts = %v, projection = %#v", err, projector.projected)
 	}
 }

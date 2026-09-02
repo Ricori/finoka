@@ -289,6 +289,7 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   // 日文轴不跑识别，target 已经被钉死；本地缺 LLM 时它整条路都走不通（云端的模型
   // 由 Nonoka Cloud 提供，limits.llm 在那一侧恒为 true）。
   const startBlocked = busy || !selectedReady || (translateOnly && !limits.llm);
+  const uploadingCloudAudio = busy && mode === "cloud" && !translateOnly;
   const coverage = axisParse ? clock(Math.max(...axisParse.rows.map((row) => row.t1))) : "";
   const notes = axisParse && axisParse.skipped > 0 ? `跳过 ${axisParse.skipped} 条注释或无效行` : "";
   // 只有空轴会经过识别，所以只有它会踩到这件事：转写引擎不区分说话人，重叠区间里
@@ -440,6 +441,16 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
             </>}
 
             {mode === "local" && <label className="cleanup-check"><input type="checkbox" checked={request.cleanup_intermediate} onChange={(event) => setRequest((current) => ({ ...current, cleanup_intermediate: event.target.checked }))} /><span><strong>任务完成后清理中间文件</strong></span></label>}
+            {busy && mode === "cloud" && <div className="cloud-submit-progress" role="status" aria-live="polite" aria-busy="true">
+              <div>
+                <span className="cloud-submit-icon" aria-hidden="true">☁</span>
+                <span>
+                  <strong>{uploadingCloudAudio ? "正在准备并上传音轨…" : "正在提交云端任务…"}</strong>
+                  <small>{uploadingCloudAudio ? "视频越长，上传所需时间越久；完成后会自动进入任务页面。" : "正在发送字幕与任务设置，完成后会自动进入任务页面。"}</small>
+                </span>
+              </div>
+              <span className="cloud-submit-track" aria-hidden="true"><i /></span>
+            </div>}
             <div className="transcription-summary"><span>将要执行</span><strong>{summary}</strong></div>
             {error && <p className="transcription-error" role="alert">{error}</p>}
           </div>
@@ -451,7 +462,7 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
             ? <button ref={primaryAction} className="primary-button" disabled={busy} onClick={() => void onImport(axis)}>{busy ? "正在导入…" : "导入"}</button>
             : <button ref={primaryAction} className="primary-button" disabled={busy || axisBlocked} onClick={() => setStep("mode")}>下一步</button>)}
           {step === "mode" && <button ref={primaryAction} className="primary-button" disabled={busy || !selectedReady} onClick={() => setStep("settings")}>下一步</button>}
-          {step === "settings" && <button ref={primaryAction} className="primary-button" disabled={startBlocked} onClick={() => void onStart(mode, translateOnly && axis ? { ...request, axis } : request, axis)}>{busy ? "正在启动…" : "开始任务"}</button>}
+          {step === "settings" && <button ref={primaryAction} className="primary-button" disabled={startBlocked} onClick={() => void onStart(mode, translateOnly && axis ? { ...request, axis } : request, axis)}>{busy ? uploadingCloudAudio ? "上传中…" : "正在启动…" : "开始任务"}</button>}
         </footer>
       </section>
     </div>

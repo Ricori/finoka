@@ -46,6 +46,7 @@ type providerCaller interface {
 type mediaResolver interface {
 	ResolveMedia(string) (path, title, fingerprint string, duration float64, err error)
 	ThumbnailDataURL(string) (string, error)
+	EnsureThumbnail(id, dataURL string) error
 	AddPlaceholder(title, fingerprint string, duration float64) (library.Entry, error)
 }
 
@@ -82,15 +83,34 @@ type Entry struct {
 	Duration    float64 `json:"duration"`
 	Status      string  `json:"status"`
 	Source      string  `json:"source"`
-	// Reported by whichever desktop started the task, not probed by the
-	// backend. False for entries synced from a local run: those never went
-	// through an upload, so the bucket has no frame for them.
-	ThumbnailAvailable bool   `json:"thumbnailAvailable,omitempty"`
-	EngineCommit       string `json:"engineCommit,omitempty"`
-	CreatedAt          string `json:"createdAt"`
-	UpdatedAt          string `json:"updatedAt"`
-	OwnerID            string `json:"ownerId,omitempty"`
-	OwnerName          string `json:"ownerName,omitempty"`
+	// Reported by whichever desktop put the cover there, not probed by the
+	// backend: a cloud task PUTs it to a presigned slot the backend never sees
+	// the body of, and a local run sends it with the subtitles it syncs. False
+	// wherever neither could produce one -- a source with no video stream, or a
+	// machine without ffmpeg -- and the library then asks for no frame at all.
+	ThumbnailAvailable bool `json:"thumbnailAvailable,omitempty"`
+	// Which subtitle artifacts the entry holds, written by whichever run last
+	// published a set. Status describes the newest attempt; this describes what
+	// is actually retrievable, and the two come apart whenever a re-transcribe
+	// of the same media is queued, running, or has failed -- the backend reuses
+	// the library id for those, and the previous run's files stay in place until
+	// a completing run replaces them.
+	ArtifactNames []string `json:"artifactNames,omitempty"`
+	EngineCommit  string   `json:"engineCommit,omitempty"`
+	CreatedAt     string   `json:"createdAt"`
+	UpdatedAt     string   `json:"updatedAt"`
+	OwnerID       string   `json:"ownerId,omitempty"`
+	OwnerName     string   `json:"ownerName,omitempty"`
+}
+
+// HasSubtitles reports whether the entry has a subtitle set to hand over.
+//
+// The one question every adoption path actually asks. A cloud library entry
+// carries artifact names only once some run published them, and a later
+// attempt on the same media does not take them away, so this stays true across
+// a re-transcribe that is queued, running, or failed.
+func (e Entry) HasSubtitles() bool {
+	return len(e.ArtifactNames) > 0
 }
 
 type AdminKey struct {
@@ -118,6 +138,14 @@ type syncRequest struct {
 	TaskID       string            `json:"taskId"`
 	EngineCommit string            `json:"engineCommit"`
 	Artifacts    map[string]string `json:"artifacts"`
+	// The cover the local library already drew for this media, carried up with
+	// the subtitles as the JPEG bytes encoding/json base64-encodes for it.
+	// Nothing else uploads one on this path -- a local run never goes through
+	// /v1/uploads/init, which is the only other place a cover reaches the
+	// bucket -- so leaving it out is what made every synced entry coverless on
+	// every other machine. Omitted when there is none, which leaves the
+	// backend's flag false rather than promising a frame that is not there.
+	Thumbnail []byte `json:"thumbnail,omitempty"`
 }
 
 type storedSession struct {
@@ -474,11 +502,35 @@ func (s *Service) adopt(entry Entry, target mediaTarget) error {
 	if _, err := s.projectRemoteArtifacts(entry.ID, target); err != nil {
 		return err
 	}
+	s.adoptThumbnail(entry, target.localID)
 	s.mu.Lock()
 	s.links[entry.ID] = taskLink{LocalID: target.localID}
 	err := s.saveLinksLocked()
 	s.mu.Unlock()
 	return err
+}
+
+// adoptThumbnail hands the cloud's cover to the local library so an adopted
+// card keeps the frame it was already showing while the entry was cloud-only.
+// Without it the cover is lost at exactly the moment the subtitles arrive: a
+// cloud-only card draws from the bucket, a local card draws from the library's
+// thumbnail directory, and adoption moves the entry from the first to the
+// second. Media adopted onto a placeholder has no file to cut a frame from
+// either, so nothing would ever put one back.
+//
+// Best-effort, like the upload that put the cover there: an entry whose desktop
+// sent none, a backend that no longer has it, or local media that already has
+// its own frame all leave the card exactly as it was. The bytes usually come
+// from the on-disk cache the cloud-only card already filled.
+func (s *Service) adoptThumbnail(entry Entry, localID string) {
+	if !entry.ThumbnailAvailable || s.media == nil {
+		return
+	}
+	dataURL, err := s.ThumbnailDataURL(entry.ID)
+	if err != nil {
+		return
+	}
+	_ = s.media.EnsureThumbnail(localID, dataURL)
 }
 
 func (s *Service) finishedLibraryEntry(videoID string) (Entry, error) {
@@ -490,7 +542,12 @@ func (s *Service) finishedLibraryEntry(videoID string) (Entry, error) {
 		if entry.ID != videoID {
 			continue
 		}
-		if entry.Status != "completed" {
+		// Whether subtitles can be fetched, not whether the newest attempt
+		// succeeded. Gating on the status left an entry's finished subtitles
+		// unreachable for as long as a re-transcribe of the same media was in
+		// flight or had failed -- the files were still there, and the manifest
+		// still named them.
+		if !entry.HasSubtitles() {
 			return Entry{}, errors.New("cloud entry has no finished subtitles")
 		}
 		return entry, nil
@@ -884,6 +941,7 @@ func (s *Service) syncArtifactManifest(manifest artifactManifest, localID, finge
 	request := syncRequest{
 		LocalID: localID, Fingerprint: fingerprint, Title: strings.TrimSpace(title), Duration: duration,
 		TaskID: manifest.TaskID, EngineCommit: manifest.EngineCommit, Artifacts: contents,
+		Thumbnail: s.localCover(localID),
 	}
 	var result Entry
 	if err := s.authenticatedDo(context.Background(), http.MethodPost, "/v1/library/sync", request, &result); err != nil {
@@ -962,11 +1020,47 @@ func (s *Service) safeArtifactPath(uri string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	relative, err := filepath.Rel(s.tasksRoot, resolved)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("artifact path escapes the local task directory")
+	if withinTaskRoot(s.tasksRoot, resolved) {
+		return resolved, nil
 	}
-	return resolved, nil
+	if rebased, ok := s.rebaseArtifactPath(resolved); ok {
+		return rebased, nil
+	}
+	return "", errors.New("artifact path escapes the local task directory")
+}
+
+func withinTaskRoot(tasksRoot, resolved string) bool {
+	relative, err := filepath.Rel(tasksRoot, resolved)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+// rebaseArtifactPath re-anchors a manifest path recorded under an earlier data
+// directory. Manifests store absolute file URIs, so moving the data root -- the
+// Finoka to Nonoka X rename moved every existing one -- leaves each stored path
+// naming a tree that no longer exists even though the artifacts themselves
+// travelled with the root and kept their position under it. Only the tail below
+// the recorded path's own task directory is reused: it is rejoined onto the
+// current root, and accepted only once it still resolves inside that root and
+// names a file that is really there. A path that never belonged to a task tree
+// has no such tail and stays rejected.
+func (s *Service) rebaseArtifactPath(resolved string) (string, bool) {
+	segments := strings.Split(filepath.ToSlash(resolved), "/")
+	for index, segment := range segments {
+		if segment != "tasks" || index+1 >= len(segments) {
+			continue
+		}
+		candidate := filepath.Join(append([]string{s.tasksRoot}, segments[index+1:]...)...)
+		if !withinTaskRoot(s.tasksRoot, candidate) {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+			return candidate, true
+		}
+	}
+	return "", false
 }
 
 func windowsPathFromFileURI(path string) string {
@@ -1083,19 +1177,15 @@ func (s *Service) putAudio(ctx context.Context, uploadURL, contentType, path str
 // to the cover slot beside the freshly uploaded audio. Callers treat every
 // failure as "no cover", so nothing here is worth retrying.
 func (s *Service) putThumbnail(ctx context.Context, uploadURL, localID string) error {
-	if uploadURL == "" || s.media == nil {
+	if uploadURL == "" {
 		return errors.New("cloud backend offers no thumbnail slot")
 	}
 	if err := validUploadTarget(uploadURL); err != nil {
 		return err
 	}
-	dataURL, err := s.media.ThumbnailDataURL(localID)
-	if err != nil {
-		return err
-	}
-	image, err := decodeJPEGDataURL(dataURL)
-	if err != nil {
-		return err
+	image := s.localCover(localID)
+	if len(image) == 0 {
+		return errors.New("no local cover to upload")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, bytes.NewReader(image))
 	if err != nil {
@@ -1113,6 +1203,26 @@ func (s *Service) putThumbnail(ctx context.Context, uploadURL, localID string) e
 		return fmt.Errorf("upload cloud thumbnail: HTTP %d", response.StatusCode)
 	}
 	return nil
+}
+
+// localCover is the frame the local library drew for this media, as the JPEG
+// bytes both upload paths send. Best-effort by design: a source with no video
+// stream, a missing ffmpeg, or a placeholder that has no file to draw from all
+// leave the entry without a cover rather than failing the work it rides along
+// with.
+func (s *Service) localCover(localID string) []byte {
+	if s.media == nil {
+		return nil
+	}
+	dataURL, err := s.media.ThumbnailDataURL(localID)
+	if err != nil {
+		return nil
+	}
+	image, err := decodeJPEGDataURL(dataURL)
+	if err != nil {
+		return nil
+	}
+	return image
 }
 
 // ThumbnailDataURL returns the cover of a cloud library entry, mirroring the

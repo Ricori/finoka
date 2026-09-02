@@ -331,6 +331,70 @@ func (s *Service) ThumbnailDataURL(id string) (string, error) {
 	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
+// EnsureThumbnail gives an entry a cover it cannot draw for itself, in the same
+// JPEG data URL shape ThumbnailDataURL hands back. Adoption is the caller: the
+// subtitles arriving from the cloud may belong to media this machine holds only
+// a placeholder for, and there is no file here to cut a frame from.
+//
+// An entry that already has a cover keeps it. A frame taken from the real video
+// is the better one, and Relink cuts exactly that the moment a video is
+// associated with a placeholder -- overwriting here would put a stale remote
+// cover back on a card that had just been given its own.
+func (s *Service) EnsureThumbnail(id, dataURL string) error {
+	if !validID(id) {
+		return errors.New("invalid media id")
+	}
+	image, err := decodeThumbnailDataURL(dataURL)
+	if err != nil {
+		return err
+	}
+	path := s.thumbnailPath(id)
+	if fileExists(path) {
+		return nil
+	}
+	if err := os.MkdirAll(s.thumbnailDir, 0o755); err != nil {
+		return err
+	}
+	// Written aside and renamed into place: a cover is only ever produced once,
+	// so a torn one would be what every later read of this entry returns.
+	temporary, err := os.CreateTemp(s.thumbnailDir, "."+id+"-*.part")
+	if err != nil {
+		return err
+	}
+	name := temporary.Name()
+	_, err = temporary.Write(image)
+	if closeErr := temporary.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(name, path)
+	}
+	if err != nil {
+		_ = os.Remove(name)
+	}
+	return err
+}
+
+func decodeThumbnailDataURL(value string) ([]byte, error) {
+	encoded, found := strings.CutPrefix(value, "data:image/jpeg;base64,")
+	if !found {
+		return nil, errors.New("thumbnail is not a JPEG data URL")
+	}
+	image, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, err
+	}
+	if len(image) == 0 || len(image) > maxThumbnailBytes {
+		return nil, errors.New("thumbnail is empty or exceeds size limit")
+	}
+	// ThumbnailDataURL re-labels whatever is on disk as image/jpeg without ever
+	// looking at it, so anything that is not one has to be refused on the way in.
+	if len(image) < 3 || image[0] != 0xFF || image[1] != 0xD8 || image[2] != 0xFF {
+		return nil, errors.New("thumbnail is not a JPEG")
+	}
+	return image, nil
+}
+
 func (s *Service) GetClips(id string) []Clip {
 	if !validID(id) {
 		return []Clip{}

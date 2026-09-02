@@ -55,6 +55,21 @@ export function DeleteDocument(id: string): $CancellablePromise<void> {
     return $Call.ByID(2301239092, id);
 }
 
+/**
+ * EnsureThumbnail gives an entry a cover it cannot draw for itself, in the same
+ * JPEG data URL shape ThumbnailDataURL hands back. Adoption is the caller: the
+ * subtitles arriving from the cloud may belong to media this machine holds only
+ * a placeholder for, and there is no file here to cut a frame from.
+ * 
+ * An entry that already has a cover keeps it. A frame taken from the real video
+ * is the better one, and Relink cuts exactly that the moment a video is
+ * associated with a placeholder -- overwriting here would put a stale remote
+ * cover back on a card that had just been given its own.
+ */
+export function EnsureThumbnail(id: string, dataURL: string): $CancellablePromise<void> {
+    return $Call.ByID(2989886528, id, dataURL);
+}
+
 export function ExportVideo(id: string, ass: string): $CancellablePromise<string> {
     return $Call.ByID(4199869291, id, ass);
 }
