@@ -31,6 +31,18 @@ RESOURCE_CLASS = "huggingface"
 
 HF_ENDPOINT = "HF_ENDPOINT"
 
+#: Turns off Xet, `huggingface_hub`'s own transfer path, for a mirrored fetch.
+#:
+#: Xet is not part of what a mirror mirrors. The metadata a mirror serves still
+#: names the official `cas-server.xethub.hf.co`, and the short-lived token that
+#: comes with it is not one that server accepts -- so the metadata request
+#: succeeds, every progress bar fills, and the first reconstruction request
+#: dies on `401 Unauthorized` against a host the mirror never proxied.
+#: Without Xet the files come down over plain HTTP, which a mirror does serve.
+#: Slower than Xet against the official endpoint, which is why this is only
+#: applied when the traffic is actually pointed at a mirror.
+DISABLE_XET = "HF_HUB_DISABLE_XET"
+
 #: Appended to a model file's name to record that it was verified in full.
 #:
 #: The separator checkpoint is 639 MB and is checked before *every* separation,
@@ -59,13 +71,29 @@ def apply_hf_endpoint(
 
     A user who set `HF_ENDPOINT` themselves is left alone -- they pointed it
     somewhere on purpose, and a region guess is not a reason to overrule them.
+    Their endpoint is still a mirror, though, so it gets the same Xet
+    treatment: `DISABLE_XET` says why, and an explicit setting of it wins.
     """
 
     if os.environ.get(HF_ENDPOINT):
+        disable_xet(environment)
         return environment
     endpoint = hf_endpoint_for(data_root, region)
     if endpoint:
         environment[HF_ENDPOINT] = endpoint
+        disable_xet(environment)
+    return environment
+
+
+def disable_xet(environment: dict[str, str]) -> dict[str, str]:
+    """Take the un-mirrored transfer path out of play, unless asked not to.
+
+    Someone who set `HF_HUB_DISABLE_XET` themselves has already answered this
+    question -- including with a `0` that asks for Xet back.
+    """
+
+    if DISABLE_XET not in os.environ:
+        environment[DISABLE_XET] = "1"
     return environment
 
 
@@ -89,18 +117,24 @@ def fetch_with_fallback(
     """
 
     environment = dict(base_environment)
-    endpoint = "" if os.environ.get(HF_ENDPOINT) else hf_endpoint_for(data_root, region)
+    user_endpoint = bool(os.environ.get(HF_ENDPOINT))
+    endpoint = "" if user_endpoint else hf_endpoint_for(data_root, region)
     if not endpoint:
+        if user_endpoint:
+            disable_xet(environment)
         fetch(environment)
         return
 
     environment[HF_ENDPOINT] = endpoint
+    disable_xet(environment)
     try:
         fetch(environment)
     except BaseException as error:
         if is_retryable is not None and not is_retryable(error):
             raise
         download_routes.record_failure(data_root, RESOURCE_CLASS)
+        # Built from the base environment rather than from `environment`, so
+        # the official attempt gets Xet back along with the official endpoint.
         official = dict(base_environment)
         official.pop(HF_ENDPOINT, None)
         fetch(official)
@@ -127,6 +161,11 @@ NETWORK_FAILURE_MARKERS = (
     "504",
     "429",
     "404",
+    # A mirror that hands out credentials for a host it does not serve. Spelt
+    # in full rather than as a bare "401" because the message a subprocess
+    # brings back carries hashes, and a three-digit substring matches those.
+    "401 unauthorized",
+    "cas client error",
 )
 
 #: Local trouble, stated explicitly so an unrecognised message cannot be

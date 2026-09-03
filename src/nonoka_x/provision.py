@@ -494,18 +494,45 @@ class RuntimeProvisioner:
         environment = self.worker_environment()
         environment["PYTHONUTF8"] = "1"
         environment["PYTHONIOENCODING"] = "utf-8"
-        # Hugging Face reads its endpoint during import, so region routing must
-        # be present in the child environment before model_install starts.
-        # The shared endpoint helper leaves an explicit user HF_ENDPOINT
-        # untouched and only selects the configured mirror for mainland China.
-        from finesub_bootstrap.environment import _apply_download_endpoints
-
-        _apply_download_endpoints(environment, self.paths.data_root)
         project_src = Path(__file__).resolve().parents[1]
         python_paths = [str(project_src), str(self.vendor / "src")]
         if environment.get("PYTHONPATH"):
             python_paths.append(environment["PYTHONPATH"])
         environment["PYTHONPATH"] = os.pathsep.join(python_paths)
+        # Hugging Face reads its endpoint during import, so region routing must
+        # be present in the child environment before model_install starts --
+        # and for the same reason the fallback to the official source is a
+        # second process rather than a retry inside the first one. This is the
+        # only fallback the model download has: `_install_huggingface` calls
+        # `snapshot_download` directly, so `model_fetch.fetch_with_fallback`
+        # never sees it.
+        # The shared endpoint helper leaves an explicit user HF_ENDPOINT
+        # untouched and only selects the configured mirror for mainland China.
+        from finesub_bootstrap import model_fetch
+        from finesub_bootstrap.download_routes import record_failure, record_success
+        from finesub_bootstrap.environment import _apply_download_endpoints
+
+        routed = dict(environment)
+        _apply_download_endpoints(routed, self.paths.data_root)
+        if routed.get(model_fetch.HF_ENDPOINT) == environment.get(model_fetch.HF_ENDPOINT):
+            # No mirror of ours in play. An endpoint the user chose is not ours
+            # to route around, and with no mirror at all there is nowhere to
+            # fall back to -- either way one attempt is the whole story.
+            self._run_model_installer(model_id, routed)
+            return
+        try:
+            self._run_model_installer(model_id, routed)
+        except RuntimeProvisionError as error:
+            if not model_fetch.is_mirror_failure(error):
+                raise
+            record_failure(self.paths.data_root, model_fetch.RESOURCE_CLASS)
+            self._stage("model", f"镜像下载失败，正在改用官方源重试：{model_id}")
+            self._run_model_installer(model_id, environment)
+            return
+        record_success(self.paths.data_root, model_fetch.RESOURCE_CLASS)
+
+    def _run_model_installer(self, model_id: str, environment: dict[str, str]) -> None:
+        assert self.paths is not None and self.runtime is not None
         # Polled rather than waited on, so a cancel reaches a model download that
         # would otherwise run for minutes. The reader thread is what keeps the
         # pipe from filling up and deadlocking the installer in the meantime.

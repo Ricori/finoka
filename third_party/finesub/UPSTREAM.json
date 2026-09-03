@@ -1,10 +1,10 @@
 {
   "archive_sha256": "c927e0f103d4a7cb9a8733a4e23c333bad6ecbb418d98aaa6dce8a383544cea8",
   "commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
-  "content_sha256": "c193978565f69f8940481ee71df1991fdcddeb8bcf6c187d500bf8db2994b6fb",
+  "content_sha256": "5e2aa00b55199f89b071559445854dd93d4565420861d236e233032bd7189666",
   "engine_bundle_id": "finesub-0.4.2+8a33092a40ab",
   "engine_version": "0.4.2",
-  "files_manifest_sha256": "3522c2190e822ee5b6f9229ab1a10179196492bd5c3c6c2d319adb31edf29308",
+  "files_manifest_sha256": "fed3f49ed73aaf1b8fd31f0785296e7ac198dca0f4a985ee3af4da54c5aa05d4",
   "patches": [
     {
       "path": "0001-split-vad-prefix-and-qwen-pass.patch",
@@ -33,6 +33,10 @@
     {
       "path": "0007-agy-workspace-read-grant.patch",
       "sha256": "4b92be722ba709271a45b5afe17043299d769ae5d7116269788f4cfc0d62b46a"
+    },
+    {
+      "path": "0008-hf-mirror-disable-xet.patch",
+      "sha256": "536ec1d7f1e8dbc0c867e767d81b2b2761da92a62ec0669d8796971b3ee136f1"
     }
   ],
   "ref": "v0.4.2",

@@ -1,5 +1,5 @@
 {
-  "content_sha256": "c193978565f69f8940481ee71df1991fdcddeb8bcf6c187d500bf8db2994b6fb",
+  "content_sha256": "5e2aa00b55199f89b071559445854dd93d4565420861d236e233032bd7189666",
   "files": [
     {
       "bytes": 1734,
@@ -1277,9 +1277,9 @@
       "sha256": "09d17ecc77f830831a70337e6f35b1842f120b5a5271df64a69ad3b0217288e0"
     },
     {
-      "bytes": 13770,
+      "bytes": 15654,
       "path": "src/finesub_bootstrap/model_fetch.py",
-      "sha256": "81b75bf89c6aafec9d43f9c82d90a7dfb09c67e205e24cd53135e4962896e881"
+      "sha256": "c832fbba0b02e1037bf3bc238626a301b6d9ca7a4e79ad1c50af3fff4e5ad164"
     },
     {
       "bytes": 4559,
