@@ -3,7 +3,7 @@
 
   <h1>Nonoka Sub X</h1>
 
-  <p><b>本地 AI 视频字幕生成与专业编辑桌面工作站</b></p>
+  <p><b>本地 AI 视频字幕翻译与编辑的桌面工作台</b></p>
 
   <p>
     <a href="https://github.com/Ricori/nonoka-sub-x/releases/latest"><img src="https://img.shields.io/github/v/release/Ricori/nonoka-sub-x?label=Release&color=4c1&sort=semver" alt="Release"></a>
