@@ -9,7 +9,7 @@ info:
   description: "Local-first subtitle production"
   copyright: "© 2026 Ricori"
   comments: "Local and cloud subtitle production in one media library."
-  version: "0.2.1"
+  version: "0.2.2"
 
 dev_mode:
   root_path: .
