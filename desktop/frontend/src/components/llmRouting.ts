@@ -46,8 +46,12 @@ export function saveModelMemory(memory: Record<string, Record<string, string>>, 
  *
  * 手填模型 ID 的提供商（OpenAI/Anthropic 及两个兼容端点）没有可选清单，
  * 一律清空就意味着「切走再切回来」会把已经配好的模型 ID 弄丢。所以先用
- * 本次会话里为该提供商填过的值，再退回已保存的路由（保存过的那个提供商
- * 切回来时仍然有效），最后才是清单里的默认模型。
+ * 记住的值，再退回已保存的路由（保存过的那个提供商切回来时仍然有效），
+ * 最后才是清单里的默认模型。
+ *
+ * 三个候选按「有值才算数」逐个降级，不能用 `??`：记忆里留下的空串同样是
+ * 「没填」，一旦它把已保存的模型 ID 挡住，切回来就只剩空输入框，之后再切
+ * 走又会把这个空串写回记忆，永远好不了。
  */
 export function pickModelForProvider(options: {
   provider: FineSubModelProvider | undefined;
@@ -56,7 +60,7 @@ export function pickModelForProvider(options: {
 }): string {
   const { provider, remembered, savedModel } = options;
   if (!provider) return "";
-  const candidate = (remembered ?? savedModel ?? "").trim();
+  const candidate = (remembered || savedModel || "").trim();
   if (provider.mode === "select") {
     return provider.models.some((item) => item.id === candidate)
       ? candidate

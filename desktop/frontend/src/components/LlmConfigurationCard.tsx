@@ -20,10 +20,12 @@ export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, bus
   // 否则手填模型 ID 的提供商每次都得重新输入。通过 localStorage 持久化，
   // 避免关闭页面或切换其他提供商保存后丢失。
   const modelMemory = useRef<Record<string, Record<string, string>>>(loadModelMemory());
+  // 空值不进记忆：离开一个还没填模型的提供商时写下空串，会把已经保存过的
+  // 模型 ID 顶掉，下次切回来就是空输入框。
   const rememberModel = (routeID: string, providerID: string, model: string) => {
-    if (!providerID) return;
+    if (!providerID || !model.trim()) return;
     const perRoute = modelMemory.current[routeID] ?? (modelMemory.current[routeID] = {});
-    perRoute[providerID] = model;
+    perRoute[providerID] = model.trim();
     saveModelMemory(modelMemory.current);
   };
   const savedRouteOf = (routeID: string): FineSubModelRoute =>

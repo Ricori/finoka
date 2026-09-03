@@ -48,6 +48,13 @@ test("a model typed this session outlives a round trip through another provider"
   assert.equal(pickModelForProvider({ provider: compat, remembered: "vendor/typed", savedModel: "" }), "vendor/typed");
 });
 
+test("an empty remembered model never shadows the saved one", () => {
+  // 离开一个还没填模型的兼容提供商会在记忆里留下空串。它一旦挡住已保存的
+  // 模型 ID，切回来就是空输入框，再切走又把空串写回去，永远好不了。
+  assert.equal(pickModelForProvider({ provider: compat, remembered: "", savedModel: "vendor/mini" }), "vendor/mini");
+  assert.equal(pickModelForProvider({ provider: gemini, remembered: "", savedModel: "gemini-3.7-pro" }), "gemini-3.7-pro");
+});
+
 test("model memory persistence round-trips correctly", () => {
   const store = new Map();
   const mockStorage = {
