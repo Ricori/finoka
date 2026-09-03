@@ -1,17 +1,27 @@
 <div align="center">
+  <img src="desktop/frontend/public/assets/nonoka.png" alt="Nonoka" width="200">
+
   <h1>Nonoka Sub X</h1>
+
   <p><b>本地 AI 视频字幕生成与专业编辑桌面工作站</b></p>
-  <a href="https://github.com/Ricori/nonoka-sub-x/releases/latest"><img src="https://img.shields.io/github/v/release/Ricori/nonoka-sub-x?label=Release&color=4c1&sort=semver" alt="Release"></a>
-  <a href="https://github.com/Ricori/nonoka-sub-x/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS-2ea44f?logo=github&logoColor=white" alt="Download"></a>
-  <br>
-  <a href="https://wails.io/"><img src="https://img.shields.io/badge/Wails-v3-blue.svg" alt="Wails"></a>
-  <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8.svg" alt="Go"></a>
-  <a href="https://reactjs.org/"><img src="https://img.shields.io/badge/React-19-61DAFB.svg" alt="React"></a>
+
+  <p>
+    <a href="https://github.com/Ricori/nonoka-sub-x/releases/latest"><img src="https://img.shields.io/github/v/release/Ricori/nonoka-sub-x?label=Release&color=4c1&sort=semver" alt="Release"></a>
+    <a href="https://github.com/Ricori/nonoka-sub-x/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS-2ea44f?logo=github&logoColor=white" alt="Download"></a>
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License"></a>
+  </p>
+  <p>
+    <a href="https://wails.io/"><img src="https://img.shields.io/badge/Wails-v3-blue.svg" alt="Wails"></a>
+    <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8.svg" alt="Go"></a>
+    <a href="https://reactjs.org/"><img src="https://img.shields.io/badge/React-19-61DAFB.svg" alt="React"></a>
+  </p>
 </div>
 
 <br>
 
 Nonoka Sub X 是专为外语视频翻译与高质量字幕制作打造的桌面应用。项目深度整合了高精度转写流水线与专业字幕编辑器，兼具 Aegisub 的精准可控与剪映的直观便捷，支持**本地离线**与**云端**双模式无缝切换。
+
+**目录**：[下载安装](#-下载安装) · [核心特性](#-核心特性) · [快速开始](#-快速开始开发指南) · [插件开发](#-插件开发) · [项目结构](#-项目结构) · [数据与存储路径](#-数据与存储路径) · [进阶架构与规范](#-进阶架构与规范)
 
 ---
 
@@ -189,7 +199,7 @@ nonoka-x/
 │   ├── Taskfile.yml          # 构建、打包与开发任务编排
 │   ├── internal/app/         # Wails 核心服务、本地流媒体网关、缓存与更新
 │   └── frontend/             # React 19 前端工程（媒体库、JASSUB 编辑器、轨道视图）
-├── src/nonoka_x/               # Python 适配层、Artifact Projector 与 DocumentStore
+├── src/nonoka_x/             # Python 适配层、Artifact Projector 与 DocumentStore
 ├── third_party/finesub/      # 固定 commit 的 FineSub 算法引擎快照（生成目录）
 ├── patches/finesub/          # 维护的 FineSub 专用补丁栈
 ├── scripts/                  # 引擎同步、构建与运维脚本
@@ -229,3 +239,9 @@ nonoka-x/
 
 本项目采用 **[GPL-3.0](./LICENSE)** 开源许可证。
 底层的 FineSub 算法代码采用 **MIT** 许可证，Prompt 模板遵循 **CC BY-SA 4.0** 许可。
+
+<div align="center">
+  <br>
+  <img src="desktop/frontend/public/assets/mascot-wave.png" alt="Nonoka" width="96">
+  <p><sub>Made with ❤️ — 祝你字幕愉快</sub></p>
+</div>
