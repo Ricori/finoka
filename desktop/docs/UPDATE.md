@@ -89,7 +89,6 @@ cd D:\Development\nonoka-x\desktop
 仓库根目录的 `.github/workflows/release.yml` 监听 `main` 分支上的 `desktop/build/config.yml`。提交并推送版本变更后会自动执行：
 
 ```powershell
-cd D:\Development\nonoka-x
 git add CHANGELOG.md desktop
 git commit -m "chore: release 0.2.0"
 git push origin main
@@ -113,8 +112,6 @@ git push origin main
 `scripts/release-update.ps1` 是统一入口。默认平台为 Windows，默认架构为 amd64。
 
 ```powershell
-cd D:\Development\nonoka-x\desktop
-
 # 同步版本、构建 Windows、生成并校验清单，但不上传
 .\scripts\release-update.ps1 -Version 0.2.0 -Platform windows
 
@@ -166,13 +163,11 @@ desktop/bin/update/0.2.0/
 
 # 复用现有 Windows 构建并发布
 .\scripts\release-update.ps1 -Version 0.2.0 -Platform windows -SkipBuild -Publish
-
 ```
 
 首次使用前安装发布脚本依赖：
 
 ```powershell
-cd D:\Development\nonoka-x\desktop\scripts
 npm install
 ```
 
@@ -204,8 +199,6 @@ R2_BUCKET=...
 以 `0.2.0` 为例：
 
 ```powershell
-cd D:\Development\nonoka-x\desktop
-
 # 1. 先编辑仓库根目录 CHANGELOG.md
 # 2. 同步版本号
 .\scripts\release-update.ps1 -Version 0.2.0 -VersionOnly
