@@ -122,6 +122,10 @@ def _report_correction_summary(run: CorrectionRun) -> None:
     metrics["调用"] = len(calls)
     metrics["重试"] = sum(1 for row in calls if int(row.get("attempt") or 0) > 0)
     metrics["修复轮"] = run.repair_rounds
+    # Only when it happened: a zero here would put a line about output ceilings
+    # in front of every healthy run.
+    if run.output_truncations:
+        metrics["输出截断"] = run.output_truncations
     metrics["内容过滤"] = run.content_filter_recoveries
     by_tier: dict[str, int] = {}
     for row in calls:

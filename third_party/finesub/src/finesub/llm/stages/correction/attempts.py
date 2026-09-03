@@ -120,6 +120,57 @@ def _extract_next_advice(
     return cap_tokens(body, max_tokens, count_tokens)
 
 
+def _warn_output_truncated(
+    run: CorrectionRun,
+    *,
+    window: SubtitleWindow,
+    model: str,
+    check: Dict[str, Any],
+    splittable: bool,
+) -> None:
+    """Say in the task log that a window's answer was cut off mid-sentence.
+
+    A debug line carried this before, and what a watching user saw was
+    ``correction window validation failed ... output_limited=true`` followed by
+    chunk ids growing a suffix per attempt -- accurate, and unreadable. What it
+    means is that a whole generation was paid for and thrown away, and that the
+    remedy is a *setting*: the row's output ceiling, or the model's thinking
+    budget. Named at warning level so the desktop shows it, and so the reader is
+    told which of the two numbers is the problem.
+
+    Once per run. The ladder can fire a dozen times on one bad configuration,
+    and repeating the same paragraph would bury the rest of the log; the
+    per-occurrence detail stays on the debug line below, and the closing summary
+    reports the totals.
+    """
+
+    if not run.note_output_truncation():
+        return
+    observed = int(check.get("observed_output_tokens") or 0)
+    thinking = int(check.get("thinking_tokens") or 0)
+    cap = int(check.get("max_output_tokens") or 0)
+    if observed:
+        measured = f"输出 {observed}/{cap} tokens"
+        if thinking:
+            # The distinction that decides what to change: a model that spent
+            # its budget thinking needs a lower effort level, not a bigger cap.
+            measured += f"（其中思考 {thinking}）"
+    else:
+        # No usage to quote: this is validation's content heuristic, reached
+        # only after the retries are spent (see `truncated_output` below).
+        measured = "提供商未报告 usage，按内容判定为截断"
+    current_reporter().warning(
+        "correction-output-truncated",
+        f"窗口 {window.chunk_id} 的回答在写完前触达输出上限"
+        f"（{model or '当前模型'}，{measured}），本次生成整体作废并"
+        + ("拆成两半重跑" if splittable else "原窗重跑"),
+        impact="每次触达都会丢掉一整次生成，窗口数随之增加，纠错阶段成倍变慢；"
+        "后续同类情况只记日志，不再重复告警",
+        action="核对 model_catalog.psv 里该模型的 max_output_tokens 是否与它的实际上限一致；"
+        "若是思考模型，降低思考档位或改用输出上限更大的模型",
+    )
+
+
 def run_window_attempts(
     run: CorrectionRun,
     current: SubtitleWindow,
@@ -696,6 +747,13 @@ def run_window_attempts(
         second_half: SubtitleWindow | None = None
         if output_limited or truncated_output:
             halves = run.geometry.split(current)
+            _warn_output_truncated(
+                run,
+                window=current,
+                model=result.model,
+                check=output_limit_check,
+                splittable=halves is not None,
+            )
             if halves is None:
                 if final_attempt:
                     errors = (

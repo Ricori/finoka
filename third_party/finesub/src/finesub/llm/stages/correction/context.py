@@ -412,11 +412,26 @@ class CorrectionRun:
     #: and a bare `+=` is a read-modify-write that can drop counts.
     repair_rounds: int = 0
     content_filter_recoveries: int = 0
+    #: Windows whose answer ran into the output ceiling. The tally is for the
+    #: closing summary; the flag is what keeps the warning that explains it to
+    #: one per run (a misconfigured ceiling fires the ladder on every window,
+    #: and the same paragraph twelve times buries the rest of the log).
+    output_truncations: int = 0
+    output_truncation_warned: bool = False
     _tally_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def count_repair_round(self) -> None:
         with self._tally_lock:
             self.repair_rounds += 1
+
+    def note_output_truncation(self) -> bool:
+        """Count one truncated answer; True the first time (worth warning)."""
+
+        with self._tally_lock:
+            self.output_truncations += 1
+            first = not self.output_truncation_warned
+            self.output_truncation_warned = True
+            return first
 
     def count_content_filter_recovery(self) -> None:
         with self._tally_lock:

@@ -433,6 +433,147 @@ class FineSubSettingsTests(unittest.TestCase):
             )
             self.assertFalse(official["customized"])
 
+    def test_known_model_row_carries_its_declared_limits(self) -> None:
+        """A recognized model is described by its own facts, not a placeholder.
+
+        Windows are planned against `max_output_tokens`, so the row deciding
+        that DeepSeek can only answer 16k tokens is what turns every window
+        into a split-and-retry ladder. The thinking column matters for the same
+        reason: DeepSeek bills its chain of thought inside `completion_tokens`,
+        and identity would send it an effort word it does not know.
+        """
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "OPENAI_COMPAT_API_KEY": "compat-secret",
+                    "OPENAI_COMPAT_BASE_URL": "https://vendor.example/v1",
+                    "LLM_DEFAULT_PROVIDER": "openai-compat",
+                    "LLM_DEFAULT_MODEL": "deepseek-v4-flash",
+                }
+            )
+            catalog = (Path(temporary) / "model_catalog.psv").read_text(encoding="utf-8")
+            self.assertIn(
+                "|DeepSeek-V4-Flash|deepseek-v4-flash|1000000|384000|"
+                "false|false|false|max,high,low|1.15|70",
+                catalog,
+            )
+
+            from finesub.config import clear_config_cache
+            from finesub.llm.routing.model_catalog import default_model_catalog
+
+            clear_config_cache()
+            default_model_catalog.cache_clear()
+            entry = next(
+                item
+                for item in default_model_catalog()
+                if item.api_model_id == "deepseek-v4-flash"
+            )
+            self.assertEqual(entry.max_output_tokens, 384_000)
+            self.assertEqual(entry.max_input_tokens, 1_000_000)
+            self.assertEqual(entry.thinking_levels, ("max", "high", "low"))
+            self.assertAlmostEqual(entry.token_scale, 1.15)
+            # Media stays off whatever the model can do: the compat transport
+            # is text-only, and the catalog rejects a row that claims otherwise.
+            self.assertFalse(entry.supports_audio)
+            self.assertFalse(entry.supports_video)
+
+    def test_anthropic_compat_row_reads_the_same_model_table(self) -> None:
+        """The facts are the model's, not the route's.
+
+        Both transports carry an effort word -- `reasoning_effort` on the
+        OpenAI dialect, `output_config.effort` on the Anthropic one -- so the
+        same table serves every HTTP provider the desktop offers.
+        """
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "ANTHROPIC_COMPAT_API_KEY": "compat-secret",
+                    "ANTHROPIC_COMPAT_BASE_URL": "https://relay.example",
+                    "LLM_DEFAULT_PROVIDER": "anthropic-compat",
+                    "LLM_DEFAULT_MODEL": "claude-sonnet-5",
+                }
+            )
+            catalog = (Path(temporary) / "model_catalog.psv").read_text(encoding="utf-8")
+            self.assertIn("|anthropic|https://relay.example|", catalog)
+            self.assertIn(
+                "|Claude Sonnet 5|claude-sonnet-5|1000000|65536|"
+                "false|false|false|true|1|77",
+                catalog,
+            )
+
+            from finesub.config import clear_config_cache
+            from finesub.llm.routing.model_catalog import default_model_catalog
+
+            clear_config_cache()
+            default_model_catalog.cache_clear()
+            entry = next(
+                item
+                for item in default_model_catalog()
+                if item.api_model_id == "claude-sonnet-5" and item.base_url
+            )
+            self.assertEqual(entry.provider_kind, "anthropic")
+            self.assertEqual(entry.max_output_tokens, 65_536)
+            self.assertEqual(entry.thinking_levels, ("high", "medium", "low"))
+
+    def test_refresh_rewrites_a_catalog_written_by_an_older_build(self) -> None:
+        """New model facts have to reach installs nobody re-saves settings on."""
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "OPENAI_COMPAT_API_KEY": "compat-secret",
+                    "OPENAI_COMPAT_BASE_URL": "https://vendor.example/v1",
+                    "LLM_DEFAULT_PROVIDER": "openai-compat",
+                    "LLM_DEFAULT_MODEL": "deepseek-v4-pro",
+                }
+            )
+            catalog = Path(temporary) / "model_catalog.psv"
+            catalog.write_text(
+                catalog.read_text(encoding="utf-8").replace("1000000|384000", "128000|16384"),
+                encoding="utf-8",
+            )
+
+            restarted = FineSubSettings(temporary)
+            restarted.bind_environment()
+            restarted.refresh_model_catalog()
+            self.assertIn("|1000000|384000|", catalog.read_text(encoding="utf-8"))
+
+    def test_unknown_model_row_stays_conservative_and_thinking_free(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            settings.update_keys(
+                {
+                    "OPENAI_COMPAT_API_KEY": "compat-secret",
+                    "OPENAI_COMPAT_BASE_URL": "https://vendor.example/v1",
+                    "LLM_DEFAULT_PROVIDER": "openai-compat",
+                    "LLM_DEFAULT_MODEL": "vendor-large",
+                }
+            )
+            catalog = (Path(temporary) / "model_catalog.psv").read_text(encoding="utf-8")
+            # No display name to borrow, and no reasoning parameter: an endpoint
+            # nobody has declared may 400 on a field it does not know.
+            self.assertIn(
+                "|vendor-large|vendor-large|128000|16384|false|false|false|false|1|70",
+                catalog,
+            )
+
     def test_api_provider_keeps_the_packaged_tail_behind_it(self) -> None:
         """Only a local CLI drops the fallback.
 

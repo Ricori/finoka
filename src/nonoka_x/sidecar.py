@@ -160,6 +160,13 @@ def main(argv: list[str] | None = None) -> int:
     token = secrets.token_urlsafe(32)
     settings = FineSubSettings(args.data_dir)
     settings.bind_environment()
+    try:
+        # The generated model catalog is only as current as the last settings
+        # save; a build that ships new model facts has to restate them itself,
+        # or an existing install keeps planning against the old ones.
+        settings.refresh_model_catalog()
+    except Exception as exc:  # noqa: BLE001 - a stale catalog is not fatal
+        print(f"model catalog refresh skipped: {exc}", file=sys.stderr, flush=True)
     provisioner = RuntimeProvisioner(args.data_dir, args.vendor, args.install_dir)
     provider = LocalProvider(args.data_dir / "tasks", args.vendor, settings=settings, provisioner=provisioner)
     server = SidecarServer(("127.0.0.1", 0), provider, token)

@@ -11,6 +11,8 @@ import tomllib
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
+from .model_specs import spec_for as model_spec_for
+
 KEY_SPECS: tuple[dict[str, str], ...] = (
     {"name": "GEMINI_FREE", "label": "Gemini 免费池", "purpose": "LLM 纠错、翻译与 Gemma 搜索"},
     {"name": "GEMINI_PAID", "label": "Gemini 付费池", "purpose": "质量优先的纠错与翻译"},
@@ -152,7 +154,7 @@ _MODEL_SETTING_TO_CONFIG = {
 _MODEL_CATALOG_HEADER = (
     "fact_id|provider_tier|provider_kind|base_url|key_env|display_name|"
     "api_model_id|max_input_tokens|max_output_tokens|supports_audio|"
-    "supports_video|supports_native_search|thinking|quality_score"
+    "supports_video|supports_native_search|thinking|token_scale|quality_score"
 )
 
 
@@ -374,6 +376,19 @@ class FineSubSettings:
         os.environ["FINESUB_CHECKOUT_DATA"] = "0"
         os.environ.setdefault("FINESUB_KNOWLEDGE_ROOT", str(self.root / "knowledge"))
         os.environ.setdefault("FINESUB_STATE_DIR", str(self.root / "state"))
+
+    def refresh_model_catalog(self) -> None:
+        """Rewrite the generated catalog from the routes already on disk.
+
+        The catalog is normally written when settings are saved, so an install
+        that was configured before the model facts shipped keeps whatever the
+        old code claimed -- and a wrong `max_output_tokens` is what turns every
+        correction window into a split-and-retry ladder. Regenerating at startup
+        makes the fix arrive with the update instead of with the user's next
+        visit to the settings page. Idempotent: same routes, same file.
+        """
+
+        self._sync_model_routing(_secrets_module().read_env_file(self.env_file))
 
     def snapshot(self) -> dict[str, Any]:
         secrets = _secrets_module()
@@ -626,9 +641,35 @@ class FineSubSettings:
                 # unparseable, so drop it and let routing fall back.
                 continue
             emitted.add(target)
+            # The model's own declared limits, not a placeholder: windows are
+            # planned against `max_output_tokens`, and a row that understates it
+            # turns every window into a split-and-retry ladder (see
+            # `nonoka_x.model_specs`). An id the table does not know still gets
+            # the conservative default it always had, minus the reasoning
+            # parameter no unknown endpoint is guaranteed to accept.
+            spec = model_spec_for(model)
+            # Audio and video stay false for every row here: the packaged HTTP
+            # transports are text-only, and the catalog parser rejects a
+            # compat-kind row that claims media support.
             catalog_lines.append(
                 "|".join(
-                    [target, tier, kind, base_url, key_env, model, model, "128000", "16384", "false", "false", "false", "true", "70"]
+                    [
+                        target,
+                        tier,
+                        kind,
+                        base_url,
+                        key_env,
+                        spec.display_name or model,
+                        model,
+                        str(spec.max_input_tokens),
+                        str(spec.max_output_tokens),
+                        "false",
+                        "false",
+                        "false",
+                        spec.thinking,
+                        f"{spec.token_scale:g}",
+                        str(spec.quality_score),
+                    ]
                 )
             )
         write_atomic(self.model_catalog_file, "\n".join(catalog_lines) + "\n", newline="")

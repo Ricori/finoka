@@ -169,6 +169,19 @@ class PurelyAdditiveTests(unittest.TestCase):
             "0007-agy-workspace-read-grant.patch": [
                 "src/finesub/llm/agent/local_agent.py",
             ],
+            # Reporting only: both add reporter calls (and, in 0009, the
+            # run-level tally one of them reads) without touching a decision.
+            # The cloud runs them too, which is the point -- a truncated answer
+            # or a rate limited provider is exactly as invisible there, and the
+            # two sides still compute the same subtitles from the same inputs.
+            "0009-correction-output-truncation-warning.patch": [
+                "src/finesub/llm/stages/correction/attempts.py",
+                "src/finesub/llm/stages/correction/context.py",
+                "src/finesub/llm/stages/correction/run.py",
+            ],
+            "0010-provider-call-failure-visibility.patch": [
+                "src/finesub/llm/llm_runtime.py",
+            ],
         }
         for name in names[1:]:
             with self.subTest(patch=name):
