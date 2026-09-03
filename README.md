@@ -243,5 +243,5 @@ nonoka-x/
 <div align="center">
   <br>
   <img src="desktop/frontend/public/assets/mascot-wave.png" alt="Nonoka" width="96">
-  <p><sub>Made with ❤️ — 祝你字幕愉快</sub></p>
+  <p><sub>一起烤肉吧！</sub></p>
 </div>
