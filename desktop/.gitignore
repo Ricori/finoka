@@ -3,7 +3,8 @@
 .env.release
 bin
 frontend/node_modules
-frontend/dist
+frontend/dist/*
+!frontend/dist/.gitkeep
 scripts/node_modules
 *.syso
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
