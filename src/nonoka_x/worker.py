@@ -308,11 +308,21 @@ def main(argv: list[str] | None = None) -> int:
                     task_artifact_dir=artifact_dir,
                     resume=True,
                 )
+            # Every artifact the pipeline names, not only the four the editor
+            # projects from: a caller that asked for one stage wants that
+            # stage's output, and a stage that did not run simply leaves its
+            # file absent -- the manifest below records what exists.
             candidates = {
+                "vocal_audio": paths.resolve_vocal_audio(),
+                "vad_json": Path(paths.vad_json),
+                "vad_energy_npz": Path(paths.vad_energy_npz),
+                "aligned_json": Path(paths.aligned_json),
                 "stable_json": Path(paths.stable_json),
                 "raw_srt": Path(paths.raw_srt),
+                "translated_srt": Path(paths.translated_srt),
                 "annotated_csv": Path(paths.final_srt).with_name(f"{Path(paths.final_srt).stem}-annotated.csv"),
                 "final_srt": Path(paths.final_srt),
+                "metadata_json": Path(paths.metadata_json),
             }
         upstream = json.loads((args.vendor / "UPSTREAM.json").read_text(encoding="utf-8"))
         manifest = {

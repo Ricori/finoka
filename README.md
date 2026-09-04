@@ -186,6 +186,18 @@ Rename-Item .\hello-tool.zip hello-tool.nonoka-plugin
 
 运行 Demo 前，请先在 Nonoka Sub X“运行环境”页面安装 FFmpeg 和可选工具 yt-dlp。当前示例支持公开的 YouTube 视频、Twitch VOD 和 Twitch Clips，不读取浏览器 Cookie，也不支持需要登录的内容。
 
+### 4. 引擎能力：LLM、阶段与中间产物
+
+插件还可以借用引擎本身，不必自带 API Key、也不必自己装模型：
+
+| 权限 | 能做什么 |
+| :--- | :--- |
+| `llm.complete` | 插件写 prompt，宿主用用户已配置的模型（API Key 或本机 Codex / Antigravity CLI）跑一次，返回文本。插件不需要拿到密钥。 |
+| `engine.run` | 只把流水线跑到指定阶段（`vocal` / `aligned` / `stable` / `raw-srt` / `translated-srt` / `final-srt`），复用宿主的任务队列、事件与取消。 |
+| `engine.artifacts` | 取回那次运行的中间产物：文本直接读内容，音频等二进制只能经保存对话框落盘。 |
+
+[`desktop/examples/plugins/subtitle-studio`](desktop/examples/plugins/subtitle-studio) 把这三样都用了一遍。
+
 更多 manifest 字段、权限、消息协议和生命周期说明请阅读 **[Nonoka Sub X 插件开发文档](desktop/docs/PLUGINS.md)**。另有 **[最小 Hello Tool 示例](desktop/examples/plugins/hello-tool)** 可用于快速复制修改。
 
 ---

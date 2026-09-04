@@ -133,6 +133,19 @@ func (s *Service) SaveKeys(keys map[string]any) (map[string]any, error) {
 	return result, err
 }
 
+// LLMComplete runs one routed LLM call on the user's configured models. The
+// sidecar owns the whole request shape -- roles, prompt size, output budget --
+// so this is a forwarder rather than a second validator that could disagree
+// with the first.
+func (s *Service) LLMComplete(request map[string]any) (map[string]any, error) {
+	if request == nil {
+		return nil, errors.New("LLM request is required")
+	}
+	var result map[string]any
+	err := s.provider.DoJSON(context.Background(), http.MethodPost, "/v1/llm/complete", request, &result)
+	return result, err
+}
+
 func (s *Service) Document(videoID string) (map[string]any, error) {
 	endpoint, err := documentEndpoint(videoID, "")
 	if err != nil {

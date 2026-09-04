@@ -109,6 +109,10 @@ func Run(assets fs.FS) error {
 	// uses, so a plugin write goes through the sidecar's revision check rather
 	// than touching document.json behind the editor's back.
 	plugins.SetDocuments(pluginService, providerService)
+	// And the engine itself: LLM calls, stage runs and the artifacts a run
+	// leaves behind. Same provider, granted separately, because it is a much
+	// wider surface than the document one and the call site should say so.
+	plugins.SetEngine(pluginService, providerService)
 	cloudService, err := cloud.New(dataDirectory, manager, libraryService)
 	if err != nil {
 		return err

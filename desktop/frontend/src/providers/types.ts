@@ -165,11 +165,25 @@ export interface ArtifactEntry {
   bytes: number;
 }
 
+/** 一次运行落盘的产物名。本地 worker 报告 PipelinePaths 上所有存在的文件，所以
+ *  跑到哪一步就只有到那一步的产物；云端只回投影需要的那四个。 */
+export type ArtifactName =
+  | "vocal_audio"
+  | "vad_json"
+  | "vad_energy_npz"
+  | "aligned_json"
+  | "stable_json"
+  | "raw_srt"
+  | "translated_srt"
+  | "annotated_csv"
+  | "final_srt"
+  | "metadata_json";
+
 export interface ArtifactManifest {
   schema: 1;
   task_id: string;
   engine_commit: string;
-  artifacts: Partial<Record<"stable_json" | "raw_srt" | "annotated_csv" | "final_srt", ArtifactEntry>>;
+  artifacts: Partial<Record<ArtifactName, ArtifactEntry>>;
 }
 
 export interface ExecutionProvider {

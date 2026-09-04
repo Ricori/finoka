@@ -30,11 +30,28 @@ class WorkerAdapterTests(unittest.TestCase):
                 captured.update(kwargs)
                 output = Path(kwargs["output_path"])
                 output.parent.mkdir(parents=True, exist_ok=True)
+                # A raw-srt run: recognition landed, the LLM stages did not.
+                # The fake stands in for `PipelinePaths`, so it names every
+                # artifact the real one does -- the worker reports the ones
+                # that exist, and absence is what a skipped stage looks like.
                 stable = output.with_name(f"{output.stem}-stable.json")
                 raw = output.with_name(f"{output.stem}-raw.srt")
+                vocal = output.with_name(f"{output.stem}-vocal.ogg")
                 stable.write_text('{"segments": []}\n', encoding="utf-8")
                 raw.write_text("1\n00:00:00,000 --> 00:00:01,000\nx\n", encoding="utf-8")
-                return SimpleNamespace(stable_json=stable, raw_srt=raw, final_srt=output)
+                vocal.write_bytes(b"OggS")
+                return SimpleNamespace(
+                    vocal_audio=vocal,
+                    resolve_vocal_audio=lambda: vocal,
+                    vad_json=output.with_name(f"{output.stem}-vad.json"),
+                    vad_energy_npz=output.with_name(f"{output.stem}-vad-energy.npz"),
+                    aligned_json=output.with_name(f"{output.stem}-aligned.json"),
+                    stable_json=stable,
+                    raw_srt=raw,
+                    translated_srt=output.with_name(f"{output.stem}-translated.srt"),
+                    final_srt=output,
+                    metadata_json=output.with_name(f"{output.stem}.run.json"),
+                )
 
             @contextlib.contextmanager
             def passthrough(_value):
@@ -110,7 +127,9 @@ class WorkerAdapterTests(unittest.TestCase):
                     (ROOT / "third_party/finesub/UPSTREAM.json").read_text(encoding="utf-8")
                 )["commit"],
             )
-            self.assertEqual(set(manifest["artifacts"]), {"stable_json", "raw_srt"})
+            self.assertEqual(
+                set(manifest["artifacts"]), {"vocal_audio", "stable_json", "raw_srt"}
+            )
             self.assertEqual(len(manifest["artifacts"]["stable_json"]["sha256"]), 64)
 
     def test_source_text_axis_skips_recognition_and_only_runs_the_llm_stage(self) -> None:
