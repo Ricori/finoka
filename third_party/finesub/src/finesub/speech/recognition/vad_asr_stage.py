@@ -921,6 +921,12 @@ def referee_warm_device(
     load keeps waiting for the pool to be released). On the tiers that fit,
     the ~3 s load -- 71% of the referee's cost on a typical run, A4 -- hides
     under the decode instead of extending the stage.
+
+    ⚠ Called *after* `FwRefineModelPool.warm`, and `pool_resident=True` says
+    so: the live free-VRAM veto in `referee_device` has to know that the pool
+    is already paid for out of the figure it reads, or it would subtract the
+    same 2-4 GiB twice and send the referee to the CPU on the very tiers this
+    exists for. The order is what makes this true -- keep the warm above it.
     """
 
     if qwen_verify == "off":
@@ -936,6 +942,7 @@ def referee_warm_device(
         model_name,
         decode_batch,
         requested_device=requested_device,
+        pool_resident=True,
     )
     return placed if placed.strip().lower().startswith("cuda") else None
 
@@ -1267,6 +1274,9 @@ def run_vad_asr(
                     impact="语言票翻转窗口不会被重解",
                 )
             else:
+                # Asked before the pool is built, so the live free-VRAM veto
+                # still has to buy Whisper out of what it reads
+                # (`pool_resident` defaults to False, which is the truth here).
                 redecode_device = lang_redecode_mod.referee_device(
                     device,
                     resource_profile,

@@ -62,7 +62,7 @@ import re
 import threading
 import unicodedata
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -639,6 +639,7 @@ class QwenReferee:
         clips: Sequence[np.ndarray],
         *,
         max_new_tokens: Optional[int] = None,
+        on_batch: Optional[Callable[[int, int], None]] = None,
     ) -> List[Tuple[str, Optional[str]]]:
         """(text, detected language) per 16 kHz mono clip, auto language.
 
@@ -658,6 +659,13 @@ class QwenReferee:
         tokens the model decides to emit, ~3 per second of Japanese, and that
         is not a knob. Note also that the text has to come back non-empty for
         the language to be trusted, so this cannot go to zero.
+
+        ``on_batch(done, total)`` is called with the running clip count after
+        each batch. It exists because this call is the longest unbroken
+        silence in the stage -- on a small card it can be minutes, and every
+        second of it looks identical to a hung run to whoever is watching the
+        log. The batch is the finest grain that is real: a `generate` is not
+        interruptible from here, so a per-clip counter would be a lie.
         """
 
         if not clips:
@@ -688,10 +696,14 @@ class QwenReferee:
                 batches = compiled_plan
             elif batches != compiled_plan:
                 prepared = self._prepare(clips, batches)
+            done = 0
             for batch, inputs in zip(batches, prepared):
                 replies = self._generate(inputs, budget, compiled=compiled)
                 for index, reply in zip(batch, replies):
                     results[index] = reply
+                done += len(batch)
+                if on_batch is not None:
+                    on_batch(done, len(clips))
         return results
 
     def _prepare(self, clips: Sequence[np.ndarray], plan: List[List[int]]) -> list:
@@ -893,6 +905,42 @@ class _SpanReader:
         return resampled.squeeze(0).cpu().numpy().astype(np.float32)
 
 
+#: The stage this pass belongs to. It reports under the ASR stage's name and
+#: not one of its own because it *is* the tail of that stage: a second stage
+#: name appearing after `aligned` reached 100% would read as a new stage
+#: starting, which is not what happens -- the same stage is still running,
+#: on its second model.
+_VERIFY_STAGE = "aligned"
+
+
+def _verify_progress(total: int) -> Callable[[int, int], None]:
+    """Clip-level progress for the verification pass, announced before it
+    starts.
+
+    The load and the first `generate` are the slow part (168 s of a 197 s
+    stage on a contended 8 GB card, and 0 events the whole way), so the zero
+    is emitted here rather than after the first batch: what a watcher needs
+    first is *what* is running and how much of it there is, and only then the
+    count moving.
+    """
+
+    reporter = current_reporter()
+    reporter.progress(
+        _VERIFY_STAGE, completed=0, total=total, unit="clips", detail="第二模型校验"
+    )
+
+    def report(done: int, count: int) -> None:
+        reporter.progress(
+            _VERIFY_STAGE,
+            completed=done,
+            total=count,
+            unit="clips",
+            detail="第二模型校验",
+        )
+
+    return report
+
+
 def apply_verification(
     segments: List[Dict[str, object]],
     *,
@@ -937,7 +985,12 @@ def apply_verification(
     # must not reach the model; they read as "no speech heard".
     min_samples = int(0.05 * TARGET_SR)
     usable = [i for i, clip in enumerate(clips) if len(clip) >= min_samples]
-    replies = referee.transcribe_batch([clips[i] for i in usable])
+    replies = referee.transcribe_batch(
+        [clips[i] for i in usable],
+        # Nothing survived the bounds check: there is no work to announce, and
+        # a 0/0 would be the one progress line that never moves.
+        on_batch=_verify_progress(len(usable)) if usable else None,
+    )
     results: List[Tuple[str, Optional[str]]] = [("", None)] * len(clips)
     for position, reply in zip(usable, replies):
         results[position] = reply

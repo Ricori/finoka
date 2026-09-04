@@ -1,10 +1,10 @@
 {
   "archive_sha256": "cd510998ec76f39040d9ddc8acb20bc445c32fca6d57c3ba8b97e8fdef4791e7",
   "commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
-  "content_sha256": "ee18bfb3340653577dbf8f8efb80577104a25149c991591266851cf6afa8a41f",
+  "content_sha256": "40e2d277b535768218a938de62f8cd06634e12a51fd60801f552ee48a037b92f",
   "engine_bundle_id": "finesub-0.5.0+4638bb7f01d7",
   "engine_version": "0.5.0",
-  "files_manifest_sha256": "c20a9ac922ab04d8753ea9abac275a380b6f9035a17979b003d891c64c9c6115",
+  "files_manifest_sha256": "afc7afd9a74211e0a9a715e71b2df535106ce9ea21f61501be6cd57ab295c67b",
   "patches": [
     {
       "path": "0001-qwen-tail-entry-point.patch",
@@ -29,6 +29,10 @@
     {
       "path": "0006-triton-msvc-c11-empty-struct.patch",
       "sha256": "e90b2be50b4a5196a76afa3b9e41149c77684cd9d1f3df7e3f4078e51dfa4e6c"
+    },
+    {
+      "path": "0007-referee-live-vram-and-verify-progress.patch",
+      "sha256": "78f41b5714e6a42bcd53f3c24e7865a77deb0fb2c9132b94199a3b384bed9855"
     }
   ],
   "ref": "v0.5.0",

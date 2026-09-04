@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nonoka-x"
 version = "0.2.4"
-description = "Local-first subtitle production with a vendored FineSub engine"
+description = "Nonoka Sub X"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [

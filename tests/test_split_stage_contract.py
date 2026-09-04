@@ -188,6 +188,20 @@ class PurelyAdditiveTests(unittest.TestCase):
             "0006-triton-msvc-c11-empty-struct.patch": [
                 "src/finesub/speech/preprocessing/separator/separator_aoti.py",
             ],
+            # Survivability and visibility, not transcription. The referee's
+            # device was already a per-machine answer (the tier picks it, and
+            # the entry tier has always kept it on the CPU); this only stops
+            # that answer from being made against a budget the card does not
+            # actually have, which is the difference between a decode that
+            # finishes and a worker that dies mid-group with no exception. The
+            # progress half adds events and reads nothing. The cloud runs both
+            # and wants both -- a container sharing its card loses the same
+            # alignment pass the same way.
+            "0007-referee-live-vram-and-verify-progress.patch": [
+                "src/finesub/speech/recognition/lang_redecode.py",
+                "src/finesub/speech/recognition/vad_asr_stage.py",
+                "src/finesub/speech/verification/qwen_referee.py",
+            ],
         }
         for name in names:
             with self.subTest(patch=name):

@@ -6,9 +6,9 @@ info:
   companyName: "Ricori"
   productName: "Nonoka Sub X"
   productIdentifier: "app.nonoka.desktop"
-  description: "Local-first subtitle production"
+  description: "Nonoka Sub X"
   copyright: "© 2026 Ricori"
-  comments: "Local and cloud subtitle production in one media library."
+  comments: "Desktop workstation for AI subtitle generation and professional editing."
   version: "0.2.4"
 
 dev_mode:

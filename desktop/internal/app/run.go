@@ -122,7 +122,7 @@ func Run(assets fs.FS) error {
 
 	applicationInstance := application.New(application.Options{
 		Name:        "Nonoka Sub X",
-		Description: "Local-first subtitle production",
+		Description: "Nonoka Sub X",
 		Services: []application.Service{
 			application.NewService(providerService),
 			application.NewService(libraryService),

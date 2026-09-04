@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ...reporting import current_reporter
 from ...text import normalized_compact
 from ..verification import qwen_referee
 from . import lang_audit
@@ -151,8 +152,9 @@ def referee_device(
     decode_batch: int = 1,
     *,
     requested_device: str | None = None,
+    pool_resident: bool = False,
 ) -> str:
-    """Referee placement, asked as four separate questions.
+    """Referee placement, asked as five separate questions.
 
     They used to be one -- "is the ASR on CUDA" -- and that conflated things
     that stopped agreeing once the ASR stage got its own oracle:
@@ -168,12 +170,32 @@ def referee_device(
        verdict about the ASR stage says nothing about it. This is what keeps a
        torch-unusable card from being handed a torch model just because CT2 is
        happily decoding on it.
-    4. **Room.** Only a Whisper pool that is actually resident costs anything.
-       When the ASR went to the CPU, the whole tier budget is free.
+    4. **Room, on paper.** Only a Whisper pool that is actually resident costs
+       anything. When the ASR went to the CPU, the whole tier budget is free.
+    5. **Room, on the card.** The tier is a *budget*, not a measurement: it
+       says what a machine that qualifies for this tier is expected to have
+       free, and `auto` picks it from the card's capacity precisely so that it
+       stays stable. Nothing checks that the VRAM is free right now -- so on a
+       `standard` card with a game or another model open, question 4 answers
+       "4.43 GiB spare" while the driver has 2.4 GiB left, and both models are
+       put on the card anyway. What follows is not a caught OOM: the referee's
+       `Module.to(cuda)` and CTranslate2's encoder collide, the decode either
+       crawls for minutes with nothing to show for it or the process takes an
+       access violation mid-group, and CT2 cannot report either (it aborts).
+       So the live figure gets a veto here -- and only here. It must not pick
+       the tier (that would move artifact boundaries between runs,
+       `resources.warn_if_vram_is_short`), but CPU-versus-GPU for a referee
+       that only ever produces evidence changes no output, just its speed.
 
     `decode_batch` is the *resolved* one, not the profile's: an explicit
     `--asr-decode-batch` beats the tier table, and the pool grows with the
     value actually in force.
+
+    `pool_resident` says whether the Whisper pool is already on the card, i.e.
+    whether the live free figure has been paid for it: the stage asks this
+    once before building the pool (it has not) and once to decide the warm
+    beside it (it has). Getting it wrong is not a rounding error -- the pool
+    is the larger of the two models.
     """
 
     # `None` is "nobody chose", which is the code default: a request for the
@@ -197,7 +219,43 @@ def referee_device(
     if resident is None:
         return "cpu"
     spare = float(resource_profile.usable_gpu_gb) - resident
-    return "cuda" if spare >= QWEN_REFEREE_GIB else "cpu"
+    if spare < QWEN_REFEREE_GIB:
+        return "cpu"
+    return _placed_by_free_vram(resident, pool_resident=pool_resident)
+
+
+def _placed_by_free_vram(resident: float, *, pool_resident: bool) -> str:
+    """Question 5 of `referee_device`: does the card have the room today?
+
+    `mem_get_info` is the driver's own figure, not torch's allocator counters,
+    so it sees the CTranslate2 pool as well as anything outside this process.
+    That is what makes it usable here: the pool is exactly what the referee
+    has to fit beside, and it is invisible to every other counter torch has.
+
+    Unknown (no usable CUDA answer) keeps the tier's verdict rather than
+    inventing a veto -- the same direction every other unknown in this module
+    takes.
+    """
+
+    from ..runtime.device import free_vram_gib
+
+    free = free_vram_gib()
+    if free is None:
+        return "cuda"
+    # What still has to be bought out of the free figure: the referee always,
+    # and the pool too when it has not been loaded yet.
+    needed = QWEN_REFEREE_GIB + (0.0 if pool_resident else resident)
+    if free >= needed:
+        return "cuda"
+    current_reporter().warning(
+        "referee-on-cpu",
+        f"The second-model referee needs {needed:.2f} GiB free beside the "
+        f"ASR pool, but only {free:.2f} GiB is free right now; running it on "
+        "the CPU.",
+        impact="第二模型校验会明显变慢；但显卡上两个模型挤在一起会拖垮甚至中止解码",
+        action="关掉占用显存的程序后重跑，复核会自动回到显卡上",
+    )
+    return "cpu"
 
 
 def referee_vram_budget(
