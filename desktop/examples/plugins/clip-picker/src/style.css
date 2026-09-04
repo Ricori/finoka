@@ -1,0 +1,173 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f111b;
+  --panel: #191c2d;
+  --raised: #252a42;
+  --line: #363c59;
+  --text: #f5f2fb;
+  --mut: #aeaac6;
+  --accent: #9caef7;
+  --accent-border: rgba(156, 174, 247, .50);
+  --warn: #f08fae;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+}
+
+body.light {
+  --bg: #faf9fe;
+  --panel: #fff;
+  --raised: #f0ecf8;
+  --line: #ded8ea;
+  --text: #383344;
+  --mut: #5f5a6e;
+  --accent: #6b4fd0;
+  --accent-border: rgba(107, 79, 208, .50);
+  --warn: #bd4670;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 24px;
+  color: var(--text);
+  background: var(--bg);
+  font-size: 14px;
+}
+
+main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1 { margin: 0 0 16px; font-size: 20px; }
+
+.box {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--panel);
+}
+
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+
+label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--mut); }
+
+select {
+  min-width: 320px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 11px;
+  font: inherit;
+  background: var(--raised);
+  color: var(--text);
+}
+select:disabled { opacity: .6; }
+
+/* 按钮沿用宿主「处理任务」里 .task-log-heading button 的样式语言：
+   透明底 + 细边框，hover 时边框转强调色、文字提亮。尺寸放大到和旁边的
+   <select> 对齐（宿主那处是 11px 的小控件，这里页面基准字号更大）。 */
+button {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--mut);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s, color .15s;
+}
+button:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 主操作只靠颜色区分，形状和其余按钮完全一致 */
+button.primary { border-color: var(--accent-border); color: var(--accent); }
+button.primary:hover:not(:disabled) { border-color: var(--accent); }
+
+/* 「日志」的折叠箭头，展开时翻转 */
+.caret { display: inline-block; margin-left: 6px; font-size: 11px; transition: transform .15s; }
+button.open .caret { transform: rotate(180deg); }
+
+#status { margin: 14px 0 0; color: var(--mut); line-height: 1.7; min-height: 20px; }
+#status.bad { color: var(--warn); }
+
+/* 进度日志。等宽字体是为了对齐时间戳和缩进的批次行。 */
+#log {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--mut);
+  font-family: Consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+label.inline { flex-direction: row; align-items: center; gap: 7px; }
+input[type=checkbox] { width: auto; accent-color: var(--accent); }
+
+#result-head { flex: 1; font-size: 13px; color: var(--text); }
+
+.table-wrap {
+  margin-top: 14px;
+  max-height: 560px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+
+th, td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--raised);
+  color: var(--mut);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+tr:last-child td { border-bottom: 0; }
+td.num { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--mut); }
+/* 详情和高能里有 <br>，渲染成真实换行显示，跟粘进 Excel 后一致 */
+td.wrap { min-width: 220px; line-height: 1.65; white-space: pre-wrap; }
+
+#carrier {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--raised);
+  color: var(--text);
+  font-family: Consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.hint { margin: 12px 0 0; color: var(--mut); font-size: 12px; line-height: 1.7; }
+
+/* 「别切页面」的提醒。插件页是 iframe，切走就被销毁，页面里的东西一点都留不下。 */
+#notice {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-border);
+  border-left-width: 3px;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.7;
+}
+#notice.warn { border-color: var(--warn); }

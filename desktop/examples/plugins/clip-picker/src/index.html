@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>选片小助手</title>
+  <style><!--INLINE:src/style.css--></style>
+</head>
+<body>
+  <main>
+    <h1>选片小助手</h1>
+
+    <section class="box">
+      <div class="row">
+        <label>字幕档
+          <select id="media"><option value="">正在读取媒体库…</option></select>
+        </label>
+        <button id="start" class="primary">开始</button>
+        <button id="reload">重新读取</button>
+        <button id="log-toggle">日志<span class="caret" aria-hidden="true">⌄</span></button>
+      </div>
+      <p id="notice" hidden></p>
+      <p id="status"></p>
+      <pre id="log" hidden></pre>
+    </section>
+
+    <section class="box" id="result" hidden>
+      <div class="row">
+        <strong id="result-head"></strong>
+        <button id="copy" class="primary">复制为表格</button>
+        <label class="inline">
+          <input id="real-newline" type="checkbox" checked>把 &lt;br&gt; 变成单元格内换行
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>开始</th><th>结束</th><th>分类</th><th>详情</th><th>高能切片</th><th>剪辑</th></tr>
+          </thead>
+          <tbody id="table-rows"></tbody>
+        </table>
+      </div>
+      <textarea id="carrier" rows="5" hidden readonly spellcheck="false"></textarea>
+      <p class="hint">按制表符复制，Excel 里 Ctrl+V 直接分列。「剪辑」一列恒为空，留给组员填。
+        粘进去发现串行了，就关掉那个勾选再复制一次。</p>
+    </section>
+  </main>
+
+  <!-- assets/*.md 打包时内联进来。页面运行时读不到包里任何别的文件
+       （srcdoc 没有 origin，CSP 又是 connect-src 'none'），内联是唯一的路。 -->
+  <script type="text/plain" id="asset-analysis"><!--INLINE:assets/analysis.md--></script>
+  <script type="text/plain" id="asset-to-excel"><!--INLINE:assets/to_excel.md--></script>
+
+  <script><!--INLINE:build/plugin.js--></script>
+</body>
+</html>
