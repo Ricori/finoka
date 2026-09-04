@@ -133,6 +133,7 @@ export interface TaskSnapshot {
   error: TaskError | null;
   last_cursor: number;
   created_at: string;
+  started_at?: string;
   updated_at: string;
 }
 

@@ -568,6 +568,7 @@ class LocalProvider:
             "error": None,
             "last_cursor": 0,
             "created_at": now,
+            "started_at": now,
             "updated_at": now,
         }
         task_dir = self._task_dir(task_id)
@@ -581,6 +582,8 @@ class LocalProvider:
             value = _read_json_when_free(self._task_dir(task_id) / "snapshot.json")
         except FileNotFoundError as exc:
             raise ProviderError("task_not_found", f"Unknown task: {task_id}", http_status=404) from exc
+        if "started_at" not in value:
+            value["started_at"] = value.get("created_at")
         return value
 
     def list_tasks(self, *, limit: int = 100) -> dict[str, Any]:
@@ -590,6 +593,8 @@ class LocalProvider:
         for snapshot_path in self.root.glob("*/snapshot.json"):
             try:
                 snapshot = _read_json_when_free(snapshot_path)
+                if "started_at" not in snapshot:
+                    snapshot["started_at"] = snapshot.get("created_at")
                 request_path = snapshot_path.with_name("request.json")
                 request = _read_json_when_free(request_path) if request_path.is_file() else {}
                 source = request.get("source") if isinstance(request, Mapping) else {}
@@ -794,7 +799,8 @@ class LocalProvider:
             snapshot = self.status(task_id)
             if snapshot["state"] not in allowed:
                 raise ProviderError("invalid_state", f"Cannot restart task in state {snapshot['state']}", http_status=409)
-            self._set_state(task_id, "queued", error=None)
+            now = utc_now()
+            self._set_state(task_id, "queued", error=None, started_at=now)
             self._spawn(task_id)
         return self.status(task_id)
 
@@ -983,11 +989,13 @@ class LocalProvider:
             raise ProviderError("task_not_found", f"Unknown task: {task_id}", http_status=404)
         return self.root / task_id
 
-    def _set_state(self, task_id: str, state: str, *, error: Any = ...) -> None:
+    def _set_state(self, task_id: str, state: str, *, error: Any = ..., started_at: str | None = None) -> None:
         if state not in STATES:
             raise ValueError(state)
         snapshot = self.status(task_id)
         snapshot["state"] = state
+        if started_at is not None:
+            snapshot["started_at"] = started_at
         if state == "completed":
             if snapshot.get("progress") and isinstance(snapshot["progress"], dict):
                 if snapshot["progress"].get("message") in {"正在处理", "处理中"}:

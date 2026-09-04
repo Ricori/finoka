@@ -92,9 +92,9 @@ const INTERNAL_BLOCK_TIMECODE = /^\d{1,2}:\d{2}(?::\d{2})?$/;
 export function taskActivityText(snapshot: TaskSnapshot, nowMs = Date.now()): string {
   if (snapshot.error) return `${snapshot.error.code}: ${snapshot.error.message}`;
   if (activeStates.has(snapshot.state)) {
-    const created = Date.parse(snapshot.created_at);
-    const elapsed = Number.isFinite(created)
-      ? formatDuration(Math.max(0, (nowMs - created) / 1000))
+    const started = Date.parse(snapshot.started_at || snapshot.created_at);
+    const elapsed = Number.isFinite(started)
+      ? formatDuration(Math.max(0, (nowMs - started) / 1000))
       : "0:00";
     const detail = String(snapshot.progress?.message ?? "").trim();
     const usefulDetail = detail && !INTERNAL_BLOCK_TIMECODE.test(detail) ? detail : "";
