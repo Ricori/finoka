@@ -50,6 +50,22 @@ class WorkerLogOptimizationTests(unittest.TestCase):
         self.assertEqual(lines[0]["payload"]["message"], "group1: 警告A")
         self.assertEqual(lines[1]["payload"]["message"], "group2: 警告B")
 
+    def test_srt_line_budget_downgraded_to_log(self) -> None:
+        reporter = worker.NonokaXReporter()
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            reporter.warning(
+                "srt-line-budget",
+                "workspace/sub.srt: Segment 1 line has 26 weighted characters; limit is 25.",
+            )
+
+        lines = [json.loads(line) for line in output.getvalue().splitlines() if line.strip()]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]["type"], "log")
+        self.assertEqual(lines[0]["payload"]["code"], "srt-line-budget")
+        self.assertIn("Segment 1 line has 26 weighted characters", lines[0]["payload"]["message"])
+
     def test_format_worker_exception_extracts_vendor_error(self) -> None:
         class DummyLocalAgentError(Exception):
             pass

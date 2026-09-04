@@ -102,6 +102,9 @@ class NonokaXReporter:
     def warning(self, code: str, message: str, *, impact: str = "", action: str = "") -> None:
         if code == "routing-profile" and _UNCALIBRATED_VECTOR_NOTICE in message:
             return
+        if code == "srt-line-budget":
+            emit("log", {"code": code, "message": message, "impact": impact, "action": action})
+            return
         warning_key = (code, message)
         if warning_key in self._seen_warnings:
             return
