@@ -834,6 +834,8 @@ export default function App() {
 
   const navigateLibrary = useCallback(() => {
     setSection("library");
+    setLibraryFilter("all");
+    setQuery("");
     // A task may have finished through history polling instead of the active
     // pipeline (for example after an app restart). Refresh on entry as a final
     // guard against rendering the pre-completion library snapshot.
