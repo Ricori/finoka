@@ -1,7 +1,8 @@
 import { useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { FineSubBaseUrlState, FineSubKeyState, FineSubModelProvider, FineSubModelRoute, FineSubModelRoutingState } from "../bridge/settings.ts";
-import { effectiveRoute, hasDraft, loadModelMemory, pickModelForProvider, routeSettingName, saveModelMemory } from "./llmRouting.ts";
+import type { ProviderChoice } from "./llmRouting.ts";
+import { choiceIdOf, effectiveRoute, hasDraft, loadModelMemory, pickModelForProvider, preferredMember, providerChoices, routeSettingName, saveModelMemory } from "./llmRouting.ts";
 import { Mark } from "./Mark.tsx";
 import "./LlmConfigurationCard.css";
 
@@ -54,8 +55,15 @@ export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, bus
     return !provider.customEndpoint || Boolean(urlValue(provider).trim());
   };
 
+  const choices = providerChoices(modelRouting.providers);
+  const choiceOf = (providerID: string) => {
+    const provider = modelRouting.providers.find((item) => item.id === providerID);
+    return choices.find((item) => item.id === choiceIdOf(provider));
+  };
+
   const defaultRoute = effectiveRoute("default", modelRouting.defaultRoute, drafts);
   const selected = modelRouting.providers.find((item) => item.id === defaultRoute.provider);
+  const selectedChoice = selected ? choiceOf(selected.id) : undefined;
   const selectedKey = selected ? keyOf(selected) : undefined;
   const selectedUrl = selected ? urlOf(selected) : undefined;
   const globalReady = Boolean(selected && defaultRoute.model && isReady(selected));
@@ -106,6 +114,43 @@ export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, bus
     return <input aria-label={`${routeID} 模型 ID`} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={`填写 ${provider.label} 模型 ID`} value={model} onChange={(event) => editModel(event.target.value)} />;
   };
 
+  // 下拉给的是行，路由存的是档位。Gemini 折成一行以后这两者不再相等，所以
+  // 选中一行要先解析出启用哪一档；其余提供商的行只有一个成员，解析是恒等的。
+  const selectChoice = (routeID: string, choiceID: string) => {
+    const choice = choices.find((item) => item.id === choiceID);
+    if (!choice) {
+      selectProvider(routeID, "");
+      return;
+    }
+    const current = effectiveRoute(routeID, savedRouteOf(routeID), drafts).provider;
+    selectProvider(routeID, preferredMember(choice, { current, usable: isReady }).id);
+  };
+
+  // 一行的凭据状态取「有没有任何一档能用」：只配了付费池时，Gemini 这一行照样
+  // 是配好的，不该标成未配置。
+  const choiceSuffix = (choice: ProviderChoice) => {
+    const single = choice.members.length === 1 ? choice.members[0] : undefined;
+    if (single && !single.requiresKey) return single.available ? "（本地 CLI）" : "（未检测到 CLI）";
+    return choice.members.some(isConfigured) ? "" : "（未配置凭据）";
+  };
+
+  const tierLabelOf = (provider: FineSubModelProvider) =>
+    `${provider.tierLabel || provider.label}${isConfigured(provider) ? "" : "（未配置 Key）"}`;
+
+  /** 这一行的档位选择器，只在确实有多档可选时出现。
+   *
+   * `members` 由调用方过滤：任务路由里没有填 Key 的入口，所以那边只列已经配好
+   * 的档位；全局那一格的 Key 输入框就在下面，所以两档都列得出来。
+   */
+  const renderTierControl = (routeID: string, choice: ProviderChoice | undefined, current: string, members: FineSubModelProvider[]) => {
+    if (!choice || members.length < 2) return null;
+    return (
+      <select aria-label={`${routeID} ${choice.label} 档位`} value={current} onChange={(event) => selectProvider(routeID, event.target.value)}>
+        {members.map((item) => <option key={item.id} value={item.id}>{tierLabelOf(item)}</option>)}
+      </select>
+    );
+  };
+
   const selectProvider = (routeID: string, nextProvider: string) => {
     const saved = savedRouteOf(routeID);
     const current = effectiveRoute(routeID, saved, drafts);
@@ -126,17 +171,21 @@ export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, bus
   const renderTaskRoute = (routeID: string, saved: FineSubModelRoute) => {
     const route = effectiveRoute(routeID, saved, drafts);
     const provider = modelRouting.providers.find((item) => item.id === route.provider);
+    const choice = provider ? choiceOf(provider.id) : undefined;
     // 任务路由里没有配置凭据的入口，所以只列出已经配置好的提供商；
     // 已保存但凭据被清空的那一项仍要留着，否则会无声消失。
-    const options = modelRouting.providers.filter((item) => isConfigured(item) || item.id === saved.provider);
+    const offered = (item: ProviderChoice) => item.members.filter((member) => isConfigured(member) || member.id === saved.provider);
+    const options = choices.filter((item) => offered(item).length > 0);
+    const tier = choice && provider ? renderTierControl(routeID, choice, provider.id, offered(choice)) : null;
     return (
-      <div className="llm-route-controls">
-        <select aria-label={`${routeID} 提供商`} value={route.provider} onChange={(event) => selectProvider(routeID, event.target.value)}>
+      <div className={tier ? "llm-route-controls tiered" : "llm-route-controls"}>
+        <select aria-label={`${routeID} 提供商`} value={choiceIdOf(provider)} onChange={(event) => selectChoice(routeID, event.target.value)}>
           <option value="">跟随全局模型</option>
           {options.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}{item.requiresKey === false && !item.available ? "（未检测到 CLI）" : ""}</option>
+            <option key={item.id} value={item.id}>{item.label}{item.members.length === 1 && item.members[0].requiresKey === false && !item.members[0].available ? "（未检测到 CLI）" : ""}</option>
           ))}
         </select>
+        {tier}
         {renderModelControl(routeID, provider, route.model, "使用全局模型")}
       </div>
     );
@@ -159,15 +208,10 @@ export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, bus
         </div>
         <div className="llm-default-route">
           <div className="llm-route-controls">
-            <select aria-label="全局提供商" value={defaultRoute.provider} onChange={(event) => selectProvider("default", event.target.value)}>
+            <select aria-label="全局提供商" value={choiceIdOf(selected)} onChange={(event) => selectChoice("default", event.target.value)}>
               <option value="">选择提供商</option>
-              {modelRouting.providers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                  {item.requiresKey === false
-                    ? (item.available ? "（本地 CLI）" : "（未检测到 CLI）")
-                    : (isConfigured(item) ? "" : "（未配置凭据）")}
-                </option>
+              {choices.map((item) => (
+                <option key={item.id} value={item.id}>{item.label}{choiceSuffix(item)}</option>
               ))}
             </select>
             {renderModelControl("default", selected, defaultRoute.model, "先选择提供商")}
@@ -182,6 +226,17 @@ export function LlmConfigurationCard({ keys, baseUrls, modelRouting, drafts, bus
               </p>
             ) : (
               <>
+                {selectedChoice && selectedChoice.members.length > 1 && (
+                  <label className="llm-credential-row">
+                    <span>
+                      <strong>{selectedChoice.label} 档位</strong>
+                      <small>各有自己的 Key 与模型清单，同时只启用一个</small>
+                    </span>
+                    <select aria-label={`${selectedChoice.label} 档位`} value={selected.id} onChange={(event) => selectProvider("default", event.target.value)}>
+                      {selectedChoice.members.map((item) => <option key={item.id} value={item.id}>{tierLabelOf(item)}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="llm-credential-row">
                   <span>
                     <strong>{selected.label} API Key</strong>

@@ -179,7 +179,7 @@ def collect_gaps(
     return gaps
 
 
-def _ensure_referee_weights(model_name: str) -> str | None:
+def _ensure_referee_weights(model_name: str) -> Tuple[Optional[str], bool]:
     """Fetch the referee's weights with the mirror routing, if they are absent.
 
     Same shape as the ASR stage's own prefetch and for the same reason: on the
@@ -188,10 +188,27 @@ def _ensure_referee_weights(model_name: str) -> str | None:
     counter. Only for the default model -- the manifest describes no other, so
     a referee pointed elsewhere must not pay for weights it will never load.
 
-    Returns the manifest's pinned revision so `from_pretrained` loads the
-    snapshot that was just verified instead of re-resolving `main`. Best
-    effort -- `from_pretrained` runs next either way, and its error says more
-    about what it wanted than ours would.
+    Returns (pinned revision, weights known to be on disk). The revision is so
+    `from_pretrained` loads the snapshot that was just verified instead of
+    re-resolving `main`.
+
+    The second half is what lets the load run offline. `ensure_hf_model`
+    returning cleanly means the pinned snapshot is present and verified, so
+    `from_pretrained` has nothing left to ask the hub for -- but transformers
+    5.x asks anyway, resolving the repository's chat-template list over the
+    network before it consults the cache.
+
+    That call *has* an offline fallback, and this is not it. Its
+    `list_repo_templates` catches `httpx.NetworkError` precisely so an
+    unreachable hub falls through to the local snapshot -- but
+    `httpx.ConnectTimeout` inherits from `TimeoutException`, a sibling of
+    `NetworkError` rather than a subclass, so a *refused* connection recovers
+    and a *filtered* one (`WinError 10060`, the shape a blocked route takes)
+    escapes. Whether the referee loads therefore depends on how the network
+    says no, and the machine that says nothing loses the whole alignment pass
+    it had already paid for. Passing the flag takes the branch that never
+    asks. False keeps the old online path for an unmanaged install, where
+    nothing here can vouch for the cache.
     """
 
     revision = None
@@ -199,23 +216,23 @@ def _ensure_referee_weights(model_name: str) -> str | None:
         from finesub_bootstrap.model_ensure import pinned_revision
 
         if model_name != DEFAULT_QWEN_MODEL:
-            return None
+            return None, False
         revision = pinned_revision("qwen-referee")
     except Exception:  # noqa: BLE001 - the loader reports for real
-        return None
+        return None, False
     try:
         from finesub.paths import resolve_managed_app_paths
         from finesub_bootstrap.model_ensure import ensure_hf_model
 
         paths = resolve_managed_app_paths()
         if paths is None:
-            return revision
+            return revision, False
         ensure_hf_model(
             "qwen-referee", data_root=paths.data_root, models_root=paths.models
         )
     except Exception:  # noqa: BLE001 - the loader reports for real
-        pass
-    return revision
+        return revision, False
+    return revision, True
 
 
 class QwenReferee:
@@ -247,20 +264,48 @@ class QwenReferee:
 
     def _ensure_model(self):
         if self._model is None:
-            revision = _ensure_referee_weights(self._model_name)
+            revision, local_only = _ensure_referee_weights(self._model_name)
             import torch
             from transformers import AutoModelForMultimodalLM, AutoProcessor
 
-            self._processor = AutoProcessor.from_pretrained(
-                self._model_name, revision=revision
-            )
             wants_cuda = self._device.startswith("cuda")
+
+            def load(loader, **kwargs):
+                """Offline first, with one online retry if the cache is short.
+
+                `_hf_repo_complete` leaves one window open that it says it
+                cannot close cheaply: an interruption *between* two files
+                leaves a snapshot with no `.incomplete` blob and a non-empty
+                revision, which reads as finished while a config is still
+                missing. That state used to heal itself, because the loader
+                fetched the remainder on first use -- and an offline-only load
+                would instead lose the referee for good, since the next run
+                reads the same cache and reaches the same verdict.
+
+                So the retry, and only from the offline branch: the cost is a
+                round trip on a cache that is actually short, never on a run
+                where the weights are whole. A hub that cannot be reached
+                fails it too, which is the case the caller now contains.
+                """
+
+                if not local_only:
+                    return loader(self._model_name, revision=revision, **kwargs)
+                try:
+                    return loader(
+                        self._model_name,
+                        revision=revision,
+                        local_files_only=True,
+                        **kwargs,
+                    )
+                except Exception:  # noqa: BLE001 - the online attempt reports
+                    return loader(self._model_name, revision=revision, **kwargs)
+
+            self._processor = load(AutoProcessor.from_pretrained)
             # bf16 on GPU; float32 on CPU for speed, not correctness: CPU
             # bf16/fp16 halve the footprint but decode 2.2-2.5x slower with
             # byte-identical output (docs/asr-align.md, referee device).
-            model = AutoModelForMultimodalLM.from_pretrained(
-                self._model_name,
-                revision=revision,
+            model = load(
+                AutoModelForMultimodalLM.from_pretrained,
                 dtype=torch.bfloat16 if wants_cuda else torch.float32,
             )
             if wants_cuda:

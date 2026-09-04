@@ -3242,7 +3242,15 @@ _UPLOAD_RETRYABLE_TRANSPORT = (
 # window clip upload is one request and the finalize response waits on the
 # server. A proxy that is slow to accept may still need the connect value
 # raised -- it is a constant here, not a tuned figure.
-GEMINI_UPLOAD_TIMEOUT = httpx.Timeout(connect=45.0, read=600.0, write=600.0, pool=45.0)
+#
+# 15s, not the 45s this used to hold, because the budget is per *address* and
+# `generativelanguage.googleapis.com` resolves to several. httpx walks them in
+# turn, so a host that is filtered rather than down spends the value once per
+# address before the first retry line is printed: a measured run sat silent
+# for 169 seconds, which reads as a hang and not as a network fault. A real
+# connect that needs more than 15s over a working link is not a case worth
+# holding the whole stage open for.
+GEMINI_UPLOAD_TIMEOUT = httpx.Timeout(connect=15.0, read=600.0, write=600.0, pool=45.0)
 
 
 def _upload_error_retryable(exc: BaseException) -> bool:

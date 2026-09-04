@@ -20,7 +20,7 @@ export function localTaskRequest(entry: MediaEntry): TaskRequest {
     vocal_profile: "quality",
     correction: {
       enabled: false,
-      media: "audio",
+      media: "text",
       retrieval: "none",
       difficulty: "quality",
       fast: "auto",

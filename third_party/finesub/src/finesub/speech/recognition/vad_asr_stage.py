@@ -299,6 +299,29 @@ def default_output_path(input_path: Path) -> Path:
     return base.with_name(f"{base.name}-aligned.json")
 
 
+def _report_verify_skipped(exc: BaseException) -> None:
+    """Downgrade a failed referee pass to a missing-evidence warning.
+
+    The referee produces *evidence, never decisions* (see `qwen_referee`), so
+    under `auto` its absence costs one layer of cross-checking and nothing
+    else. Letting it raise costs the whole run instead -- the alignment pass
+    that just finished is discarded along with it, which is exactly what a
+    `ConnectTimeout` inside the model load did on a machine that could not
+    reach the hub. `on` still raises: that flag is a caller asking for the
+    evidence, and silently returning without it would be the wrong answer.
+
+    Deliberately not recorded in `align_meta["qwen_verify"]`: an absent key is
+    what makes the later finalization pass willing to try again, and a run
+    that failed on a transient network fault should get that second chance.
+    """
+
+    current_reporter().warning(
+        "qwen-verify-failed",
+        f"第二模型校验未能运行（{type(exc).__name__}: {exc}）；本次跳过。",
+        impact="少一层校验证据",
+    )
+
+
 def _recovery_summary(
     stats: Mapping[str, int],
     intervals: list[dict[str, object]],
@@ -450,6 +473,11 @@ def finalize_qwen_verification(
             audio_path=str(source),
             referee=active_referee,
         )
+    except Exception as exc:
+        if qwen_verify == "on":
+            raise
+        _report_verify_skipped(exc)
+        return destination
     finally:
         if owns_referee:
             active_referee.close()
@@ -985,10 +1013,15 @@ def run_vad_asr(
                             referee=referee,
                         )
                     )
+                except Exception as exc:
+                    if qwen_verify == "on":
+                        raise
+                    _report_verify_skipped(exc)
+                else:
+                    timing["qwen_verify_sec"] = time.perf_counter() - t0
+                    align_meta["qwen_verify"] = verify_stats
                 finally:
                     referee.close()
-                timing["qwen_verify_sec"] = time.perf_counter() - t0
-                align_meta["qwen_verify"] = verify_stats
 
         output_segments = [asr_align.round_floats(seg) for seg in energy_segments]
         total = time.perf_counter() - t_start

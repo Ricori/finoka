@@ -48,6 +48,7 @@ type Step = "axis" | "mode" | "settings";
 interface KeyLimits {
   llm: boolean;
   gemini: boolean;
+  geminiPaid: boolean;
   retrieval: boolean;
   audio: boolean;
   video: boolean;
@@ -132,21 +133,27 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const limitsFor = useCallback((target: ExecutionMode, retrieval: TaskRequest["correction"]["retrieval"]): KeyLimits => {
     // 云端运行的凭据由 Nonoka Cloud 管理；读不到本地设置时也不做限制，避免误锁死。
     const keys = target === "local" ? settings : null;
-    const gemini = !keys || keys.keys.some((key) => key.configured && (key.name === "GEMINI_FREE" || key.name === "GEMINI_PAID"));
+    const configured = (name: string) => keys?.keys.some((key) => key.configured && key.name === name) === true;
+    const gemini = !keys || configured("GEMINI_FREE") || configured("GEMINI_PAID");
+    // 原生检索只要有 Gemini 就行，音视频窗要付费池——两条限制的理由不同，所以是
+    // 两个标志，不是一个标志的两种读法。
+    const geminiPaid = !keys || configured("GEMINI_PAID");
     const video = (target === "local" ? localCapabilities : cloudCapabilities)?.features.video_multimodal === true;
     // 音视频窗看的是「谁来答」，不是「有没有 Gemini Key」：本地 CLI 也能收音视频
-    // （agy 的 Gemini 3.7 Flash），而它不需要任何 Gemini Key。开着本地检索时每窗
-    // 还有一个查询轮，它跟着纠错参考走却用「窗口规划」那一格的模型，所以两格都
-    // 得能收——否则引擎会在开跑前的能力校验里直接拒掉整个任务。
+    // （agy 的 Gemini 3.7 Flash），而它不需要任何 Gemini Key，也就不受免费池那条
+    // 限制约束。开着本地检索时每窗还有一个查询轮，它跟着纠错参考走却用「窗口
+    // 规划」那一格的模型，所以两格都得能收——否则引擎会在开跑前的能力校验里直接
+    // 拒掉整个任务。
     const serves = (capability: MediaCapability) => {
       if (!keys) return true;
-      if (!routeServesMedia(keys.modelRouting, "correction", capability, gemini)) return false;
-      return retrieval !== "local" || routeServesMedia(keys.modelRouting, "planning", capability, gemini);
+      if (!routeServesMedia(keys.modelRouting, "correction", capability, geminiPaid)) return false;
+      return retrieval !== "local" || routeServesMedia(keys.modelRouting, "planning", capability, geminiPaid);
     };
     return {
       // 只认已保存的全局模型：装了 codex CLI、或在设置里选了却没保存，都不算配置好。
       llm: !keys || keys.llmReady,
       gemini,
+      geminiPaid,
       retrieval: !keys || keys.retrievalKeyConfigured,
       audio: target === "local" && serves("supportsAudio"),
       video: video && serves("supportsVideo"),
@@ -161,11 +168,20 @@ export function TranscriptionDialog(props: TranscriptionDialogProps) {
   const mediaHint = useCallback((capability: MediaCapability): string => {
     const label = capability === "supportsAudio" ? "音频" : "视频多模态";
     if (!settings) return `当前模型不支持${label}。`;
-    if (!routeServesMedia(settings.modelRouting, "correction", capability, limits.gemini)) {
-      return `「纠错与翻译」当前使用的模型不支持${label}：请到设置里改用支持的模型（例如本地 Antigravity 的 Gemini 3.7 Flash），或配置 Gemini Key 由 Gemini 承担。`;
+    const serves = (routeID: string, paid: boolean) =>
+      routeServesMedia(settings.modelRouting, routeID, capability, paid);
+    const needsPlanning = request.correction.retrieval === "local";
+    // 挡住的是配额还是能力？把「有付费 Key」代进去再问一次：答案变了就说明这几格
+    // 本身收得了，缺的只是付费池。这一条必须排在前面——落到下面那句会把用户支去
+    // 「改用支持的模型」，而他选的模型明明声明了支持，照着改不会有任何效果。
+    if (!limits.geminiPaid && serves("correction", true) && (!needsPlanning || serves("planning", true))) {
+      return `Gemini 免费池不承担${label}窗：整段媒体要先传上 Files API，免费额度下极易撞上 503 与超时。请到设置里把 Gemini 档位切到付费池并填上它的 Key，或把「纠错与翻译」指到自带${label}能力的本地 CLI 模型（例如本地 Antigravity 的 Gemini 3.7 Flash）。`;
+    }
+    if (!serves("correction", limits.geminiPaid)) {
+      return `「纠错与翻译」当前使用的模型不支持${label}：请到设置里改用支持的模型（例如本地 Antigravity 的 Gemini 3.7 Flash），或把 Gemini 档位切到付费池由 Gemini 承担。`;
     }
     return `开启资料检索后每窗还有一个查询轮，它使用「窗口规划」的模型，而该模型不支持${label}：请把这一格也指到支持的模型，或把资料检索设为「不检索」。`;
-  }, [limits.gemini, settings]);
+  }, [limits.geminiPaid, request.correction.retrieval, settings]);
 
   const summary = useMemo(() => {
     if (axis && importOnly) return `直接导入 ${axis.rows.length} 条字幕，不做任何处理`;

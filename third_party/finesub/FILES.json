@@ -1,5 +1,5 @@
 {
-  "content_sha256": "24f4206340a53cd3ed43fe62e5c704cc89307c7e872daeae12036505492f4a40",
+  "content_sha256": "07507be8ec0db4d8d0c706b9f163d054e0a8226627dbaddf5e27e55efc27e1c6",
   "files": [
     {
       "bytes": 1734,
@@ -142,9 +142,9 @@
       "sha256": "5451a18e0a81d2e4271c54197e27f7e46f1e99b280f3e9ef3782a5fc1c6a4f9e"
     },
     {
-      "bytes": 150392,
+      "bytes": 150892,
       "path": "src/finesub/llm/client.py",
-      "sha256": "4b0afecda3efa6dea2f074bdfc229aa2085daacd758cc5d509932f14c9a61459"
+      "sha256": "03b3298265a0bc28df8ef1d624470370665f66f67782052f887631697c1d7416"
     },
     {
       "bytes": 5011,
@@ -1042,9 +1042,9 @@
       "sha256": "6dba385d2ed3d2f512433f10444dbce72573b2915bfc0bd22b8465e9205a3816"
     },
     {
-      "bytes": 43444,
+      "bytes": 44880,
       "path": "src/finesub/speech/recognition/vad_asr_stage.py",
-      "sha256": "ad6f0367f3552552df758767d4d2dcd07c71f5be55287a930c354e96be7f5685"
+      "sha256": "b896cf52fe52c3aaf4dfacaf2b99ef9efbd30ea5bbc4bd9c313361db39a45248"
     },
     {
       "bytes": 16499,
@@ -1097,9 +1097,9 @@
       "sha256": "97cd9b82801fce5273233cb57a76eff3171b24f4ba9ff5000c55adae876a16b0"
     },
     {
-      "bytes": 16703,
+      "bytes": 19263,
       "path": "src/finesub/speech/verification/qwen_referee.py",
-      "sha256": "57df87367ea36a19c0cc5530b6f02f57daa8e8089c5b4e276c8a69f4dba1ddef"
+      "sha256": "dd342e6ee97471835b867d3da0f8cc63c3c13ee603d8fa2ea7cb51d884becd63"
     },
     {
       "bytes": 4323,

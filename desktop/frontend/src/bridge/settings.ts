@@ -52,6 +52,12 @@ export interface FineSubModelProvider {
   // 兼容提供商没有官方地址兜底，Base URL 是必填项。
   customEndpoint: boolean;
   keyConfigured: boolean;
+  // 几个提供商折叠成设置里的一行时共享的组 id，以及这一行的名字和本档位的名
+  // 字。Gemini 的免费池与付费池是同一个服务的两档配额，对配置的人来说是一个
+  // 提供商，对路由来说是两个 tier。不分组的提供商三者皆为空串。
+  groupId: string;
+  groupLabel: string;
+  tierLabel: string;
 }
 
 export interface FineSubModelRoutingState {

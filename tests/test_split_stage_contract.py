@@ -182,6 +182,18 @@ class PurelyAdditiveTests(unittest.TestCase):
             "0010-provider-call-failure-visibility.patch": [
                 "src/finesub/llm/llm_runtime.py",
             ],
+            # Reachability, not transcription. Loading pinned local weights
+            # offline and treating a failed evidence pass as missing evidence
+            # change what a run survives, never what it decides: the referee's
+            # output is read the same way when it exists, and the containment
+            # arm only fires where an exception would have ended the run. The
+            # cloud runs this too and wants it -- a container that cannot
+            # reach the hub loses the same alignment pass for the same reason.
+            "0011-qwen-referee-offline-and-nonfatal.patch": [
+                "src/finesub/llm/client.py",
+                "src/finesub/speech/recognition/vad_asr_stage.py",
+                "src/finesub/speech/verification/qwen_referee.py",
+            ],
         }
         for name in names[1:]:
             with self.subTest(patch=name):

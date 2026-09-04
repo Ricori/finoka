@@ -126,6 +126,35 @@ class FineSubSettingsTests(unittest.TestCase):
             self.assertTrue(correction_eff.target_ids[0].startswith("nonoka-openai-"))
             self.assertEqual(research.target_ids[0], "gemini-free-3_6-flash")
 
+    def test_the_two_gemini_pools_share_one_provider_row(self) -> None:
+        # 对配置的人来说 Gemini 是一个服务：同一个控制台、同一个端点，两档配额
+        # 各一个 Key。对路由来说仍然是两个 tier——打包目录给了它们不同的 fact
+        # id 和不同的模型清单（免费池七个、付费池两个），路由存的就是 tier。所
+        # 以两条记录保留，靠 groupId 在设置里折成一行。
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
+        ):
+            settings = FineSubSettings(temporary)
+            settings.bind_environment()
+            providers = {
+                item["id"]: item
+                for item in settings.snapshot()["modelRouting"]["providers"]
+            }
+            free, paid = providers["gemini-free"], providers["gemini-paid"]
+            self.assertEqual(free["groupId"], paid["groupId"])
+            self.assertEqual(free["groupLabel"], "Gemini")
+            self.assertEqual(paid["groupLabel"], "Gemini")
+            self.assertEqual({free["tierLabel"], paid["tierLabel"]}, {"免费池", "付费池"})
+            # 档位各自的 Key，也各自的模型清单——切换档位时模型必须跟着换。
+            self.assertNotEqual(free["keyName"], paid["keyName"])
+            self.assertNotEqual(
+                [item["id"] for item in free["models"]],
+                [item["id"] for item in paid["models"]],
+            )
+            # 其余提供商不分组，用空串说出来而不是缺字段。
+            self.assertEqual(providers["openai"]["groupId"], "")
+            self.assertEqual(providers["local-agy"]["groupId"], "")
+
     def test_llm_is_not_ready_until_a_global_model_is_saved(self) -> None:
         # A key on its own configures nothing: without a saved global model the
         # desktop must not offer 「最终字幕」.

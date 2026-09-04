@@ -99,9 +99,18 @@ LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, str]] = {
 # the endpoint its transport reads. The two compat entries exist so a
 # third-party endpoint can be routed to without overwriting the address of the
 # official service that speaks the same dialect.
+#
+# `groupId` folds several rows into one line of the desktop's provider list.
+# The two Gemini pools are one service to the person configuring it -- same
+# console, same endpoint, one Key each -- but they cannot be one provider here:
+# the packaged catalog gives them different tiers and different rosters (the
+# free pool carries seven models, the paid one two), and a route is stored as
+# the tier it runs on. So they stay two providers with one label, and the
+# desktop asks which pool is the enabled one rather than which of two Geminis
+# this is.
 API_PROVIDER_SPECS: tuple[dict[str, Any], ...] = (
-    {"id": "gemini-free", "label": "Gemini", "mode": "select", "keyName": "GEMINI_FREE", "baseUrlName": "GEMINI_BASE_URL", "customEndpoint": False},
-    {"id": "gemini-paid", "label": "Gemini 付费池", "mode": "select", "keyName": "GEMINI_PAID", "baseUrlName": "GEMINI_BASE_URL", "customEndpoint": False},
+    {"id": "gemini-free", "label": "Gemini 免费池", "mode": "select", "keyName": "GEMINI_FREE", "baseUrlName": "GEMINI_BASE_URL", "customEndpoint": False, "groupId": "gemini", "groupLabel": "Gemini", "tierLabel": "免费池"},
+    {"id": "gemini-paid", "label": "Gemini 付费池", "mode": "select", "keyName": "GEMINI_PAID", "baseUrlName": "GEMINI_BASE_URL", "customEndpoint": False, "groupId": "gemini", "groupLabel": "Gemini", "tierLabel": "付费池"},
     {"id": "openai", "label": "OpenAI", "mode": "input", "keyName": "OPENAI_API_KEY", "baseUrlName": "OPENAI_BASE_URL", "customEndpoint": False},
     {"id": "anthropic", "label": "Anthropic", "mode": "input", "keyName": "ANTHROPIC_API_KEY", "baseUrlName": "ANTHROPIC_BASE_URL", "customEndpoint": False},
     {"id": "openai-compat", "label": "OpenAI 兼容提供商", "mode": "input", "keyName": "OPENAI_COMPAT_API_KEY", "baseUrlName": "OPENAI_COMPAT_BASE_URL", "customEndpoint": True},
@@ -452,6 +461,9 @@ class FineSubSettings:
                     # its Base URL is part of configuring it.
                     "customEndpoint": spec["customEndpoint"],
                     "keyConfigured": bool(_entries(values.get(spec["keyName"], ""))),
+                    "groupId": spec.get("groupId", ""),
+                    "groupLabel": spec.get("groupLabel", ""),
+                    "tierLabel": spec.get("tierLabel", ""),
                 }
                 for spec in API_PROVIDER_SPECS
             ],
@@ -470,6 +482,9 @@ class FineSubSettings:
                     "baseUrlName": "",
                     "customEndpoint": False,
                     "keyConfigured": False,
+                    "groupId": "",
+                    "groupLabel": "",
+                    "tierLabel": "",
                 }
                 for provider, spec in LOCAL_AGENT_PROVIDERS.items()
             ],
