@@ -153,7 +153,51 @@ def cxx_toolchain_available() -> bool:
     ) or _find_vcvars() is not None
 
 
+def _patch_triton_windows_driver() -> None:
+    """Fix Triton's invalid empty struct initializers `{}` under MSVC `/std:c11`."""
+    try:
+        import triton.backends.nvidia.driver as nv_driver
+
+        if hasattr(nv_driver, "make_launcher"):
+            orig_make = nv_driver.make_launcher
+
+            def patched_make(*args: Any, **kwargs: Any) -> str:
+                src = orig_make(*args, **kwargs)
+                return src.replace(
+                    "CUlaunchAttribute clusterAttr = {};",
+                    "CUlaunchAttribute clusterAttr = {0};",
+                ).replace(
+                    "CUlaunchAttribute clusterSchedulingAttr = {};",
+                    "CUlaunchAttribute clusterSchedulingAttr = {0};",
+                )
+
+            nv_driver.make_launcher = patched_make
+    except Exception:
+        pass
+    try:
+        import triton.runtime.build as triton_build
+
+        if hasattr(triton_build, "_cc_cmd"):
+            orig_cc_cmd = triton_build._cc_cmd
+
+            def patched_cc_cmd(*args: Any, **kwargs: Any) -> list[str]:
+                cmd = orig_cc_cmd(*args, **kwargs)
+                if os.name == "nt":
+                    if "/link" in cmd:
+                        link_idx = cmd.index("/link")
+                        if "/wd5105" not in cmd:
+                            cmd.insert(link_idx, "/wd5105")
+                    elif "/wd5105" not in cmd:
+                        cmd.append("/wd5105")
+                return cmd
+
+            triton_build._cc_cmd = patched_cc_cmd
+    except Exception:
+        pass
+
+
 def _activate_msvc() -> str:
+    _patch_triton_windows_driver()
     existing = shutil.which("cl.exe")
     if existing is not None and _msvc_include_ready():
         return existing

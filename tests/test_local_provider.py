@@ -369,6 +369,15 @@ class LocalProviderTests(unittest.TestCase):
         raw_stage = next(stage for stage in report["stages"] if stage["id"] == "raw-srt")
         self.assertFalse(raw_stage["ready"])
 
+    def test_misleading_onnx_cuda_warning_is_filtered_from_events(self) -> None:
+        provider = self.provider()
+        task = provider.start(self.request("onnx-cuda-warning"))
+        wait_state(provider, task["task_id"], {"completed"})
+        page = provider.events(task["task_id"])
+        messages = [event.get("payload", {}).get("message", "") for event in page["events"]]
+        self.assertFalse(any("CUDAExecutionProvider not available in ONNXruntime" in msg for msg in messages))
+        self.assertTrue(any("Useful information" in msg for msg in messages))
+
 
 if __name__ == "__main__":
     unittest.main()

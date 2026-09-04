@@ -76,9 +76,11 @@ third_party/finesub/
 | `0003-agy-workspace-read-grant.patch` | `src/finesub` | agy 1.1.20 起只自动放行工作区内的读取，工作区外一律弹权限确认；headless 无法确认，`-p` 会软拒绝并结束回合，驱动判为 transient，链路一路回退到没有 Key 的 Gemini 付费池并报出误导性的 `Provider GEMINI_PAID is disabled`。工具协议与联网检索两条 agy 路径交给模型的文件都在其项目工作区之外，用 `--add-dir` 把这些目录并入工作区；读取边界仍由项目内的 PreToolUse 钩子把守 | 上游为 agy 项目授予其所交付目录的读取权限 |
 | `0004-qwen-referee-offline-and-nonfatal.patch` | `src/finesub` | 两处独立故障，同一个症状：对齐跑完之后整条流水线才崩，栈顶是 httpx。①`_load_model` 把仓库 id 交给 `from_pretrained`，而 transformers 5.x 会先联网解析该仓库的对话模板清单再看缓存——此时权重早已在盘上（`ensure_hf_model` 干净返回本就意味着无需再取）。那次解析本来有离线兜底，却兜不住这一种：`list_repo_templates` 捕获的是 `httpx.NetworkError`，而 `httpx.ConnectTimeout` 继承自它的兄弟 `TimeoutException`——连接被拒能恢复，连接被丢弃（`WinError 10060`）则直接抛出，复核能不能加载取决于网络以哪种方式拒绝。上游 0.5.0 在这里什么也没改：它传的 `revision=` 从 0.4.2 起就在，与这条无关。②`apply_verification` 的调用点没有兜底，而复核只产出证据、从不做决策，任何异常却都会带走整次运行。钉住的快照可信时传 `local_files_only` 去掉成因；`auto` 下捕获（`on` 是调用方点名要证据，仍然抛）去掉波及面，失败路径不写 `qwen_verify` 键，后续的收尾复核因此仍愿意再试。同时把 Gemini 上传的 connect 超时从 45s 降到 15s：这个预算是按解析出的每个地址各花一次的，`generativelanguage.googleapis.com` 有好几个，被墙时实测静默 169 秒才打出第一条重试日志，与卡死无从分辨（0.5.0 把这个常量从 `llm/client.py` 挪到了 `llm/media_upload.py`，值未变） | 上游离线加载已钉住的本地权重（或把那处兜底放宽到 `TimeoutException`），并把失败的复核当作缺证据而非运行失败 |
 | `0005-nonoka-042-runtime-marker.patch` | `src/finesub_bootstrap` | 0.5.0 把运行时锁移入包目录并改用忽略注释与换行的内容摘要，原本意图复用 0.4.x 环境；但其兼容表只收了上游工作区锁的哈希，遗漏 Nonoka X 0.4.2 实际发布包中带旧桌面生成命令头的 LF/CRLF 哈希。依赖行完全一致，误判却会重建约 5 GB 环境并重新下载 PyTorch。本补丁接受这两个已发布、可复核的旧哈希，下一次真正重生成锁时即可删除 | 上游兼容表收录 Nonoka X 0.4.2 的两个发布锁哈希，或提供基于旧锁内容摘要的通用迁移 |
+| `0006-triton-msvc-c11-empty-struct.patch` | `src/finesub` | Windows 下 Triton 生成的 C11 启动器代码（`__triton_launcher.c`）包含空结构体初始化 `CUlaunchAttribute clusterAttr = {};`。MSVC 在 `/std:c11` 严格模式下报 `error C2059: 语法错误: '}'`，且 Windows SDK `winbase.h` 产生 `warning C5105`。本补丁 monkey-patch Triton 的启动器生成与构建命令，将 `{}` 替换为合法的 `{0}` 并插入 `/wd5105` 屏蔽告警 | 上游 Triton 修复 C11 下的空结构体初始化或上游 FineSub 内置该适配 |
 
-> 上游 0.5.0 吸收了此前的六个补丁，它们随同步一并删除：Windows 发布性重命名重试
-> （`fsops.ReplaceBudget`）、GBK 代码页下的子进程解码与 MSVC `INCLUDE` 就绪检查、
+> 上游 0.5.0 吸收了此前的部分补丁：Windows 发布性重命名重试
+> （`fsops.ReplaceBudget`）、GBK 代码页下的子进程解码与 MSVC `INCLUDE` 就绪检查
+> （但未包含 Triton C11 空结构体修复，故以 0006 重新维护）、
 > Codex 的 GPT-5.6 Terra 目录行、`GEMINI_BASE_URL` 与 `[llm.preferred_targets]`、
 > HF 镜像关闭 Xet（`model_fetch.apply_xet_policy`），以及每次 API 交互的运行日志。
 > 其中三条的行为承诺仍由 Nonoka X 侧的回归测试守着，实现则已经是上游的：

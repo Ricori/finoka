@@ -1,10 +1,10 @@
 {
   "archive_sha256": "cd510998ec76f39040d9ddc8acb20bc445c32fca6d57c3ba8b97e8fdef4791e7",
   "commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
-  "content_sha256": "09258ec7547e22931a93db77e45c107b23ab9a4a55d58d9b63a3a024008ecb91",
+  "content_sha256": "ee18bfb3340653577dbf8f8efb80577104a25149c991591266851cf6afa8a41f",
   "engine_bundle_id": "finesub-0.5.0+4638bb7f01d7",
   "engine_version": "0.5.0",
-  "files_manifest_sha256": "c0190d01c29f1df7c98a9f3f627c8a7fc1cdf121623373ac016eafc64ccffb90",
+  "files_manifest_sha256": "c20a9ac922ab04d8753ea9abac275a380b6f9035a17979b003d891c64c9c6115",
   "patches": [
     {
       "path": "0001-qwen-tail-entry-point.patch",
@@ -25,6 +25,10 @@
     {
       "path": "0005-nonoka-042-runtime-marker.patch",
       "sha256": "06a17dda999756cfd342b679e18ba8c3848250f62bd4033f398ac416253758f6"
+    },
+    {
+      "path": "0006-triton-msvc-c11-empty-struct.patch",
+      "sha256": "e90b2be50b4a5196a76afa3b9e41149c77684cd9d1f3df7e3f4078e51dfa4e6c"
     }
   ],
   "ref": "v0.5.0",

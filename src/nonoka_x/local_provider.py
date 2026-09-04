@@ -67,6 +67,11 @@ def _issue(code: str, message: str) -> dict[str, str]:
     return {"code": code, "message": message}
 
 
+_IGNORED_WORKER_LOG_SUBSTRINGS = (
+    "CUDAExecutionProvider not available in ONNXruntime",
+)
+
+
 def _clear_legacy_separator_decode_probes(environment: Mapping[str, str]) -> None:
     """Retry AOT builds whose recorded failure was a fixed toolchain or locale bug."""
 
@@ -861,6 +866,10 @@ class LocalProvider:
                     payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
                 except (json.JSONDecodeError, KeyError, TypeError):
                     event_type, payload = "log", {"message": line}
+                if event_type == "log":
+                    msg = str(payload.get("message") or "")
+                    if any(ignored in msg for ignored in _IGNORED_WORKER_LOG_SUBSTRINGS):
+                        continue
                 with self._lock:
                     current = self.status(task_id)
                     if current["state"] in {"cancelled", "interrupted"}:

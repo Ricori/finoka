@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import sys
 import traceback
@@ -59,6 +60,26 @@ _UNCALIBRATED_VECTOR_NOTICE = "未标定：输出预算系数"
 # limit apart from a spent key apart from a hung stage. Successes stay in the
 # run log and the per-call artifacts, where nothing is lost.
 _API_CALL_MESSAGE = "llm api call"
+
+# audio-separator checks ONNXruntime execution providers on initialization and
+# logs a warning if onnxruntime-gpu is missing. FineSub uses PyTorch CUDA and
+# AOTInductor for BS-Roformer, not ONNXruntime, so this warning is irrelevant
+# and misleads users into believing GPU acceleration is disabled.
+_MISLEADING_ONNX_CUDA_WARNING = "CUDAExecutionProvider not available in ONNXruntime"
+
+
+class _MuteSeparatorONNXWarningFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return _MISLEADING_ONNX_CUDA_WARNING not in record.getMessage()
+
+
+def _install_separator_logging_filters() -> None:
+    mute_filter = _MuteSeparatorONNXWarningFilter()
+    for name in ("separator", "audio_separator", "audio_separator.separator.separator"):
+        logging.getLogger(name).addFilter(mute_filter)
+
+
+_install_separator_logging_filters()
 
 
 class NonokaXReporter:

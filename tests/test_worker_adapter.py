@@ -277,5 +277,31 @@ class WorkerAdapterTests(unittest.TestCase):
             )
 
 
+    def test_separator_onnx_cuda_warning_is_filtered(self) -> None:
+        import logging
+
+        logger = logging.getLogger("separator")
+        record_warning = logging.LogRecord(
+            name="separator",
+            level=logging.WARNING,
+            pathname="separator.py",
+            lineno=422,
+            msg="CUDAExecutionProvider not available in ONNXruntime, so acceleration will NOT be enabled",
+            args=(),
+            exc_info=None,
+        )
+        record_normal = logging.LogRecord(
+            name="separator",
+            level=logging.WARNING,
+            pathname="separator.py",
+            lineno=423,
+            msg="Another warning",
+            args=(),
+            exc_info=None,
+        )
+        self.assertFalse(logger.filter(record_warning))
+        self.assertTrue(logger.filter(record_normal))
+
+
 if __name__ == "__main__":
     unittest.main()

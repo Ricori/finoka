@@ -183,6 +183,11 @@ class PurelyAdditiveTests(unittest.TestCase):
                 "src/finesub/speech/recognition/vad_asr_stage.py",
                 "src/finesub/speech/verification/qwen_referee.py",
             ],
+            # Toolchain compatibility on Windows MSVC with C11: Triton's
+            # launcher generator uses empty struct initializers `{}`.
+            "0006-triton-msvc-c11-empty-struct.patch": [
+                "src/finesub/speech/preprocessing/separator/separator_aoti.py",
+            ],
         }
         for name in names:
             with self.subTest(patch=name):
