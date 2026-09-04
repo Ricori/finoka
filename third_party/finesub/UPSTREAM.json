@@ -1,10 +1,10 @@
 {
   "archive_sha256": "cd510998ec76f39040d9ddc8acb20bc445c32fca6d57c3ba8b97e8fdef4791e7",
   "commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
-  "content_sha256": "40e2d277b535768218a938de62f8cd06634e12a51fd60801f552ee48a037b92f",
+  "content_sha256": "6554e9cd5e087acdff3ccdb20e5d041cf7a110731c32bdc1f8a58caedcbb6aab",
   "engine_bundle_id": "finesub-0.5.0+4638bb7f01d7",
   "engine_version": "0.5.0",
-  "files_manifest_sha256": "afc7afd9a74211e0a9a715e71b2df535106ce9ea21f61501be6cd57ab295c67b",
+  "files_manifest_sha256": "3a96008d9d182f8707f96beb5ef111b4a2fd358c015ccab5c8784ac6aab3d449",
   "patches": [
     {
       "path": "0001-qwen-tail-entry-point.patch",
@@ -33,6 +33,14 @@
     {
       "path": "0007-referee-live-vram-and-verify-progress.patch",
       "sha256": "78f41b5714e6a42bcd53f3c24e7865a77deb0fb2c9132b94199a3b384bed9855"
+    },
+    {
+      "path": "0008-aoti-posix-compiler.patch",
+      "sha256": "7d8fe5505eb1f398537a33ed7d1e3ef0daec108420825c92f3c1c8bd6289a414"
+    },
+    {
+      "path": "0009-agent-tool-arg-unicode-escapes.patch",
+      "sha256": "acc11bd64949691172fb9e17d4dc0a5c4f4ca07d0968208c8d1657196c4b3828"
     }
   ],
   "ref": "v0.5.0",

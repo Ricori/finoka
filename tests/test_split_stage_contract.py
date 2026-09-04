@@ -197,6 +197,15 @@ class PurelyAdditiveTests(unittest.TestCase):
             # progress half adds events and reads nothing. The cloud runs both
             # and wants both -- a container sharing its card loses the same
             # alignment pass the same way.
+            # Transport repair, not transcription. The harness MCP server
+            # is how a local CLI hands an answer back, and one CLI escapes
+            # the non-ASCII characters of its tool arguments; decoding them
+            # gives the pipeline the text the model wrote instead of the
+            # escapes. No container spawns a CLI, so the cloud never reaches
+            # this code at all.
+            "0009-agent-tool-arg-unicode-escapes.patch": [
+                "src/finesub/llm/agent/agent_mcp_server.py",
+            ],
             "0007-referee-live-vram-and-verify-progress.patch": [
                 "src/finesub/speech/recognition/lang_redecode.py",
                 "src/finesub/speech/recognition/vad_asr_stage.py",

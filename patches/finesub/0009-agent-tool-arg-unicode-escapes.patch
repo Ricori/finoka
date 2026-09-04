@@ -1,0 +1,116 @@
+Subject: [PATCH 9/9] Decode tool arguments a CLI delivered as \uXXXX escapes
+
+Reason: antigravity-cli 1.1.24 cannot put a non-ASCII character into a
+`tools/call` argument. It spells every one of them as a literal `\uXXXX`
+escape *inside* the JSON string, so the harness MCP server's `json.loads`
+hands back the six characters of the escape instead of the character. Nothing
+else in the frame is escaped -- quotes and backslashes are not doubled, and
+`<` still arrives as the `\u003c` a correct serializer writes -- so this is
+not a JSON string to parse twice; it is one transformation applied to the
+non-ASCII characters alone. The whole answer therefore reaches the pipeline as
+ASCII: a correction window measured 2026-09-04 submitted 5988 characters
+carrying 815 backslashes, every one of them followed by `u`; the validator
+judged `char_count` against a text three times its real length (45 weighted
+characters where the model wrote 16), and every line of the delivered SRT read
+`\u4f1d\u3048\u308b...`. The stage reported success throughout: nothing
+downstream of `submit` can tell escaped text from text.
+
+The repair sits where the frame enters the server, before the request
+fingerprint and before any handler reads the arguments, and it is deliberately
+narrow: an argument is decoded only when it is pure ASCII, carries such an
+escape and yields a non-ASCII character by it. A driver that delivers its
+arguments intact never matches, and text that meant to hold the six characters
+`\u0041` decodes to ASCII and is left alone. Surrogate pairs are rejoined; a
+lone surrogate leaves the argument untouched. The first repair in a process
+says so on stderr, which lands in that capsule's `events/stderr.log`.
+
+Removal: Delete once the CLI passes non-ASCII tool arguments through
+unchanged (or once the harness stops taking answers over MCP).
+
+diff --git a/src/finesub/llm/agent/agent_mcp_server.py b/src/finesub/llm/agent/agent_mcp_server.py
+index 344ea9f..26441a0 100644
+--- a/src/finesub/llm/agent/agent_mcp_server.py
++++ b/src/finesub/llm/agent/agent_mcp_server.py
+@@ -41,6 +41,7 @@ from __future__ import annotations
+ import hashlib
+ import json
+ import os
++import re
+ import sys
+ import time
+ import uuid
+@@ -325,6 +326,64 @@ def _page_end(text: str, offset: int, limit_bytes: int) -> int:
+     return end
+ 
+ 
++# One `\uXXXX` escape as a CLI that cannot put a non-ASCII character into a
++# tool argument writes it (see `_unescaped_tool_text`).
++_ESCAPED_CODEPOINT = re.compile(r"\\u([0-9a-fA-F]{4})")
++_ESCAPE_REPAIR_REPORTED = False
++
++
++def _unescaped_tool_text(value: str) -> str:
++    r"""Repair one tool argument whose non-ASCII characters arrived escaped.
++
++    antigravity-cli 1.1.24 spells every non-ASCII codepoint of a `tools/call`
++    argument as a literal `\uXXXX` *inside* the JSON string, so `json.loads`
++    hands back the six characters of the escape instead of the character
++    (measured 2026-09-04: a `submit` payload arrived as 5988 ASCII characters
++    carrying 815 backslashes, every one of them followed by `u`, and that
++    window's subtitles reached the SRT as `\u4f1d\u3048...`). Only
++    the non-ASCII characters are treated this way -- quotes and backslashes are
++    not doubled -- so the argument is not a JSON string to parse, and the
++    escapes are decoded where they stand.
++
++    An argument is touched only when it is pure ASCII, carries such an escape
++    and yields a non-ASCII character by it: text that meant to hold the six
++    characters `\u0041` decodes to ASCII and is left alone, and a driver that
++    delivers its arguments intact never matches at all.
++    """
++
++    if not value.isascii() or "\\u" not in value:
++        return value
++    decoded = _ESCAPED_CODEPOINT.sub(lambda match: chr(int(match.group(1), 16)), value)
++    if any("\ud800" <= character <= "\udfff" for character in decoded):
++        # A character outside the BMP arrives as two escapes, one surrogate each.
++        try:
++            decoded = decoded.encode("utf-16", "surrogatepass").decode("utf-16")
++        except UnicodeError:
++            return value
++    return value if decoded.isascii() else decoded
++
++
++def _unescaped_arguments(value: Any) -> Any:
++    """`_unescaped_tool_text` over every string in one call's arguments."""
++
++    if isinstance(value, str):
++        repaired = _unescaped_tool_text(value)
++        if repaired is not value:
++            global _ESCAPE_REPAIR_REPORTED
++            if not _ESCAPE_REPAIR_REPORTED:
++                _ESCAPE_REPAIR_REPORTED = True
++                sys.stderr.write(
++                    "agent_mcp_server: this CLI escaped the non-ASCII characters "
++                    "of its tool arguments as \\uXXXX; decoding them\n"
++                )
++        return repaired
++    if isinstance(value, Mapping):
++        return {key: _unescaped_arguments(item) for key, item in value.items()}
++    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
++        return [_unescaped_arguments(item) for item in value]
++    return value
++
++
+ def request_id_for(
+     *,
+     assignment_id: str,
+@@ -483,6 +542,9 @@ class HarnessToolServer:
+         if method == "tools/call":
+             name = str(params.get("name") or "")
+             arguments = params.get("arguments") if isinstance(params.get("arguments"), Mapping) else {}
++            # Before any handler reads them and before the request
++            # fingerprint: a repaired argument is the argument the model wrote.
++            arguments = _unescaped_arguments(arguments)
+             return self._result(rpc_id, self._call(name, arguments, rpc_id=rpc_id))
+         if rpc_id is None:
+             return None

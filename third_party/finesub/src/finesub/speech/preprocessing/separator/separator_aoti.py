@@ -134,6 +134,22 @@ def _msvc_include_ready() -> bool:
     )
 
 
+def _posix_cxx_driver() -> str | None:
+    """The C++ driver Inductor will invoke on a non-Windows host, if any.
+
+    Inductor compiles the AOTI wrapper by shelling out to the platform C++
+    driver and asking Torch for its include paths; on POSIX there is no vcvars
+    to source and nothing to activate, so finding the driver *is* the whole
+    toolchain check.
+    """
+
+    for name in ("g++", "c++", "clang++"):
+        found = shutil.which(name)
+        if found is not None:
+            return found
+    return None
+
+
 def cxx_toolchain_available() -> bool:
     """Whether :func:`build_packages` would find a compiler, without side effects.
 
@@ -142,12 +158,15 @@ def cxx_toolchain_available() -> bool:
     then land on eager, on exactly the run where the JIT tier was available.
 
     Deliberately mirrors what ``_activate_msvc`` checks, so the two cannot
-    disagree -- including that it is Windows-shaped, which is the only platform
-    the AOTI path has been run on. ``cl.exe`` alone does not count: only the
-    pair of it and a reachable ``INCLUDE`` is a toolchain, and vcvars is
-    trusted on its own because activating it is what sets ``INCLUDE`` up.
+    disagree -- including its split by platform. On Windows ``cl.exe`` alone
+    does not count: only the pair of it and a reachable ``INCLUDE`` is a
+    toolchain, and vcvars is trusted on its own because activating it is what
+    sets ``INCLUDE`` up. Everywhere else the question is only whether a C++
+    driver is on PATH.
     """
 
+    if os.name != "nt":
+        return _posix_cxx_driver() is not None
     return (
         shutil.which("cl.exe") is not None and _msvc_include_ready()
     ) or _find_vcvars() is not None
@@ -197,6 +216,19 @@ def _patch_triton_windows_driver() -> None:
 
 
 def _activate_msvc() -> str:
+    if os.name != "nt":
+        # Nothing to activate off Windows: Inductor drives the platform C++
+        # compiler directly, and the CUDA headers it asks Torch for are resolved
+        # under CUDA_HOME by the caller's image. Raising here instead is what
+        # made every Linux build attempt fail with a message about MSVC --
+        # including the cloud Vocal worker's, which then degraded to eager on
+        # every task without anything upstream of it noticing.
+        compiler = _posix_cxx_driver()
+        if compiler is None:
+            raise RuntimeError(
+                "AOTInductor requires a C++ compiler on PATH (g++, c++ or clang++)"
+            )
+        return compiler
     _patch_triton_windows_driver()
     existing = shutil.which("cl.exe")
     if existing is not None and _msvc_include_ready():
