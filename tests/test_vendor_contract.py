@@ -30,14 +30,28 @@ class VendorContractTests(unittest.TestCase):
             sys.modules.pop("finesub_bootstrap", None)
 
     def test_version_and_runtime_metadata_match(self) -> None:
+        """The snapshot's own numbers, read where upstream 0.5.0 keeps them.
+
+        `project.version` went dynamic when the desktop split moved the single
+        number to a repository-root `VERSION`, and the installer's two assets
+        became package data under `src/finesub_bootstrap/` -- resolved there by
+        `finesub_bootstrap.resources` and `.environment`, which makes those the
+        only copies that are ever read.
+        """
+
         project = tomllib.loads((DEFAULT_VENDOR / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(project["project"]["version"], self.upstream["engine_version"])
+        self.assertIn("version", project["project"]["dynamic"])
+        self.assertEqual(
+            (DEFAULT_VENDOR / "VERSION").read_text(encoding="utf-8").strip(),
+            self.upstream["engine_version"],
+        )
+        bootstrap = DEFAULT_VENDOR / "src/finesub_bootstrap"
         runtime = json.loads(
-            (DEFAULT_VENDOR / "resources/runtime-manifest.json").read_text(encoding="utf-8")
+            (bootstrap / "runtime-manifest.json").read_text(encoding="utf-8")
         )
         self.assertEqual(runtime["schema_version"], 1)
-        self.assertTrue((DEFAULT_VENDOR / "runtime/pylock.win-py312.toml").is_file())
-        self.assertTrue((DEFAULT_VENDOR / "runtime/pylock.win-py312.cn.toml").is_file())
+        self.assertTrue((bootstrap / "pylock.win-py312.toml").is_file())
+        self.assertTrue((bootstrap / "pylock.win-py312.cn.toml").is_file())
 
     def test_nonoka_x_macos_media_manifests_are_packaged(self) -> None:
         resources = Path(__file__).resolve().parents[1] / "src/nonoka_x/resources"

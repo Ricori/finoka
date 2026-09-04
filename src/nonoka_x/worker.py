@@ -7,12 +7,12 @@ import hashlib
 import json
 import os
 import sys
-import time
 import traceback
 from pathlib import Path
 from typing import Any, Mapping
 
 from .axis import AxisTranslation, translate_axis as translate_rows
+from .gpu_tier import resolve_request_gpu_tier
 
 
 def _normalize_engine_device(device_value: Any) -> tuple[str, str | None]:
@@ -50,6 +50,16 @@ def emit(event_type: str, payload: Mapping[str, Any] | None = None) -> None:
 # surfaces the change as a diff.
 _UNCALIBRATED_VECTOR_NOTICE = "未标定：输出预算系数"
 
+# FineSub 0.5.0 records every LLM call, local agent call and web retrieval as
+# one debug line, which is the right shape for the run log it was written for
+# -- and the wrong shape for a task log the user is watching, where a single
+# correction pass would scroll past hundreds of successes. The failures are
+# the part worth surfacing, and they are the ones that carry `why`: the
+# endpoint's own words (`llm_runtime`), which is exactly what tells a rate
+# limit apart from a spent key apart from a hung stage. Successes stay in the
+# run log and the per-call artifacts, where nothing is lost.
+_API_CALL_MESSAGE = "llm api call"
+
 
 class NonokaXReporter:
     def planned(self, stages) -> None:
@@ -70,7 +80,10 @@ class NonokaXReporter:
         emit("warning", {"code": code, "message": message, "impact": impact, "action": action})
 
     def debug(self, message: str, fields=None) -> None:
-        emit("log", {"message": message, "fields": dict(fields or {})})
+        values = dict(fields or {})
+        if message == _API_CALL_MESSAGE and not values.get("why"):
+            return
+        emit("log", {"message": message, "fields": values})
 
     def completed(self, output, elapsed_sec: float) -> None:
         emit("progress", {"completed": 100, "total": 100, "unit": "%", "message": "字幕已完成"})
@@ -107,6 +120,54 @@ def translate_axis(request: Mapping[str, Any], axis: Mapping[str, Any], output: 
     )
 
 
+def install_llm_model_override(request: Mapping[str, Any]) -> None:
+    """Apply this run's `llm_model` pin, or clear whatever a previous one left.
+
+    The engine's equivalent of `--llm-model`: a model group or route target
+    that replaces the bound chain for one run, without touching the saved
+    settings. Upstream installs it from its own CLI entry points, which this
+    worker is not one of, so the call has to happen here -- and unconditionally,
+    because the overlay is process-global. One task per process makes a leak
+    impossible today; installing only when the field is present would make that
+    a property of the process model rather than of this function.
+
+    A bare string pins every task group. A table may use either the desktop's
+    route names (`{"correction": "..."}`) or upstream's exact task groups;
+    the two desktop media routes expand to both their ``-mm`` and ``-text``
+    cells before the engine validates the result.
+    """
+
+    try:
+        from finesub.llm.routing.model_routes import (
+            install_runtime_preferred,
+            parse_llm_model_args,
+        )
+    except ImportError:
+        # No engine, nothing to override -- the caller fails on its own import.
+        return
+    value = request.get("llm_model")
+    if isinstance(value, Mapping):
+        overlay = {str(key): str(item) for key, item in value.items()}
+    elif isinstance(value, str) and value.strip():
+        overlay = parse_llm_model_args([value.strip()])
+    else:
+        overlay = {}
+    from .settings import TASK_GROUPS_BY_ROUTE
+
+    expanded: dict[str, str] = {}
+    for key, target in overlay.items():
+        groups = TASK_GROUPS_BY_ROUTE.get(key, (key,))
+        for group in groups:
+            previous = expanded.get(group)
+            if previous is not None and previous != target:
+                raise ValueError(
+                    f"llm_model assigns conflicting targets to {group}: "
+                    f"{previous!r} and {target!r}"
+                )
+            expanded[group] = target
+    install_runtime_preferred(expanded)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", required=True)
@@ -115,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         request = json.loads(sys.stdin.readline())
+        install_llm_model_override(request)
         source = request["source"]
         correction = request.get("correction") or {}
         title = str(source.get("title") or Path(source["path"]).stem)
@@ -136,16 +198,22 @@ def main(argv: list[str] | None = None) -> int:
                 "final_srt": translated.final_srt,
             }
         else:
-            from finesub.pipeline import run_pipeline
+            from finesub.stages import run_pipeline
 
-            with reporting_to(NonokaXReporter()), quieted_libraries("normal"):
+            reporter = NonokaXReporter()
+            gpu_tier = resolve_request_gpu_tier(
+                request,
+                warn=lambda message: reporter.warning("gpu-tier", message),
+            )
+            with reporting_to(reporter), quieted_libraries("normal"):
                 paths = run_pipeline(
                     source["path"],
                     output_path=output,
                     stage=request["target"],
                     language=request.get("language", "ja"),
                     device=engine_device,
-                    gpu_budget_gb=int(request.get("gpu_budget_gb", 8)),
+                    gpu_tier=gpu_tier,
+                    separate=bool(request.get("separate", True)),
                     llm_media=correction.get("media", "audio"),
                     llm_retrieval=correction.get("retrieval", "local"),
                     llm_difficulty=correction.get("difficulty", "quality"),

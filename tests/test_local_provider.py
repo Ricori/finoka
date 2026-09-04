@@ -200,6 +200,58 @@ class LocalProviderTests(unittest.TestCase):
             provider2.start(invalid_req)
         provider2.shutdown()
 
+    def test_the_engines_new_switches_survive_validation(self) -> None:
+        """`separate` and `llm_model`, the two knobs FineSub 0.5.0 added.
+
+        Both are optional and both are refused rather than coerced when the
+        type is wrong: skipping separation by accident costs the whole
+        recognition quality and reports nothing, and a malformed model pin
+        would surface much later as a routing error that names neither the
+        field nor the request.
+        """
+
+        provider = self.provider()
+        accepted = self.request()
+        accepted["separate"] = False
+        accepted["llm_model"] = {"correction": "local-agy-media-gemini-3_7-flash"}
+        task = provider.start(accepted)
+        self.assertIn(task["state"], {"queued", "running"})
+        wait_state(provider, task["task_id"], {"completed"})
+        provider.shutdown()
+
+        provider2 = self.provider()
+        with self.assertRaisesRegex(ProviderError, "separate must be a boolean"):
+            provider2.start({**self.request(), "separate": "off"})
+        with self.assertRaisesRegex(ProviderError, "llm_model must be"):
+            provider2.start({**self.request(), "llm_model": ["a", "b"]})
+        with self.assertRaisesRegex(ProviderError, "llm_model entries must be strings"):
+            provider2.start({**self.request(), "llm_model": {"correction": 1}})
+        provider2.shutdown()
+
+    def test_a_request_defaults_to_separating_and_to_the_auto_tier(self) -> None:
+        """The two defaults the desktop relies on when a request omits them.
+
+        `auto` is the engine's own default and detects the card; separation on
+        is what every input that is not already a vocal track needs. A request
+        that still carries the retired `gpu_budget_gb` is left alone here and
+        converted at the worker, so the migration lives in one place.
+        """
+
+        from nonoka_x.local_provider import validate_request
+
+        request = self.request()
+        request.pop("gpu_budget_gb", None)
+        normalized = validate_request(request)
+        self.assertEqual(normalized["gpu_tier"], "auto")
+        self.assertTrue(normalized["separate"])
+
+        # A request queued before the upgrade keeps its number and gains no
+        # tier here: the worker converts it, so there is one mapping and not
+        # two that could disagree.
+        legacy = validate_request(self.request())
+        self.assertNotIn("gpu_tier", legacy)
+        self.assertEqual(legacy["gpu_budget_gb"], 8)
+
     def test_old_separator_unicode_probe_is_retried_once(self) -> None:
         accel = self.root / "models" / "audio-separator" / "accel"
         decode_probe = accel / "decode" / "probe.json"

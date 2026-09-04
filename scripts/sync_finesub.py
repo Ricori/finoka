@@ -13,18 +13,16 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import tomllib
 import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
 
 REPOSITORY = "https://github.com/caca2331/finesub"
-DEFAULT_REF = "v0.4.2"
+DEFAULT_REF = "v0.5.0"
 SYNC_SCHEMA = 1
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VENDOR = REPO_ROOT / "third_party" / "finesub"
@@ -34,13 +32,25 @@ SOURCE_TREES = (
     "src/finesub",
     "src/finesub_bootstrap",
 )
+#: The version, read from the upstream repository root rather than from
+#: `pyproject.toml`. FineSub 0.5.0 made `project.version` dynamic and moved the
+#: single number to this file, so the metadata block no longer carries it.
+VERSION_FILE = "VERSION"
 SOURCE_FILES = (
     "README.md",
     "LICENSE",
     "pyproject.toml",
-    "desktop/runtime/pylock.win-py312.toml",
-    "desktop/runtime/pylock.win-py312.cn.toml",
-    "desktop/resources/runtime-manifest.json",
+    VERSION_FILE,
+)
+#: Where the installer's own three assets live inside the snapshot. Since 0.5.0
+#: they are package data resolved with `Path(__file__).with_name(...)` by
+#: `finesub_bootstrap.resources` and `.environment`, so these are the copies
+#: that are actually read -- a patched duplicate anywhere else would be
+#: ignored in silence.
+RUNTIME_MANIFEST = "src/finesub_bootstrap/runtime-manifest.json"
+RUNTIME_LOCKS = (
+    "src/finesub_bootstrap/pylock.win-py312.toml",
+    "src/finesub_bootstrap/pylock.win-py312.cn.toml",
 )
 VENDOR_README = """# FineSub vendor directory
 
@@ -156,13 +166,19 @@ def extract_archive(archive: Path, destination: Path, expected_commit: str) -> P
 
 
 def validate_source(source: Path) -> str:
-    missing = [path for path in (*SOURCE_TREES, *SOURCE_FILES) if not (source / path).exists()]
+    required = (
+        *SOURCE_TREES,
+        *SOURCE_FILES,
+        VERSION_FILE,
+        RUNTIME_MANIFEST,
+        *RUNTIME_LOCKS,
+    )
+    missing = [path for path in required if not (source / path).exists()]
     if missing:
         raise SyncError("upstream archive is missing required paths: " + ", ".join(missing))
     try:
-        metadata = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
-        version = metadata["project"]["version"]
-    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as exc:
+        version = (source / VERSION_FILE).read_text(encoding="utf-8").strip()
+    except OSError as exc:
         raise SyncError(f"cannot read FineSub version: {exc}") from exc
     if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise SyncError(f"invalid FineSub version: {version!r}")
@@ -178,7 +194,7 @@ def copy_source(source: Path, staging: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source / relative, target)
     for relative in SOURCE_FILES:
-        target_relative = "UPSTREAM_README.md" if relative == "README.md" else relative.removeprefix("desktop/")
+        target_relative = "UPSTREAM_README.md" if relative == "README.md" else relative
         target = staging / target_relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source / relative, target)
@@ -296,7 +312,12 @@ def write_metadata(
     licenses = {
         "schema": 1,
         "components": [
-            {"path": "LICENSE", "license": "MIT", "component": "FineSub Python engine"},
+            {
+                "path": "LICENSE",
+                # GPL-3.0-or-later since upstream 0.5.0; MIT up to 0.4.2.
+                "license": "GPL-3.0-or-later",
+                "component": "FineSub Python engine",
+            },
             {
                 "path": "src/finesub/llm/prompt_templates",
                 "notice": "PROMPT_LICENSE.md",
@@ -308,7 +329,7 @@ def write_metadata(
     write_json(staging / "LICENSES.json", licenses)
     files_manifest = create_files_manifest(staging)
     write_json(staging / "FILES.json", files_manifest)
-    runtime_manifest = staging / "resources" / "runtime-manifest.json"
+    runtime_manifest = staging / RUNTIME_MANIFEST
     upstream_data = {
         "archive_sha256": archive_sha256,
         "commit": upstream.commit,
@@ -409,7 +430,7 @@ def verify_snapshot(vendor: Path = DEFAULT_VENDOR) -> dict[str, object]:
         raise SyncError(f"snapshot file set differs (extra={extras}, missing={missing})")
     if tree_digest.hexdigest() != upstream.get("content_sha256"):
         raise SyncError("snapshot content hash does not match UPSTREAM.json")
-    runtime_manifest = vendor / "resources" / "runtime-manifest.json"
+    runtime_manifest = vendor / RUNTIME_MANIFEST
     if sha256_file(runtime_manifest) != upstream.get("runtime_manifest_sha256"):
         raise SyncError("runtime manifest hash does not match UPSTREAM.json")
     return upstream

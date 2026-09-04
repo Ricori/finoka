@@ -70,6 +70,9 @@ export interface TaskAxis {
   rows: Array<{ t0: number; t1: number; ja: string; zh: string; spk: string }>;
 }
 
+export const GPU_TIERS = ["auto", "cpu", "entry", "standard", "standard_large_vram", "high"] as const;
+export type GpuTier = (typeof GPU_TIERS)[number];
+
 export interface TaskRequest {
   schema: 1;
   provider: ProviderID;
@@ -77,7 +80,18 @@ export interface TaskRequest {
   target: "raw-srt" | "final-srt";
   language: string;
   device: string;
-  gpu_budget_gb: 4 | 8 | 12 | 16;
+  /**
+   * 显卡档位。FineSub 0.5.0 用它取代了按 GB 计的显存预算：档位说的是机器是什么，
+   * 而不是花多少显存。`auto` 由引擎探测本机显卡，是出厂值；`high` 需要显卡自报
+   * 24GB 以上，`auto` 最高只会选到 `standard_large_vram`。
+   */
+  gpu_tier: GpuTier;
+  /**
+   * 是否跑人声分离。关掉只在输入本身已是纯人声时才对：产物位置与格式不变
+   * （`<stem>-vocal.ogg`，16 kHz 单声道），只是由源音直接转出。仅本地模式，
+   * 云端的分离在它自己的容器里。
+   */
+  separate: boolean;
   vocal_profile: "cost" | "quality";
   correction: {
     enabled: boolean;

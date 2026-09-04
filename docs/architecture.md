@@ -115,8 +115,8 @@ interface ExecutionProvider {
   "artifact_schema": 1,
   "engine": {
     "name": "finesub",
-    "version": "0.4.2",
-    "commit": "8a33092a40ab4d86872941155143fd91b84eaa56"
+    "version": "0.5.0",
+    "commit": "4638bb7f01d7ba52520395dad9905e873ba09452"
   },
   "features": {
     "raw_srt": true,
@@ -158,7 +158,8 @@ interface ExecutionProvider {
   "target": "final-srt",
   "language": "ja",
   "device": "cuda:0",
-  "gpu_budget_gb": 8,
+  "gpu_tier": "auto",
+  "separate": true,
   "vocal_profile": "quality",
   "correction": {
     "enabled": true,
@@ -190,8 +191,8 @@ interface ExecutionProvider {
     "message": "正在转写"
   },
   "engine": {
-    "version": "0.4.2",
-    "commit": "8a33092a40ab4d86872941155143fd91b84eaa56"
+    "version": "0.5.0",
+    "commit": "4638bb7f01d7ba52520395dad9905e873ba09452"
   },
   "requested_capabilities": {},
   "effective_capabilities": {},
@@ -226,7 +227,7 @@ interface ExecutionProvider {
 {
   "schema": 1,
   "task_id": "task_abc123",
-  "engine_commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
+  "engine_commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
   "artifacts": {
     "stable_json": {
       "uri": "file:///.../video-stable.json",

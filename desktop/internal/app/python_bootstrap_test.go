@@ -72,7 +72,7 @@ func TestFileMatchesRequiresSizeAndSHA256(t *testing.T) {
 }
 
 func TestBootstrapUVPinMatchesFineSubManifest(t *testing.T) {
-	manifestPath := filepath.Join("..", "..", "..", "third_party", "finesub", "resources", "runtime-manifest.json")
+	manifestPath := filepath.Join("..", "..", "..", "third_party", "finesub", "src", "finesub_bootstrap", "runtime-manifest.json")
 	contents, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)

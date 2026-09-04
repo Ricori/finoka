@@ -1,59 +1,35 @@
 {
-  "archive_sha256": "c927e0f103d4a7cb9a8733a4e23c333bad6ecbb418d98aaa6dce8a383544cea8",
-  "commit": "8a33092a40ab4d86872941155143fd91b84eaa56",
-  "content_sha256": "07507be8ec0db4d8d0c706b9f163d054e0a8226627dbaddf5e27e55efc27e1c6",
-  "engine_bundle_id": "finesub-0.4.2+8a33092a40ab",
-  "engine_version": "0.4.2",
-  "files_manifest_sha256": "d990989547a2f891e76138aa885120981991180ac186b0717789f36144abf66c",
+  "archive_sha256": "cd510998ec76f39040d9ddc8acb20bc445c32fca6d57c3ba8b97e8fdef4791e7",
+  "commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
+  "content_sha256": "09258ec7547e22931a93db77e45c107b23ab9a4a55d58d9b63a3a024008ecb91",
+  "engine_bundle_id": "finesub-0.5.0+4638bb7f01d7",
+  "engine_version": "0.5.0",
+  "files_manifest_sha256": "c0190d01c29f1df7c98a9f3f627c8a7fc1cdf121623373ac016eafc64ccffb90",
   "patches": [
     {
-      "path": "0001-split-vad-prefix-and-qwen-pass.patch",
-      "sha256": "fc8d450d67c0683c9f621a4ffd794cf5932a37fe9984564d1676dfdc8afdfac6"
+      "path": "0001-qwen-tail-entry-point.patch",
+      "sha256": "d596cacc4719b1e4ee14eb05d492fb48167bb61e9863531beb76e226a0b45bbc"
     },
     {
-      "path": "0002-retry-directory-publish-rename.patch",
-      "sha256": "2ad9db8c395bf981331e162aec6e735112d72267f58750bc2b7c7375bbf81310"
+      "path": "0002-runtime-tool-manifest.patch",
+      "sha256": "6bbbf572e75d5d549cf32dce7f42f292f97eddf7ec86560834a37cecf01b5e0b"
     },
     {
-      "path": "0003-desktop-model-routing.patch",
-      "sha256": "60fd7ce2437808ee60814feabdd46acfb316c131e4a3c472244fc28f34265528"
+      "path": "0003-agy-workspace-read-grant.patch",
+      "sha256": "3288dacc75be17f598f26470586a41455d4d58f6a0e60050f12b3bb9fcd50319"
     },
     {
-      "path": "0004-subprocess-text-encoding-and-msvc-include.patch",
-      "sha256": "95f8bf44d3c745e9ec0b35a1c8d6300348d7426fcf8e39003f401b91d209bff7"
+      "path": "0004-qwen-referee-offline-and-nonfatal.patch",
+      "sha256": "81f32f787766b26e7a0d51f71b65730d998948768dbc2de8fa5d2899203cc0a2"
     },
     {
-      "path": "0005-codex-terra-model.patch",
-      "sha256": "45a751433c6707de28de097267cf46345efba62ef9f2c3404e9b85a566ad3df4"
-    },
-    {
-      "path": "0006-runtime-tool-manifest.patch",
-      "sha256": "ce27ce197c71adaf0e82c5689a1dce5992dc7bb37ea2b995486f3917af7d71b3"
-    },
-    {
-      "path": "0007-agy-workspace-read-grant.patch",
-      "sha256": "4b92be722ba709271a45b5afe17043299d769ae5d7116269788f4cfc0d62b46a"
-    },
-    {
-      "path": "0008-hf-mirror-disable-xet.patch",
-      "sha256": "536ec1d7f1e8dbc0c867e767d81b2b2761da92a62ec0669d8796971b3ee136f1"
-    },
-    {
-      "path": "0009-correction-output-truncation-warning.patch",
-      "sha256": "ef87b8ba685b94a272a6993e3ad66d03ebd4e3f8f9c3e4ef12e2668116b73ac0"
-    },
-    {
-      "path": "0010-provider-call-failure-visibility.patch",
-      "sha256": "2bb2c3bcdd9202867712d09f0652b3288d50d4009873c1fe8a6d8214e77e562a"
-    },
-    {
-      "path": "0011-qwen-referee-offline-and-nonfatal.patch",
-      "sha256": "d553b3806373e0d4346c7609b3145aa13dc26b4aa596f3fdb47af9955bc705dd"
+      "path": "0005-nonoka-042-runtime-marker.patch",
+      "sha256": "06a17dda999756cfd342b679e18ba8c3848250f62bd4033f398ac416253758f6"
     }
   ],
-  "ref": "v0.4.2",
+  "ref": "v0.5.0",
   "repository": "https://github.com/caca2331/finesub",
-  "runtime_manifest_sha256": "fd0606dbf285c061cd9d3cbda14a4e41eb928eba28e826f8790720c2568d4957",
+  "runtime_manifest_sha256": "036bfc3d4725ef49fc9995feb84492625f6fe72cf98c07ed7b4295bb13f10c84",
   "sync_schema": 1,
-  "synced_at": "2026-08-26T08:02:23Z"
+  "synced_at": "2026-09-04T06:00:12Z"
 }

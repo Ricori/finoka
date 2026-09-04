@@ -140,6 +140,21 @@ MODEL_ROUTE_SPECS: tuple[dict[str, str], ...] = (
     {"id": "search_judge", "label": "检索判断"},
     {"id": "knowledge", "label": "知识处理"},
 )
+#: One desktop row can own more than one engine task group. `correction` and
+#: `planning` each split into a `-mm` and a `-text` cell upstream, and a pin
+#: binds *both*: upstream 0.5.0's `[llm.preferred_targets]` replaces the bound
+#: chain outright (`_preferred_bindings`, owner decision 2026-08-28), so
+#: leaving the `-mm` half unpinned would quietly serve a multimodal correction
+#: from a provider the user did not choose. The desktop instead refuses the
+#: combination up front -- see `route_media_warnings`.
+TASK_GROUPS_BY_ROUTE: dict[str, tuple[str, ...]] = {
+    "correction": ("correction-mm", "correction-text"),
+    "planning": ("planning-mm", "planning-text"),
+    "research": ("research",),
+    "search_judge": ("search_judge",),
+    "knowledge": ("knowledge",),
+}
+
 MODEL_SETTING_NAMES = frozenset(
     {"LLM_DEFAULT_PROVIDER", "LLM_DEFAULT_MODEL"}
     | {
@@ -568,7 +583,7 @@ class FineSubSettings:
         return self.snapshot()
 
     def _update_model_routing(self, updates: Mapping[str, str | None], env_values: Mapping[str, str]) -> None:
-        from finesub_bootstrap.config_file import update_config_file
+        from nonoka_x.config_file import update_config_file
 
         current = _read_toml(self.config_file).get("nonoka_models", {})
         if not isinstance(current, Mapping):
@@ -610,8 +625,9 @@ class FineSubSettings:
         return f"nonoka-{provider}-{digest}"
 
     def _sync_model_routing(self, env_values: Mapping[str, str]) -> None:
-        from finesub_bootstrap.config_file import update_config_file
         from finesub_bootstrap.fsops import write_atomic
+
+        from nonoka_x.config_file import update_config_file
 
         data = _read_toml(self.config_file)
         model_config = data.get("nonoka_models", {})
@@ -704,13 +720,24 @@ class FineSubSettings:
                 return target if target in emitted else None
             return None
 
+        # `[llm.preferred_targets]` is upstream 0.5.0's own overlay; the
+        # `[llm] default_target` / `task_route_*` keys this used to write were
+        # read by `0003-desktop-model-routing.patch`, which the sync to 0.5.0
+        # dropped. They are cleared rather than left behind: a stale key in a
+        # hand-edited file reads like a live setting.
+        preferred: dict[str, str | None] = {"default": target_for(routes["default"])}
+        for spec in MODEL_ROUTE_SPECS:
+            target = target_for(routes[spec["id"]])
+            for group in TASK_GROUPS_BY_ROUTE[spec["id"]]:
+                preferred[group] = target
         update_config_file(
             self.config_file,
             {
+                "llm.preferred_targets": preferred,
                 "llm": {
-                    "default_target": target_for(routes["default"]),
+                    "default_target": None,
                     **{
-                        f"task_route_{spec['id']}": target_for(routes[spec["id"]])
+                        f"task_route_{spec['id']}": None
                         for spec in MODEL_ROUTE_SPECS
                     },
                 },

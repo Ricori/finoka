@@ -11,7 +11,6 @@ import signal
 import subprocess
 import sys
 import threading
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -341,11 +340,32 @@ def validate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     if device_norm not in {"cuda", "cpu"}:
         if not (device_norm.startswith("cuda:") and device_norm.split(":", 1)[1].strip().isdigit()):
             raise ProviderError("invalid_request", f"unsupported device: {device!r}")
-    request.setdefault("gpu_budget_gb", 8)
+    # `auto` is the engine's own default and detects the card; a request
+    # still carrying the retired `gpu_budget_gb` is converted at the worker
+    # (`nonoka_x.gpu_tier`), so nothing is defaulted over it here.
+    if "gpu_budget_gb" not in request:
+        request.setdefault("gpu_tier", "auto")
     # FineSub has one separator policy and the local worker no longer passes a
     # profile through to it, so this field survives only as a contract check:
     # a request asking for the cloud's cost tier is asking for something local
     # execution does not have, and saying so beats silently running quality.
+    # Separation on unless the caller says the input is already a vocal
+    # track. Refused rather than coerced when it is not a bool: skipping it
+    # by accident costs the whole recognition quality and reports nothing.
+    separate = request.setdefault("separate", True)
+    if not isinstance(separate, bool):
+        raise ProviderError("invalid_request", "separate must be a boolean")
+    # Optional per-run model pin, the engine's `--llm-model`. A string pins
+    # every task group, a table pins the ones it names. The names themselves
+    # are the route loader's to validate -- it owns the list and its error
+    # says which ones it knows.
+    llm_model = request.get("llm_model")
+    if llm_model is not None and not isinstance(llm_model, (str, dict)):
+        raise ProviderError("invalid_request", "llm_model must be a string or an object")
+    if isinstance(llm_model, dict) and not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in llm_model.items()
+    ):
+        raise ProviderError("invalid_request", "llm_model entries must be strings")
     vocal_profile = request.setdefault("vocal_profile", "quality")
     if vocal_profile != "quality":
         raise ProviderError(

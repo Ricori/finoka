@@ -42,13 +42,13 @@ class WorkerAdapterTests(unittest.TestCase):
 
             finesub = types.ModuleType("finesub")
             finesub.__path__ = []
-            pipeline = types.ModuleType("finesub.pipeline")
-            pipeline.run_pipeline = run_pipeline
+            stages = types.ModuleType("finesub.stages")
+            stages.run_pipeline = run_pipeline
             reporting = types.ModuleType("finesub.reporting")
             reporting.reporting_to = passthrough
             reporting.quieted_libraries = passthrough
-            previous = {name: sys.modules.get(name) for name in ("finesub", "finesub.pipeline", "finesub.reporting")}
-            sys.modules.update({"finesub": finesub, "finesub.pipeline": pipeline, "finesub.reporting": reporting})
+            previous = {name: sys.modules.get(name) for name in ("finesub", "finesub.stages", "finesub.reporting")}
+            sys.modules.update({"finesub": finesub, "finesub.stages": stages, "finesub.reporting": reporting})
             request = {
                 "schema": 1,
                 "provider": "local",
@@ -91,6 +91,10 @@ class WorkerAdapterTests(unittest.TestCase):
             self.assertEqual(captured["input"], str(source))
             self.assertEqual(captured["stage"], "raw-srt")
             self.assertEqual(captured["device"], "cuda")
+            # Upstream 0.5.0 retired `--gpu-budget-gb` for `--gpu-tier`, and a
+            # request queued before the upgrade still carries the number.
+            self.assertEqual(captured["gpu_tier"], "standard")
+            self.assertNotIn("gpu_budget_gb", captured)
             # No profile switch and no separator profile: the local worker
             # calls `run_pipeline` with upstream's own arguments, which is what
             # makes "local is unpatched upstream" checkable rather than a claim.
@@ -100,7 +104,12 @@ class WorkerAdapterTests(unittest.TestCase):
             events = [json.loads(line) for line in output.getvalue().splitlines()]
             completed = next(event for event in events if event["type"] == "completed")
             manifest = completed["payload"]["artifacts"]
-            self.assertEqual(manifest["engine_commit"], "8a33092a40ab4d86872941155143fd91b84eaa56")
+            self.assertEqual(
+                manifest["engine_commit"],
+                json.loads(
+                    (ROOT / "third_party/finesub/UPSTREAM.json").read_text(encoding="utf-8")
+                )["commit"],
+            )
             self.assertEqual(set(manifest["artifacts"]), {"stable_json", "raw_srt"})
             self.assertEqual(len(manifest["artifacts"]["stable_json"]["sha256"]), 64)
 
@@ -132,15 +141,15 @@ class WorkerAdapterTests(unittest.TestCase):
             correction.run_full_correction = run_full_correction
             profiles = types.ModuleType("finesub.llm.routing.profiles")
             profiles.resolve_profile = lambda *args: SimpleNamespace(id="-".join(args))
-            pipeline = types.ModuleType("finesub.pipeline")
-            pipeline.run_pipeline = lambda *args, **kwargs: self.fail("recognition must not run for a source-text axis")
-            pipeline.resolve_llm_media_for_source = lambda path, **kwargs: (kwargs["llm_media"], None, "")
+            stages = types.ModuleType("finesub.stages")
+            stages.run_pipeline = lambda *args, **kwargs: self.fail("recognition must not run for a source-text axis")
+            stages.resolve_llm_media_for_source = lambda path, **kwargs: (kwargs["llm_media"], None, "")
             reporting = types.ModuleType("finesub.reporting")
             reporting.reporting_to = passthrough
             reporting.quieted_libraries = passthrough
             names = (
                 "finesub", "finesub.llm", "finesub.llm.routing", "finesub.llm.correction_translation",
-                "finesub.llm.routing.profiles", "finesub.pipeline", "finesub.reporting",
+                "finesub.llm.routing.profiles", "finesub.stages", "finesub.reporting",
             )
             previous = {name: sys.modules.get(name) for name in names}
             sys.modules.update({
@@ -149,7 +158,7 @@ class WorkerAdapterTests(unittest.TestCase):
                 "finesub.llm.routing": routing,
                 "finesub.llm.correction_translation": correction,
                 "finesub.llm.routing.profiles": profiles,
-                "finesub.pipeline": pipeline,
+                "finesub.stages": stages,
                 "finesub.reporting": reporting,
             })
             request = {
@@ -232,6 +241,40 @@ class WorkerAdapterTests(unittest.TestCase):
         self.assertEqual(worker._normalize_engine_device("cuda"), ("cuda", None))
         self.assertEqual(worker._normalize_engine_device("cpu"), ("cpu", None))
         self.assertEqual(worker._normalize_engine_device(None), ("cuda", None))
+
+    def test_llm_model_desktop_route_expands_to_upstream_task_groups(self) -> None:
+        from finesub.llm.routing.model_routes import (
+            default_model_routes,
+            install_runtime_preferred,
+            runtime_preferred,
+        )
+
+        try:
+            worker.install_llm_model_override(
+                {"llm_model": {"correction": "local-agy-media-gemini-3_7-flash"}}
+            )
+            self.assertEqual(
+                runtime_preferred(),
+                {
+                    "correction-mm": "local-agy-media-gemini-3_7-flash",
+                    "correction-text": "local-agy-media-gemini-3_7-flash",
+                },
+            )
+            # Exercise the real 0.5 route validator, not only the adapter's map.
+            default_model_routes()
+        finally:
+            install_runtime_preferred({})
+
+    def test_llm_model_rejects_conflicting_friendly_and_exact_routes(self) -> None:
+        with self.assertRaisesRegex(ValueError, "conflicting targets"):
+            worker.install_llm_model_override(
+                {
+                    "llm_model": {
+                        "correction": "local-agy-media-gemini-3_7-flash",
+                        "correction-mm": "local-agy-opus-4_6",
+                    }
+                }
+            )
 
 
 if __name__ == "__main__":

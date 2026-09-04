@@ -99,8 +99,9 @@ class FineSubSettingsTests(unittest.TestCase):
             self.assertIn("openai_compat|https://proxy.example/v1|OPENAI_API_KEY", catalog)
             self.assertIn("|gpt-custom|gpt-custom|", catalog)
             config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
-            self.assertIn('default_target = "nonoka-openai-', config)
-            self.assertIn('task_route_research = "gemini-free-3_6-flash"', config)
+            self.assertIn("[llm.preferred_targets]", config)
+            self.assertIn('default = "nonoka-openai-', config)
+            self.assertIn('research = "gemini-free-3_6-flash"', config)
 
             from finesub.config import clear_config_cache
             from finesub.llm.routing.model_catalog import default_model_catalog
@@ -252,7 +253,7 @@ class FineSubSettingsTests(unittest.TestCase):
             self.assertEqual([model["id"] for model in codex["models"]], ["gpt-5.6-sol", "gpt-5.6-terra"])
             self.assertEqual(codex["defaultModel"], "gpt-5.6-sol")
             config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
-            self.assertIn('default_target = "local-codex-completion-gpt-5_6-sol"', config)
+            self.assertIn('default = "local-codex-completion-gpt-5_6-sol"', config)
 
             from finesub.config import clear_config_cache
             from finesub.llm.routing.model_catalog import default_model_catalog
@@ -304,7 +305,7 @@ class FineSubSettingsTests(unittest.TestCase):
             # The media target, not the search-entitled twin: a pinned target
             # is prepended to the bound group, so `retrieval=native` has to
             # stay free to fall through.
-            self.assertIn('default_target = "local-agy-media-gemini-3_7-flash"', config)
+            self.assertIn('default = "local-agy-media-gemini-3_7-flash"', config)
 
             from finesub.config import clear_config_cache
             from finesub.llm.routing.model_catalog import default_model_catalog
@@ -334,7 +335,8 @@ class FineSubSettingsTests(unittest.TestCase):
                 }
             )
             config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
-            self.assertIn('task_route_correction = "local-agy-opus-4_6"', config)
+            self.assertIn('correction-mm = "local-agy-opus-4_6"', config)
+            self.assertIn('correction-text = "local-agy-opus-4_6"', config)
 
     def test_unknown_local_agy_model_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
@@ -414,7 +416,8 @@ class FineSubSettingsTests(unittest.TestCase):
                 }
             )
             config = (Path(temporary) / "finesub.toml").read_text(encoding="utf-8")
-            self.assertIn('task_route_correction = "local-codex-completion-gpt-5_6-terra"', config)
+            self.assertIn('correction-mm = "local-codex-completion-gpt-5_6-terra"', config)
+            self.assertIn('correction-text = "local-codex-completion-gpt-5_6-terra"', config)
 
     def test_unknown_local_codex_model_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
@@ -581,7 +584,7 @@ class FineSubSettingsTests(unittest.TestCase):
             restarted.refresh_model_catalog()
             self.assertIn("|1000000|384000|", catalog.read_text(encoding="utf-8"))
 
-    def test_unknown_model_row_stays_conservative_and_thinking_free(self) -> None:
+    def test_unknown_model_row_clears_the_engines_refusal_line(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
             os.environ, {"FINESUB_ENV_PROTECT": "0"}, clear=False
         ):
@@ -597,19 +600,39 @@ class FineSubSettingsTests(unittest.TestCase):
             )
             catalog = (Path(temporary) / "model_catalog.psv").read_text(encoding="utf-8")
             # No display name to borrow, and no reasoning parameter: an endpoint
-            # nobody has declared may 400 on a field it does not know.
+            # nobody has declared may 400 on a field it does not know. The two
+            # window figures sit at FineSub 0.5.0's warning line rather than
+            # under it: the engine refuses to start a run whose bound model
+            # declares `max_output < 32,000`, and the old 16,384 placeholder
+            # would have stopped every task pinned to an endpoint this table
+            # does not recognise.
             self.assertIn(
-                "|vendor-large|vendor-large|128000|16384|false|false|false|false|1|70",
+                "|vendor-large|vendor-large|194000|64000|false|false|false|false|1|70",
                 catalog,
             )
+            from finesub.llm.routing.capabilities import (
+                WINDOW_REFUSE_INPUT,
+                WINDOW_REFUSE_OUTPUT,
+            )
+            from nonoka_x.model_specs import UNKNOWN_MODEL_SPEC
 
-    def test_api_provider_keeps_the_packaged_tail_behind_it(self) -> None:
-        """Only a local CLI drops the fallback.
+            self.assertGreater(UNKNOWN_MODEL_SPEC.max_input_tokens, WINDOW_REFUSE_INPUT)
+            self.assertGreater(
+                UNKNOWN_MODEL_SPEC.max_output_tokens, WINDOW_REFUSE_OUTPUT
+            )
 
-        A compat endpoint is text-only, so the packaged candidates behind it
-        are what keeps an audio or video window routable at all. The
-        no-fallback rule is about running on somebody's own CLI subscription,
-        not about pinning in general.
+    def test_a_pinned_provider_is_the_whole_chain(self) -> None:
+        """Upstream 0.5.0: a pin replaces the chain, it does not lead it.
+
+        `0003-desktop-model-routing.patch` used to keep the packaged
+        candidates behind an API provider's selection, so an audio or video
+        window stayed routable when the user had pinned a text-only endpoint.
+        Upstream took the overlay and ruled the other way
+        (`_preferred_bindings`, owner decision 2026-08-28): a call the pinned
+        model cannot serve fails loudly instead of being served by a provider
+        nobody chose. Nonoka X follows it, and moves the moment of truth
+        forward instead -- `route_media_warnings` refuses the combination in
+        the settings panel rather than mid-run.
         """
 
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
@@ -637,7 +660,7 @@ class FineSubSettingsTests(unittest.TestCase):
             correction, _ = routes.resolve_binding(
                 routes.active_preset_id, "correction-text", "quality"
             )
-            self.assertGreater(len(correction.target_ids), 1)
+            self.assertEqual(len(correction.target_ids), 1)
 
     def test_compat_provider_without_a_base_url_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
