@@ -83,6 +83,10 @@ _install_separator_logging_filters()
 
 
 class NonokaXReporter:
+    def __init__(self) -> None:
+        self._seen_warnings: set[tuple[str, str]] = set()
+        self._seen_preset_cores: set[str] = set()
+
     def planned(self, stages) -> None:
         return
 
@@ -98,6 +102,22 @@ class NonokaXReporter:
     def warning(self, code: str, message: str, *, impact: str = "", action: str = "") -> None:
         if code == "routing-profile" and _UNCALIBRATED_VECTOR_NOTICE in message:
             return
+        warning_key = (code, message)
+        if warning_key in self._seen_warnings:
+            return
+        self._seen_warnings.add(warning_key)
+
+        # FineSub checks all (task_group x difficulty) combinations for routing presets.
+        # For non-audio models, "组内没有成员支持音频..." fires 6 times across difficulties/groups.
+        # Deduplicate and compact them so the user only sees one clean warning.
+        if code == "routing-preset" and ": " in message:
+            _prefix, core = message.split(": ", 1)
+            if "组内没有成员支持音频" in core:
+                if core in self._seen_preset_cores:
+                    return
+                self._seen_preset_cores.add(core)
+                message = f"多模态组: {core}"
+
         emit("warning", {"code": code, "message": message, "impact": impact, "action": action})
 
     def debug(self, message: str, fields=None) -> None:
@@ -189,6 +209,45 @@ def install_llm_model_override(request: Mapping[str, Any]) -> None:
     install_runtime_preferred(expanded)
 
 
+def extract_execution_failure_detail(exc: BaseException) -> str:
+    """Extract vendor/CLI diagnostic details from agent execution attempts or capsules."""
+    attempts = getattr(exc, "_harness_execution_attempts", None) or []
+    for attempt in attempts:
+        if isinstance(attempt, Mapping):
+            vendor_err = attempt.get("vendor_error")
+            if vendor_err and isinstance(vendor_err, str) and vendor_err.strip():
+                return vendor_err.strip()
+
+    try:
+        from finesub.llm.agent.agent_paths import vendor_error_text
+
+        text = vendor_error_text(exc)
+        if text and text.strip():
+            return text.strip()
+    except Exception:
+        pass
+
+    current = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    while current is not None:
+        sub = extract_execution_failure_detail(current)
+        if sub:
+            return sub
+        current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
+
+    return ""
+
+
+def format_worker_exception(exc: BaseException) -> str:
+    vendor_detail = extract_execution_failure_detail(exc)
+    exc_type = type(exc).__name__
+    exc_msg = str(exc).strip()
+    if vendor_detail:
+        if "inspect events/stderr.log" in exc_msg or "exited with status" in exc_msg:
+            return f"{exc_type}: 本地模型 CLI 调用失败: {vendor_detail}"
+        return f"{exc_type}: {exc_msg} ({vendor_detail})"
+    return f"{exc_type}: {exc_msg}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", required=True)
@@ -262,8 +321,11 @@ def main(argv: list[str] | None = None) -> int:
         emit("completed", {"artifacts": manifest})
         return 0
     except Exception as exc:
-        emit("failed", {"message": f"{type(exc).__name__}: {exc}"})
-        traceback.print_exc(file=sys.stderr)
+        formatted_message = format_worker_exception(exc)
+        emit("failed", {"message": formatted_message})
+        vendor_detail = extract_execution_failure_detail(exc)
+        if os.environ.get("NONOKA_DEBUG") or (not vendor_detail and not type(exc).__name__.startswith("LocalAgent")):
+            traceback.print_exc(file=sys.stderr)
         return 1
 
 

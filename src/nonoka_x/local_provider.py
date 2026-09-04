@@ -406,6 +406,10 @@ def _safe_component(value: str) -> bool:
 
 def classify_failure(message: str) -> str:
     lowered = message.lower()
+    if any(phrase in lowered for phrase in ("usage limit", "quota", "insufficient_quota", "credit", "billing", "upgrade to pro", "额度")):
+        return "quota_exceeded"
+    if any(phrase in lowered for phrase in ("not logged in", "authenticate", "login")):
+        return "auth_failed"
     if "api key" in lowered or "api_key" in lowered:
         return "missing_llm_key"
     if "cuda" in lowered or "nvidia" in lowered:
@@ -416,6 +420,8 @@ def classify_failure(message: str) -> str:
         return "insufficient_disk"
     if "no module named" in lowered or "not found" in lowered:
         return "missing_dependency"
+    if "codex cli" in lowered or "claude code" in lowered or "localagent" in lowered:
+        return "agent_failed"
     return "engine_failed"
 
 

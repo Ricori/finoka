@@ -206,6 +206,9 @@ class PurelyAdditiveTests(unittest.TestCase):
             "0009-agent-tool-arg-unicode-escapes.patch": [
                 "src/finesub/llm/agent/agent_mcp_server.py",
             ],
+            "0008-aoti-posix-compiler.patch": [
+                "src/finesub/speech/preprocessing/separator/separator_aoti.py",
+            ],
             "0007-referee-live-vram-and-verify-progress.patch": [
                 "src/finesub/speech/recognition/lang_redecode.py",
                 "src/finesub/speech/recognition/vad_asr_stage.py",
