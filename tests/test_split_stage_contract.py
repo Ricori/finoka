@@ -161,6 +161,11 @@ class PurelyAdditiveTests(unittest.TestCase):
         upstream = json.loads((VENDOR / "UPSTREAM.json").read_text(encoding="utf-8"))
         names = [item["path"] for item in upstream["patches"]]
         self.assertEqual(names[0], TAIL_PATCH)
+        # Three engine patches left this table when upstream 0.5.1 took the
+        # work over: the referee's offline load and failure containment, the
+        # live-VRAM placement veto with the verification progress it reports,
+        # and the escaped-tool-argument repair. Nothing replaced them here --
+        # the cloud reaches upstream's implementations now.
         engine_patches = {
             TAIL_PATCH: [
                 "src/finesub/speech/recognition/vad_asr_stage.py",
@@ -171,48 +176,18 @@ class PurelyAdditiveTests(unittest.TestCase):
             "0003-agy-workspace-read-grant.patch": [
                 "src/finesub/llm/agent/local_agent.py",
             ],
-            # Reachability, not transcription. Loading pinned local weights
-            # offline and treating a failed evidence pass as missing evidence
-            # change what a run survives, never what it decides: the referee's
-            # output is read the same way when it exists, and the containment
-            # arm only fires where an exception would have ended the run. The
-            # cloud runs this too and wants it -- a container that cannot
-            # reach the hub loses the same alignment pass for the same reason.
-            "0004-qwen-referee-offline-and-nonfatal.patch": [
-                "src/finesub/llm/media_upload.py",
-                "src/finesub/speech/recognition/vad_asr_stage.py",
-                "src/finesub/speech/verification/qwen_referee.py",
-            ],
             # Toolchain compatibility on Windows MSVC with C11: Triton's
             # launcher generator uses empty struct initializers `{}`.
-            "0006-triton-msvc-c11-empty-struct.patch": [
+            "0005-triton-msvc-c11-empty-struct.patch": [
                 "src/finesub/speech/preprocessing/separator/separator_aoti.py",
             ],
-            # Survivability and visibility, not transcription. The referee's
-            # device was already a per-machine answer (the tier picks it, and
-            # the entry tier has always kept it on the CPU); this only stops
-            # that answer from being made against a budget the card does not
-            # actually have, which is the difference between a decode that
-            # finishes and a worker that dies mid-group with no exception. The
-            # progress half adds events and reads nothing. The cloud runs both
-            # and wants both -- a container sharing its card loses the same
-            # alignment pass the same way.
-            # Transport repair, not transcription. The harness MCP server
-            # is how a local CLI hands an answer back, and one CLI escapes
-            # the non-ASCII characters of its tool arguments; decoding them
-            # gives the pipeline the text the model wrote instead of the
-            # escapes. No container spawns a CLI, so the cloud never reaches
-            # this code at all.
-            "0009-agent-tool-arg-unicode-escapes.patch": [
-                "src/finesub/llm/agent/agent_mcp_server.py",
-            ],
-            "0008-aoti-posix-compiler.patch": [
+            # Build reachability, not transcription: upstream's toolchain
+            # probe is deliberately Windows-shaped, and the cloud's Linux
+            # containers need it to answer for a POSIX compiler before the
+            # accelerated separator can be compiled at all. What it decides
+            # is whether AOTI compiles, never what the separator outputs.
+            "0006-aoti-posix-compiler.patch": [
                 "src/finesub/speech/preprocessing/separator/separator_aoti.py",
-            ],
-            "0007-referee-live-vram-and-verify-progress.patch": [
-                "src/finesub/speech/recognition/lang_redecode.py",
-                "src/finesub/speech/recognition/vad_asr_stage.py",
-                "src/finesub/speech/verification/qwen_referee.py",
             ],
         }
         for name in names:

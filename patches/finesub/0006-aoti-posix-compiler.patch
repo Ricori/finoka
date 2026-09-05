@@ -1,4 +1,4 @@
-Subject: [PATCH 8/8] Let AOTInductor build off Windows
+Subject: [PATCH 6/6] Let AOTInductor build off Windows
 
 Reason: Upstream's AOTI builder is Windows-shaped by design -- `build_packages`
 calls `_activate_msvc()` unconditionally and `cxx_toolchain_available()` mirrors

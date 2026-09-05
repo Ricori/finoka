@@ -1,4 +1,4 @@
-Subject: [PATCH 3/4] Put agy's own read grant where the harness reads files
+Subject: [PATCH 3/6] Put agy's own read grant where the harness reads files
 
 Reason: agy 1.1.20 started granting reads inside the registered project's
 workspace by itself and prompting for every other path. Headless has no

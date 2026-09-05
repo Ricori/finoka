@@ -529,7 +529,10 @@ def classify_failure(message: str) -> str:
         return "insufficient_disk"
     if "no module named" in lowered or "not found" in lowered:
         return "missing_dependency"
-    if "codex cli" in lowered or "claude code" in lowered or "localagent" in lowered:
+    if any(
+        phrase in lowered
+        for phrase in ("codex cli", "claude code", "codebuddy", "localagent")
+    ):
         return "agent_failed"
     return "engine_failed"
 

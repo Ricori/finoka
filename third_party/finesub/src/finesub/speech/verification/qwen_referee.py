@@ -76,7 +76,7 @@ from ..preprocessing.audio import (
 )
 from ..postprocessing import stabilization as asr_stabilize
 from ..preprocessing import energy as vad_energy
-from ..runtime import phase_timing
+from ..runtime import hf_weights, phase_timing
 from ..recognition.segments import coerce_optional_float
 from .qwen_decode import FixedShapeDecoder
 
@@ -262,60 +262,22 @@ def collect_gaps(
     return gaps
 
 
-def _ensure_referee_weights(model_name: str) -> Tuple[Optional[str], bool]:
+def _ensure_referee_weights(model_name: str) -> hf_weights.HfLoad:
     """Fetch the referee's weights with the mirror routing, if they are absent.
 
-    Same shape as the ASR stage's own prefetch and for the same reason: on the
-    CLI these 1.5 GB used to arrive through `from_pretrained`, which knows
-    nothing about this project's endpoint routing or its per-class failure
-    counter. Only for the default model -- the manifest describes no other, so
-    a referee pointed elsewhere must not pay for weights it will never load.
+    Same shape as the ASR stage's own prefetch and, since both go through
+    `hf_weights.prepare`, literally the same code: on the CLI these 1.5 GB used
+    to arrive through `from_pretrained`, which knows nothing about this
+    project's endpoint routing or its per-class failure counter.
 
-    Returns (pinned revision, weights known to be on disk). The revision is so
-    `from_pretrained` loads the snapshot that was just verified instead of
-    re-resolving `main`.
-
-    The second half is what lets the load run offline. `ensure_hf_model`
-    returning cleanly means the pinned snapshot is present and verified, so
-    `from_pretrained` has nothing left to ask the hub for -- but transformers
-    5.x asks anyway, resolving the repository's chat-template list over the
-    network before it consults the cache.
-
-    That call *has* an offline fallback, and this is not it. Its
-    `list_repo_templates` catches `httpx.NetworkError` precisely so an
-    unreachable hub falls through to the local snapshot -- but
-    `httpx.ConnectTimeout` inherits from `TimeoutException`, a sibling of
-    `NetworkError` rather than a subclass, so a *refused* connection recovers
-    and a *filtered* one (`WinError 10060`, the shape a blocked route takes)
-    escapes. Whether the referee loads therefore depends on how the network
-    says no, and the machine that says nothing loses the whole alignment pass
-    it had already paid for. Passing the flag takes the branch that never
-    asks. False keeps the old online path for an unmanaged install, where
-    nothing here can vouch for the cache.
+    All this adds is the gate: only the default model, because the manifest
+    describes no other, so a referee pointed elsewhere must not pay for weights
+    it will never load.
     """
 
-    revision = None
-    try:
-        from finesub_bootstrap.model_ensure import pinned_revision
-
-        if model_name != DEFAULT_QWEN_MODEL:
-            return None, False
-        revision = pinned_revision("qwen-referee")
-    except Exception:  # noqa: BLE001 - the loader reports for real
-        return None, False
-    try:
-        from finesub.paths import resolve_managed_app_paths
-        from finesub_bootstrap.model_ensure import ensure_hf_model
-
-        paths = resolve_managed_app_paths()
-        if paths is None:
-            return revision, False
-        ensure_hf_model(
-            "qwen-referee", data_root=paths.data_root, models_root=paths.models
-        )
-    except Exception:  # noqa: BLE001 - the loader reports for real
-        return revision, False
-    return revision, True
+    if model_name != DEFAULT_QWEN_MODEL:
+        return hf_weights.UNMANAGED
+    return hf_weights.prepare("qwen-referee")
 
 
 def plan_batches(
@@ -555,50 +517,32 @@ class QwenReferee:
     def _load_model(self):
         """Fetch the weights and put the model on its device. Not cached here."""
 
-        revision, local_only = _ensure_referee_weights(self._model_name)
+        plan = _ensure_referee_weights(self._model_name)
         import torch
         from transformers import AutoModelForMultimodalLM, AutoProcessor
 
         wants_cuda = self._device.startswith("cuda")
 
-        def load(loader, **kwargs):
-            """Offline first, with one online retry if the cache is short.
+        def fetch(load: hf_weights.HfLoad):
+            # Both calls under one plan: the processor is the one that lists
+            # chat templates over the network, and retrying only it would leave
+            # the weights to fail the same way a moment later.
+            self._processor = AutoProcessor.from_pretrained(
+                self._model_name,
+                revision=load.revision,
+                local_files_only=load.local_files_only,
+            )
+            # bf16 on GPU; float32 on CPU for speed, not correctness: CPU
+            # bf16/fp16 halve the footprint but decode 2.2-2.5x slower with
+            # byte-identical output (docs/asr-align.md, referee device).
+            return AutoModelForMultimodalLM.from_pretrained(
+                self._model_name,
+                revision=load.revision,
+                local_files_only=load.local_files_only,
+                dtype=torch.bfloat16 if wants_cuda else torch.float32,
+            )
 
-            `_hf_repo_complete` leaves one window open that it says it cannot
-            close cheaply: an interruption *between* two files leaves a
-            snapshot with no `.incomplete` blob and a non-empty revision,
-            which reads as finished while a config is still missing. That
-            state used to heal itself, because the loader fetched the
-            remainder on first use -- and an offline-only load would instead
-            lose the referee for good, since the next run reads the same cache
-            and reaches the same verdict.
-
-            So the retry, and only from the offline branch: the cost is a
-            round trip on a cache that is actually short, never on a run where
-            the weights are whole. A hub that cannot be reached fails it too,
-            which is the case the caller now contains.
-            """
-
-            if not local_only:
-                return loader(self._model_name, revision=revision, **kwargs)
-            try:
-                return loader(
-                    self._model_name,
-                    revision=revision,
-                    local_files_only=True,
-                    **kwargs,
-                )
-            except Exception:  # noqa: BLE001 - the online attempt reports
-                return loader(self._model_name, revision=revision, **kwargs)
-
-        self._processor = load(AutoProcessor.from_pretrained)
-        # bf16 on GPU; float32 on CPU for speed, not correctness: CPU
-        # bf16/fp16 halve the footprint but decode 2.2-2.5x slower with
-        # byte-identical output (docs/asr-align.md, referee device).
-        model = load(
-            AutoModelForMultimodalLM.from_pretrained,
-            dtype=torch.bfloat16 if wants_cuda else torch.float32,
-        )
+        model = hf_weights.offline_first(fetch, plan, what="qwen referee")
         if wants_cuda:
             try:
                 model = model.to(self._device)
@@ -651,6 +595,15 @@ class QwenReferee:
         variance -- with the first compiled call per step shape additionally
         under `qwen.compile`.
 
+        ``on_batch(done, total)`` is called with the running clip count after
+        each batch. It exists because this call is the longest unbroken
+        silence in the stage -- on a contended card it is minutes, and every
+        second of it looks exactly like a hung run to whoever is watching.
+        The batch is the finest grain that is *real*: a `generate` cannot be
+        interrupted from here, so a per-clip counter would be a lie, and it is
+        also what bounds the event count at the call site, which
+        `docs/reporting.md` asks for rather than leaving to the renderer.
+
         ``max_new_tokens`` exists for callers that need the language prelude
         rather than the transcript, and it bounds the worst case for them.
         ⚠ It is a smaller lever than it looks: dropping the default 256 to 48
@@ -659,13 +612,6 @@ class QwenReferee:
         tokens the model decides to emit, ~3 per second of Japanese, and that
         is not a knob. Note also that the text has to come back non-empty for
         the language to be trusted, so this cannot go to zero.
-
-        ``on_batch(done, total)`` is called with the running clip count after
-        each batch. It exists because this call is the longest unbroken
-        silence in the stage -- on a small card it can be minutes, and every
-        second of it looks identical to a hung run to whoever is watching the
-        log. The batch is the finest grain that is real: a `generate` is not
-        interruptible from here, so a per-clip counter would be a lie.
         """
 
         if not clips:
@@ -905,23 +851,25 @@ class _SpanReader:
         return resampled.squeeze(0).cpu().numpy().astype(np.float32)
 
 
-#: The stage this pass belongs to. It reports under the ASR stage's name and
-#: not one of its own because it *is* the tail of that stage: a second stage
-#: name appearing after `aligned` reached 100% would read as a new stage
-#: starting, which is not what happens -- the same stage is still running,
-#: on its second model.
+#: The stage this pass reports under. Not one of its own: it *is* the tail of
+#: the ASR stage, and a second stage name appearing after `aligned` reached
+#: 100% would read as a new stage starting, which is not what happens -- the
+#: same stage is still running, on its second model. Restarting the counter
+#: under the same name is already an anticipated case: both renderers key
+#: their progress de-duplication on `(step, total)` precisely because a
+#: stage's denominator can change mid-run (`FileReporter.progress`).
 _VERIFY_STAGE = "aligned"
 
 
 def _verify_progress(total: int) -> Callable[[int, int], None]:
-    """Clip-level progress for the verification pass, announced before it
-    starts.
+    """Clip-level progress for the verification pass, announced before it starts.
 
-    The load and the first `generate` are the slow part (168 s of a 197 s
-    stage on a contended 8 GB card, and 0 events the whole way), so the zero
-    is emitted here rather than after the first batch: what a watcher needs
-    first is *what* is running and how much of it there is, and only then the
-    count moving.
+    The zero is emitted here rather than after the first batch because the
+    load and the first `generate` *are* the slow part: what a watcher needs
+    first is what is running and how much of it there is, and only then the
+    count moving. Before this, the tail pass was the longest unbroken silence
+    in the pipeline -- 168 s of a 197 s stage on a contended card, with no
+    events at all, which is indistinguishable from a hang.
     """
 
     reporter = current_reporter()
@@ -988,7 +936,7 @@ def apply_verification(
     replies = referee.transcribe_batch(
         [clips[i] for i in usable],
         # Nothing survived the bounds check: there is no work to announce, and
-        # a 0/0 would be the one progress line that never moves.
+        # `0/0` would be the one progress line that never moves.
         on_batch=_verify_progress(len(usable)) if usable else None,
     )
     results: List[Tuple[str, Optional[str]]] = [("", None)] * len(clips)

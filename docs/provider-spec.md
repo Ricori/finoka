@@ -90,9 +90,9 @@ interface ExecutionProvider {
   "artifact_schema": 1,            // 必填，固定为 1
   "engine": {
     "name": "finesub",             // 可选，引擎名
-    "version": "0.5.0",            // 必填，引擎版本
-    "commit": "4638bb7f01d7ba52520395dad9905e873ba09452", // 必填，引擎 commit
-    "bundle_id": "finesub-0.5.0+4638bb7f01d7"             // 可选，引擎包标识
+    "version": "0.5.1",            // 必填，引擎版本
+    "commit": "b9b2f10c80abd58ddff739b60461624f51c0789c", // 必填，引擎 commit
+    "bundle_id": "finesub-0.5.1+b9b2f10c80ab"             // 可选，引擎包标识
   },
   "features": {                    // 必填，六个布尔位缺一不可
     "raw_srt": true,               // 支持 target=raw-srt
@@ -242,7 +242,7 @@ interface UploadedAudioSource {
     "unit": "segments",
     "message": "正在识别"
   },
-  "engine": { "version": "0.5.0", "commit": "4638bb7f..." },
+  "engine": { "version": "0.5.1", "commit": "b9b2f10c..." },
   "requested_capabilities": { "target": "final-srt", "video_multimodal": false },
   "effective_capabilities": { "target": "final-srt", "video_multimodal": false },
   "error": null,                   // 或 { "code": "...", "message": "..." }
@@ -334,7 +334,7 @@ interface UploadedAudioSource {
 {
   "schema": 1,
   "task_id": "0f3c9a...",
-  "engine_commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
+  "engine_commit": "b9b2f10c80abd58ddff739b60461624f51c0789c",
   "artifacts": {
     "stable_json":   { "uri": "file:///.../video-stable.json",   "sha256": "...", "bytes": 12345 },
     "raw_srt":       { "uri": "file:///.../video-raw.srt",       "sha256": "...", "bytes": 8192  },

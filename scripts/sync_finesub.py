@@ -22,11 +22,16 @@ from typing import Iterable
 
 
 REPOSITORY = "https://github.com/caca2331/finesub"
-DEFAULT_REF = "v0.5.0"
+DEFAULT_REF = "v0.5.1"
 SYNC_SCHEMA = 1
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VENDOR = REPO_ROOT / "third_party" / "finesub"
 DEFAULT_PATCHES = REPO_ROOT / "patches" / "finesub"
+#: The un-patched manifest `tests/test_finesub_patch_stack.py` replays
+#: against. It lives beside the patches rather than inside the vendor
+#: because it describes what the vendor would be *without* them, and a
+#: file in the vendor would have to describe itself.
+DEFAULT_BASELINE = DEFAULT_PATCHES / "BASELINE_FILES.json"
 
 SOURCE_TREES = (
     "src/finesub",
@@ -436,6 +441,58 @@ def verify_snapshot(vendor: Path = DEFAULT_VENDOR) -> dict[str, object]:
     return upstream
 
 
+def rebuild_baseline(
+    vendor: Path = DEFAULT_VENDOR,
+    patches_dir: Path = DEFAULT_PATCHES,
+    baseline_path: Path = DEFAULT_BASELINE,
+) -> dict[str, object]:
+    """Regenerate the pinned pre-patch manifest from the current snapshot.
+
+    `sync` deliberately does not write this: the baseline is what the vendor
+    would be *without* our patches, so deriving it in the same pass that
+    applies them would make the round-trip test compare a thing against
+    itself. This is the separate step, and it exists as a command because the
+    alternative -- reverse-applying by hand -- gets the line endings wrong on
+    Windows in a way that shows up as an unexplained hash mismatch rather than
+    as a bad reverse-apply.
+
+    Reverse order, because the stack is ordered: two patches touch
+    `separator_aoti.py` and the later one was written against the earlier
+    one's output.
+    """
+
+    upstream = verify_snapshot(vendor)
+    patches = [patches_dir / str(item["path"]) for item in upstream["patches"]]
+    missing = [patch.name for patch in patches if not patch.is_file()]
+    if missing:
+        raise SyncError("UPSTREAM.json names patches that are gone: " + ", ".join(missing))
+    git = git_apply_command()
+    with tempfile.TemporaryDirectory(prefix="nonoka-finesub-baseline-") as temp:
+        replay = Path(temp) / "vendor"
+        shutil.copytree(vendor, replay)
+        environment = git_apply_env(replay)
+        for patch in reversed(patches):
+            result = subprocess.run(
+                [*git, "--verbose", "--reverse", str(patch)],
+                cwd=replay,
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode:
+                raise SyncError(
+                    f"cannot reverse-apply {patch.name}: {result.stderr.strip()}"
+                )
+            if "Skipped patch" in result.stderr:
+                raise SyncError(
+                    f"reverse apply silently skipped hunks for {patch.name}: "
+                    f"{result.stderr.strip()}"
+                )
+        baseline = create_files_manifest(replay)
+    write_json(baseline_path, baseline)
+    return baseline
+
+
 def parse_upstream(args: argparse.Namespace) -> Upstream:
     if args.archive:
         if not args.commit or not re.fullmatch(r"[0-9a-f]{40}", args.commit):
@@ -458,6 +515,12 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--patches-dir", type=Path, default=DEFAULT_PATCHES)
     check = subparsers.add_parser("check", help="verify the checked-in snapshot without network")
     check.add_argument("--vendor-dir", type=Path, default=DEFAULT_VENDOR)
+    baseline = subparsers.add_parser(
+        "baseline", help="regenerate BASELINE_FILES.json from the checked-in snapshot"
+    )
+    baseline.add_argument("--vendor-dir", type=Path, default=DEFAULT_VENDOR)
+    baseline.add_argument("--patches-dir", type=Path, default=DEFAULT_PATCHES)
+    baseline.add_argument("--baseline-file", type=Path, default=DEFAULT_BASELINE)
     return parser
 
 
@@ -466,6 +529,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "check":
             result = verify_snapshot(args.vendor_dir)
+        elif args.command == "baseline":
+            result = rebuild_baseline(
+                args.vendor_dir, args.patches_dir, args.baseline_file
+            )
         else:
             upstream = parse_upstream(args)
             if args.archive:

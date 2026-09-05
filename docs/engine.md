@@ -23,7 +23,6 @@ third_party/finesub/
 ├── README.md
 ├── UPSTREAM.json           # 上游源信息、commit 与校验哈希
 ├── FILES.json              # 当前打补丁后的文件清单
-├── BASELINE_FILES.json     # 未打补丁的上游基线文件哈希
 ├── LICENSE                 # 上游 GPL-3.0-or-later 开源协议（0.5.0 起，此前为 MIT）
 ├── PROMPT_LICENSE.md       # Prompt 模板的 CC BY-SA 4.0 协议
 ├── pyproject.toml
@@ -34,7 +33,15 @@ third_party/finesub/
         ├── runtime-manifest.json    # 托管二进制清单
         ├── pylock.win-py312.toml    # Python 运行环境锁
         └── pylock.win-py312.cn.toml # 同上，国内镜像路由
+
+patches/finesub/
+├── 0001-*.patch … 0006-*.patch   # 补丁栈，按文件名顺序应用
+└── BASELINE_FILES.json           # 未打补丁的上游基线文件哈希
 ```
+
+> `BASELINE_FILES.json` 在 `patches/` 下而不是 vendor 里：它描述的是**撤掉这些补丁之后**
+> 的 vendor，放进 vendor 就得描述它自己。`sync` 有意不生成它，否则正反向重放会拿一份
+> 东西跟它自己比；改用 `python scripts/sync_finesub.py baseline` 单独重建。
 
 > 上游 0.5.0 把桌面端移出了仓库，托管运行时的三份资产随之成为 `finesub_bootstrap`
 > 的包内数据：`resources.PACKAGED_RUNTIME_MANIFEST` 与 `environment.PACKAGED_RUNTIME_LOCK`
@@ -53,11 +60,11 @@ third_party/finesub/
 ```json
 {
   "repository": "https://github.com/caca2331/finesub",
-  "ref": "v0.5.0",
-  "commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
+  "ref": "v0.5.1",
+  "commit": "b9b2f10c80abd58ddff739b60461624f51c0789c",
   "archive_sha256": "...",
-  "engine_version": "0.5.0",
-  "synced_at": "2026-09-04T06:00:12Z",
+  "engine_version": "0.5.1",
+  "synced_at": "2026-09-05T07:36:04Z",
   "sync_schema": 1,
   "patches": []
 }
@@ -71,21 +78,38 @@ third_party/finesub/
 ### 3.1 当前维护的补丁清单
 | 补丁文件 | 影响模块 | 存在原因 | 移除条件 |
 | :--- | :--- | :--- | :--- |
-| `0001-qwen-tail-entry-point.patch` | `src/finesub` | 云端三容器架构把纯 CPU 的收尾与要 GPU 的识别分开调度，而上游的复核是 `run_vad_asr` 内联的一段，没有对既有 aligned 产物补挂证据的入口。`finalize_qwen_verification` 就是这个入口，调用的是上游自己的 `apply_verification`，参数一模一样；纯增量，本地与 CLI 走的仍是未被触碰的内联路径。上游 0.5.0 已自带 VAD 前缀那一半（`run_vad_prefix`、`write/read_vad_prefix`、`run_vad_asr(vad_prefix_path=)`）与 `QwenReferee.warm`，故补丁只剩这一个函数 | 上游支持对既有 aligned 产物单独跑复核，或不再拆分容器 |
+| `0001-qwen-tail-entry-point.patch` | `src/finesub` | 云端三容器架构把纯 CPU 的收尾与要 GPU 的识别分开调度，而上游的复核是 `run_vad_asr` 内联的一段，没有对既有 aligned 产物补挂证据的入口。`finalize_qwen_verification` 就是这个入口，调用的是上游自己的 `apply_verification`，参数一模一样；纯增量，本地与 CLI 走的仍是未被触碰的内联路径。上游 0.5.0 已自带 VAD 前缀那一半（`run_vad_prefix`、`write/read_vad_prefix`、`run_vad_asr(vad_prefix_path=)`）与 `QwenReferee.warm`，故补丁只剩这一个函数。上游 0.5.1 又收走了此前压在 0004 里的两半（离线加载 `speech/runtime/hf_weights`、失败兜底 `contained_verification`），所以本补丁的兜底改为直接调用上游的 `contained_verification`，不再自带一份 | 上游支持对既有 aligned 产物单独跑复核，或不再拆分容器 |
 | `0002-runtime-tool-manifest.patch` | `src/finesub_bootstrap/runtime-manifest.json` | 桌面端视频下载器需要 aria2c、node 与 pot-provider，上游清单未声明；Nonoka X 没有独立的资源系统（所有托管二进制都在 `finesub/runtime/<id>/` 下由 `managedtools` 解析），只能在此声明才可安装。三者只在一起才有用：YouTube 是逐道设卡的，缺一件会在更早的一道上失败，看起来像单独加哪一件都没用。ffmpeg 那一半已随上游 0.5.0 改钉 gpl 构建而删除 | 上游清单收录这三项工具 |
-| `0003-agy-workspace-read-grant.patch` | `src/finesub` | agy 1.1.20 起只自动放行工作区内的读取，工作区外一律弹权限确认；headless 无法确认，`-p` 会软拒绝并结束回合，驱动判为 transient，链路一路回退到没有 Key 的 Gemini 付费池并报出误导性的 `Provider GEMINI_PAID is disabled`。工具协议与联网检索两条 agy 路径交给模型的文件都在其项目工作区之外，用 `--add-dir` 把这些目录并入工作区；读取边界仍由项目内的 PreToolUse 钩子把守 | 上游为 agy 项目授予其所交付目录的读取权限 |
-| `0004-qwen-referee-offline-and-nonfatal.patch` | `src/finesub` | 两处独立故障，同一个症状：对齐跑完之后整条流水线才崩，栈顶是 httpx。①`_load_model` 把仓库 id 交给 `from_pretrained`，而 transformers 5.x 会先联网解析该仓库的对话模板清单再看缓存——此时权重早已在盘上（`ensure_hf_model` 干净返回本就意味着无需再取）。那次解析本来有离线兜底，却兜不住这一种：`list_repo_templates` 捕获的是 `httpx.NetworkError`，而 `httpx.ConnectTimeout` 继承自它的兄弟 `TimeoutException`——连接被拒能恢复，连接被丢弃（`WinError 10060`）则直接抛出，复核能不能加载取决于网络以哪种方式拒绝。上游 0.5.0 在这里什么也没改：它传的 `revision=` 从 0.4.2 起就在，与这条无关。②`apply_verification` 的调用点没有兜底，而复核只产出证据、从不做决策，任何异常却都会带走整次运行。钉住的快照可信时传 `local_files_only` 去掉成因；`auto` 下捕获（`on` 是调用方点名要证据，仍然抛）去掉波及面，失败路径不写 `qwen_verify` 键，后续的收尾复核因此仍愿意再试。同时把 Gemini 上传的 connect 超时从 45s 降到 15s：这个预算是按解析出的每个地址各花一次的，`generativelanguage.googleapis.com` 有好几个，被墙时实测静默 169 秒才打出第一条重试日志，与卡死无从分辨（0.5.0 把这个常量从 `llm/client.py` 挪到了 `llm/media_upload.py`，值未变） | 上游离线加载已钉住的本地权重（或把那处兜底放宽到 `TimeoutException`），并把失败的复核当作缺证据而非运行失败 |
-| `0005-nonoka-042-runtime-marker.patch` | `src/finesub_bootstrap` | 0.5.0 把运行时锁移入包目录并改用忽略注释与换行的内容摘要，原本意图复用 0.4.x 环境；但其兼容表只收了上游工作区锁的哈希，遗漏 Nonoka X 0.4.2 实际发布包中带旧桌面生成命令头的 LF/CRLF 哈希。依赖行完全一致，误判却会重建约 5 GB 环境并重新下载 PyTorch。本补丁接受这两个已发布、可复核的旧哈希，下一次真正重生成锁时即可删除 | 上游兼容表收录 Nonoka X 0.4.2 的两个发布锁哈希，或提供基于旧锁内容摘要的通用迁移 |
-| `0006-triton-msvc-c11-empty-struct.patch` | `src/finesub` | Windows 下 Triton 生成的 C11 启动器代码（`__triton_launcher.c`）包含空结构体初始化 `CUlaunchAttribute clusterAttr = {};`。MSVC 在 `/std:c11` 严格模式下报 `error C2059: 语法错误: '}'`，且 Windows SDK `winbase.h` 产生 `warning C5105`。本补丁 monkey-patch Triton 的启动器生成与构建命令，将 `{}` 替换为合法的 `{0}` 并插入 `/wd5105` 屏蔽告警 | 上游 Triton 修复 C11 下的空结构体初始化或上游 FineSub 内置该适配 |
-| `0007-referee-live-vram-and-verify-progress.patch` | `src/finesub` | 两处，同一个症状：任务日志停在 `group ASR (...)` 那一行之后再无输出。①`lang_redecode.referee_device` 只按**档位预算**判断复核模型能不能与常驻的 Whisper 池共处一卡，而档位是"这类机器应该有多少空闲"的预算、不是测量——`standard` 记 6.5 GiB，于是在驱动只剩 2.4 GiB 的卡上照样算出"富余 4.43 GiB"。`vad_asr_stage.RefereeWarm` 随即在 CTranslate2 解码的同时用辅助线程把复核模型搬上卡，两者相撞：编码器要么空转数分钟、一条事件都发不出，要么进程在组内直接吃访问违例（8 GB RTX 3070 上两次复现 `0xC0000005`），没有 Python 异常可供桌面端上报。同一任务同一台机器实测：抑制并行预热后对齐 17.7 秒跑完，不抑制则 60 秒内进程消失。现在实时空闲显存对这一处放置有否决权——且只对这一处，绝不用于选档位（档位会改变分离器分块边界，必须稳定）。②收尾复核是整条流水线里最长的一段静默（受挤的卡上 197 秒的阶段里占 168 秒，零事件），现在按 clip 计数汇报进度，并在加载之前就先报出 0/N，好让这一段在还没开始动之前就有名字 | 上游按实时空闲显存决定复核模型是否共处一卡，并在 `apply_verification` 内汇报进度 |
-| `0009-agent-tool-arg-unicode-escapes.patch` | `src/finesub` | antigravity-cli 1.1.24 放不进非 ASCII 字符：`tools/call` 的参数里每个非 ASCII 码位都被写成 JSON 字符串**内部**的字面量 `\uXXXX`，于是 harness MCP 服务器 `json.loads` 之后拿到的是转义文本本身。帧里其余部分并未转义（引号与反斜杠都没有加倍，`<` 仍是正确序列化器写出的 `\u003c`），所以这不是「再解析一层 JSON」，而是只作用于非 ASCII 字符的一次变换。整份答卷因此以纯 ASCII 进入流水线：2026-09-04 实测的一个纠错窗口交回 5988 个字符、815 个反斜杠且个个后面跟着 `u`，校验器按三倍于真实长度的文本判 `char_count`（模型写 16，算出 45），交付的 SRT 每一行都是 `\u4f1d\u3048\u308b...`，而阶段全程报告成功——`submit` 之后没有任何一环分得清转义文本与文本。修复落在帧进入服务器之处，早于请求指纹与任何 handler；且刻意收窄：仅当参数是纯 ASCII、含此类转义、且解码后确实产生非 ASCII 字符时才解码，代理对会重新合并，落单代理则原样放行。行为由 `tests/test_agent_tool_arg_encoding.py` 守着 | CLI 原样传递非 ASCII 工具参数，或工具协议不再经由 MCP 收答卷 |
+| `0003-agy-workspace-read-grant.patch` | `src/finesub` | agy 1.1.20 起只自动放行工作区内的读取，工作区外一律弹权限确认；headless 无法确认，`-p` 会软拒绝并结束回合，驱动判为 transient，链路一路回退到没有 Key 的 Gemini 付费池并报出误导性的 `Provider GEMINI_PAID is disabled`。工具协议与联网检索两条 agy 路径交给模型的文件都在其项目工作区之外，用 `--add-dir` 把这些目录并入工作区；读取边界仍由项目内的 PreToolUse 钩子把守。⚠ 上游 0.5.1 在 agy **1.1.25** 真机实测「project 建在 `<domain>/.finesub-native`、读父目录的兄弟子树成功且无询问」，据此判定这条对上游不成立，并在 `docs/llm_followups.md` 挂了一条「等下游回复」；本轮未答复、未做摘除验证，补丁原样保留 | 上游为 agy 项目授予其所交付目录的读取权限 |
+| `0004-nonoka-042-runtime-marker.patch` | `src/finesub_bootstrap` | 0.5.0 把运行时锁移入包目录并改用忽略注释与换行的内容摘要，原本意图复用 0.4.x 环境；但其兼容表只收了上游工作区锁的哈希，遗漏 Nonoka X 0.4.2 实际发布包中带旧桌面生成命令头的 LF/CRLF 哈希。依赖行完全一致，误判却会重建约 5 GB 环境并重新下载 PyTorch。本补丁接受这两个已发布、可复核的旧哈希，下一次真正重生成锁时即可删除 | 上游兼容表收录 Nonoka X 0.4.2 的两个发布锁哈希，或提供基于旧锁内容摘要的通用迁移 |
+| `0005-triton-msvc-c11-empty-struct.patch` | `src/finesub` | Windows 下 Triton 生成的 C11 启动器代码（`__triton_launcher.c`）包含空结构体初始化 `CUlaunchAttribute clusterAttr = {};`。MSVC 在 `/std:c11` 严格模式下报 `error C2059: 语法错误: '}'`，且 Windows SDK `winbase.h` 产生 `warning C5105`。本补丁 monkey-patch Triton 的启动器生成与构建命令，将 `{}` 替换为合法的 `{0}` 并插入 `/wd5105` 屏蔽告警 | 上游 Triton 修复 C11 下的空结构体初始化或上游 FineSub 内置该适配 |
+| `0006-aoti-posix-compiler.patch` | `src/finesub` | 上游的工具链探测是**有意** Windows-shaped（`_activate_msvc` / `cxx_toolchain_available` 的 docstring 就这么写着），因为 AOTI 这条路只在 Windows 上跑过。云端容器是 Linux，于是每次构建都抛「requires MSVC」、被 `vocal_accel.install` 接住降级为 eager，云上每个 ≥270s 的任务都在无加速下跑而无人察觉。本补丁让探测在 POSIX 上认系统 C++ 编译器。⚠ 必须排在 0005 之后：两条改的是同一个文件，本条的上下文是 0005 打完之后的样子 | 上游支持 Linux 生产链路（0.5.1 已明确判定这是下游的移植需求，不收） |
 
-> 上游 0.5.0 吸收了此前的部分补丁：Windows 发布性重命名重试
-> （`fsops.ReplaceBudget`）、GBK 代码页下的子进程解码与 MSVC `INCLUDE` 就绪检查
-> （但未包含 Triton C11 空结构体修复，故以 0006 重新维护）、
-> Codex 的 GPT-5.6 Terra 目录行、`GEMINI_BASE_URL` 与 `[llm.preferred_targets]`、
-> HF 镜像关闭 Xet（`model_fetch.apply_xet_policy`），以及每次 API 交互的运行日志。
-> 其中三条的行为承诺仍由 Nonoka X 侧的回归测试守着，实现则已经是上游的：
+> 上游 0.5.1 把三条补丁整条收走，本仓库因此删掉了它们（编号随之重排为 0001–0006）：
+> **旧 0004** 的三块——钉住快照的离线加载（新 `speech/runtime/hf_weights` 的
+> `prepare()` / `offline_first()`）、`apply_verification` 的失败兜底
+> （`contained_verification`，`auto` 下降级为 `qwen-verify-failed` 警告且不写
+> `qwen_verify` 键）、Gemini 上传 connect 超时 45s→15s；**旧 0007** 的两块——
+> `referee_device()` 的实测空闲显存否决（新增 `pool_resident` 与 `live_vram_veto` 参数）
+> 与尾部复核按 clip 报进度；**旧 0009** ——非 ASCII 工具参数的 `\uXXXX` 还原
+> （`finesub.text.looks_escaped` + `agent_mcp_server._unescaped_arguments`），
+> 而且上游多做了一层我们没有的出口拒绝（`output_protocol._refused_reply`）。
+>
+> ⚠ **旧 0007 有一半是我们做错了，上游纠正了它，别再加回去**：实测显存否决只保留在
+> **预热点**（`referee_warm_device`，被否决只损失预热，且只发 debug 而非 warning），
+> **语言重解那个调用点有意不问**（`redecode_referee_device`）。理由是生产 dtype 为
+> CUDA-bf16 / CPU-float32，仓库里没有任何证据证明两者输出一致，而语言重解裁判的输出直接
+> 决定「要不要替换这一段字幕」——用实测显存选设备等于让同一台机器两次运行产出不同字幕。
+> 与之配套的另一处变化：ASR 落在 CPU 时上游**仍然**问实测显存（卡上占着的东西可能不是
+> 我们的），而旧补丁在那里无条件答 `cuda`。这三条的行为承诺现在由
+> `tests/test_referee_placement.py` 与 `tests/test_agent_tool_arg_encoding.py` 守着，
+> 实现则已经是上游的。
+>
+> 更早的一批（上游 0.5.0 吸收）：Windows 发布性重命名重试（`fsops.ReplaceBudget`）、
+> GBK 代码页下的子进程解码与 MSVC `INCLUDE` 就绪检查（但未包含 Triton C11 空结构体修复，
+> 故以 0005 重新维护）、Codex 的 GPT-5.6 Terra 目录行、`GEMINI_BASE_URL` 与
+> `[llm.preferred_targets]`、HF 镜像关闭 Xet（`model_fetch.apply_xet_policy`），
+> 以及每次 API 交互的运行日志。其中三条的行为承诺仍由 Nonoka X 侧的回归测试守着：
 > `tests/test_resource_activation_retry.py`、`tests/test_hf_mirror_transfer.py`、
 > `tests/test_llm_call_visibility.py`。
 >
@@ -103,21 +127,24 @@ third_party/finesub/
 # 离线校验当前快照与补丁完整性
 python scripts/sync_finesub.py check
 
+# 同步之后重建基线（逆序撤销补丁栈再取哈希；sync 不做这一步）
+python scripts/sync_finesub.py baseline
+
 # 运行补丁栈与引擎契约测试
-python -m pytest tests/test_split_stage_contract.py tests/test_finesub_patch_stack.py tests/test_resource_activation_retry.py -q
+python -m pytest tests/test_split_stage_contract.py tests/test_finesub_patch_stack.py tests/test_referee_placement.py tests/test_agent_tool_arg_encoding.py tests/test_resource_activation_retry.py -q
 
 # 构建本地/云端 Engine Bundle
 python -m scripts.build_finesub_bundle
 
 # 同步指定 upstream 版本
-python scripts/sync_finesub.py sync --ref v0.5.0
+python scripts/sync_finesub.py sync --ref v0.5.1
 ```
 
 ---
 
 ## 4. Patched CTranslate2 构建
 
-FineSub `0.5.0` 的 `fw-refine` 后端深度依赖 CTranslate2 解码器内部的 attention、beam winner lineage、终止事件与 chosen logprob 接口，原生 CTranslate2 不具备此能力。
+FineSub `0.5.1` 的 `fw-refine` 后端深度依赖 CTranslate2 解码器内部的 attention、beam winner lineage、终止事件与 chosen logprob 接口，原生 CTranslate2 不具备此能力。
 
 ### 4.1 补丁序列
 补丁源码位于 `modal_backend/ct2_patches/`，基于上游 `v4.8.1 / 0d8bcd36`：

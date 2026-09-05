@@ -60,7 +60,11 @@ SETTING_NAMES = KEY_NAMES | BASE_URL_NAMES
 # tier picks the packaged targets, the command is what has to be on PATH. The
 # engine ships Claude Code and dsh tiers as well; only the ones listed here
 # are offered as a desktop route.
-LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, str]] = {
+#
+# `note` is prose the settings page shows under the detection line, for a
+# provider whose behaviour a person has to know *before* selecting it. Only
+# WorkBuddy carries one today, and what it says costs money.
+LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, Any]] = {
     "local-codex": {
         "tier": "LOCAL_CODEX",
         "label": "本地 Codex",
@@ -91,6 +95,46 @@ LOCAL_AGENT_PROVIDERS: Mapping[str, dict[str, str]] = {
         # only cover the install that did not, and the two spellings the
         # vendor has shipped it under.
         "windows_app_globs": ("agy/bin/agy.exe", "Antigravity/agy.exe"),
+    },
+    "local-workbuddy": {
+        "tier": "LOCAL_WORKBUDDY",
+        "label": "本地 WorkBuddy",
+        "command": "codebuddy",
+        # GLM-5.3 Flash leads on the engine's own recommendation: it is the
+        # row whose thinking tier was lowered so it stops looping on a
+        # correction window, and the cheapest of the five in credits. Its
+        # 32000-token output ceiling is the trade -- fewer subtitles fit in a
+        # window than on the other four.
+        #
+        # ⚠ Which of these an account can actually reach is the account's
+        # business, not the CLI version's: the vendor answers a wrong `--model`
+        # with the list that login is entitled to. These five are the rows the
+        # engine packages; a plan carrying others needs a catalog row.
+        "models": (
+            "glm-5.3-flash",
+            "hy3",
+            "hy4-preview",
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+        ),
+        # WorkBuddy ships the CLI inside its desktop app rather than as an npm
+        # package, so this is the same file the engine's own resolver falls
+        # back to when the PATH shim is absent. Detecting it anywhere else
+        # would answer a different question than the one the engine asks.
+        "windows_app_globs": (
+            "Programs/WorkBuddy/resources/app.asar.unpacked/cli/bin/codebuddy",
+        ),
+        # ...but do not put that directory on PATH: the file is a Node entry
+        # script, not something Windows can execute, and the engine reaches it
+        # through `%LOCALAPPDATA%` on its own. Pushing it would advertise a
+        # `codebuddy` that nothing can launch.
+        "path_entry": False,
+        "note": (
+            "Hunyuan 3 与 Hunyuan 4 Preview 每天有免费额度；用光之后会自动切到"
+            "同一条线的付费额度把当次任务跑完（分别按 x0.05 与 x0.29 计费），"
+            "并在结束时提示切过。不想自动扣费就选 GLM-5.3 Flash 或 DeepSeek 两行，"
+            "它们本来就按积分计费，没有免费孪生可切。"
+        ),
     },
 }
 
@@ -300,6 +344,12 @@ def local_agent_path_entries() -> list[str]:
 
     entries: list[str] = []
     for provider, spec in LOCAL_AGENT_PROVIDERS.items():
+        # `path_entry: False` is for a CLI whose entry point is not an
+        # executable -- WorkBuddy's is a Node script inside the desktop app.
+        # The engine finds that one through `%LOCALAPPDATA%` itself, so adding
+        # its directory would only advertise a name nothing can launch.
+        if not spec.get("path_entry", True):
+            continue
         if shutil.which(spec["command"]):
             continue
         executable = local_agent_executable(provider)
@@ -479,6 +529,7 @@ class FineSubSettings:
                     "groupId": spec.get("groupId", ""),
                     "groupLabel": spec.get("groupLabel", ""),
                     "tierLabel": spec.get("tierLabel", ""),
+                    "note": "",
                 }
                 for spec in API_PROVIDER_SPECS
             ],
@@ -500,6 +551,10 @@ class FineSubSettings:
                     "groupId": "",
                     "groupLabel": "",
                     "tierLabel": "",
+                    # Prose the page shows under the detection line, for what a
+                    # person has to know before selecting this provider rather
+                    # than after. Empty for the ones with nothing to say.
+                    "note": spec.get("note", ""),
                 }
                 for provider, spec in LOCAL_AGENT_PROVIDERS.items()
             ],

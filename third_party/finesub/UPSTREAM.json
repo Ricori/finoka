@@ -1,51 +1,39 @@
 {
-  "archive_sha256": "cd510998ec76f39040d9ddc8acb20bc445c32fca6d57c3ba8b97e8fdef4791e7",
-  "commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
-  "content_sha256": "6554e9cd5e087acdff3ccdb20e5d041cf7a110731c32bdc1f8a58caedcbb6aab",
-  "engine_bundle_id": "finesub-0.5.0+4638bb7f01d7",
-  "engine_version": "0.5.0",
-  "files_manifest_sha256": "3a96008d9d182f8707f96beb5ef111b4a2fd358c015ccab5c8784ac6aab3d449",
+  "archive_sha256": "5f96a9c6ab0a08ce8370ee577b69f160210259d797f23bb3ea58bce338fa15a6",
+  "commit": "b9b2f10c80abd58ddff739b60461624f51c0789c",
+  "content_sha256": "ede7bd9ec64ebfc9a1e8cba0d274ee27fd5004ed0f015b6f68fca9bc18340917",
+  "engine_bundle_id": "finesub-0.5.1+b9b2f10c80ab",
+  "engine_version": "0.5.1",
+  "files_manifest_sha256": "a682bf99f7c142d97eb8cc7099ecc298f4ff9ffe1cb953cef3f315018e31ba33",
   "patches": [
     {
       "path": "0001-qwen-tail-entry-point.patch",
-      "sha256": "d596cacc4719b1e4ee14eb05d492fb48167bb61e9863531beb76e226a0b45bbc"
+      "sha256": "cf88873057cc9804ab1a025e608dee9301050e68e43741a27c9a363617328710"
     },
     {
       "path": "0002-runtime-tool-manifest.patch",
-      "sha256": "6bbbf572e75d5d549cf32dce7f42f292f97eddf7ec86560834a37cecf01b5e0b"
+      "sha256": "f231b5c9f28b99e693610337aa04f3334098acd62b3d93c57a7aac536052df8d"
     },
     {
       "path": "0003-agy-workspace-read-grant.patch",
-      "sha256": "3288dacc75be17f598f26470586a41455d4d58f6a0e60050f12b3bb9fcd50319"
+      "sha256": "0ffb018a05921259207dc34a3544b00a35891d87418e48b0052fc6af5e62bed2"
     },
     {
-      "path": "0004-qwen-referee-offline-and-nonfatal.patch",
-      "sha256": "81f32f787766b26e7a0d51f71b65730d998948768dbc2de8fa5d2899203cc0a2"
+      "path": "0004-nonoka-042-runtime-marker.patch",
+      "sha256": "c59989c55444ba7517a0119d0f2eb352fadd503191bdfd1f520f4997ec4b0fd1"
     },
     {
-      "path": "0005-nonoka-042-runtime-marker.patch",
-      "sha256": "06a17dda999756cfd342b679e18ba8c3848250f62bd4033f398ac416253758f6"
+      "path": "0005-triton-msvc-c11-empty-struct.patch",
+      "sha256": "834c6ba640779891bcf2367d8a84d4ae2824ec799f88e0a482743eaeac7b28ac"
     },
     {
-      "path": "0006-triton-msvc-c11-empty-struct.patch",
-      "sha256": "e90b2be50b4a5196a76afa3b9e41149c77684cd9d1f3df7e3f4078e51dfa4e6c"
-    },
-    {
-      "path": "0007-referee-live-vram-and-verify-progress.patch",
-      "sha256": "78f41b5714e6a42bcd53f3c24e7865a77deb0fb2c9132b94199a3b384bed9855"
-    },
-    {
-      "path": "0008-aoti-posix-compiler.patch",
-      "sha256": "7d8fe5505eb1f398537a33ed7d1e3ef0daec108420825c92f3c1c8bd6289a414"
-    },
-    {
-      "path": "0009-agent-tool-arg-unicode-escapes.patch",
-      "sha256": "acc11bd64949691172fb9e17d4dc0a5c4f4ca07d0968208c8d1657196c4b3828"
+      "path": "0006-aoti-posix-compiler.patch",
+      "sha256": "abed7a4f64738774bd699012f891e673609766bdff198b506c54bafc8917499c"
     }
   ],
-  "ref": "v0.5.0",
+  "ref": "v0.5.1",
   "repository": "https://github.com/caca2331/finesub",
   "runtime_manifest_sha256": "036bfc3d4725ef49fc9995feb84492625f6fe72cf98c07ed7b4295bb13f10c84",
   "sync_schema": 1,
-  "synced_at": "2026-09-04T06:00:12Z"
+  "synced_at": "2026-09-05T07:36:04Z"
 }

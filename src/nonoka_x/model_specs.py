@@ -76,6 +76,10 @@ class ModelSpec:
     # it can only shrink a window.
     token_scale: float = 1.0
     # Advisory only (task-group floor warnings and artifacts); never routing.
+    # Engine 0.5.1 also accepts a blank cell, meaning "nobody has judged this
+    # model": it clears every floor and says so once as a debug note. This
+    # default stays a number because the table's rows *are* judged -- the
+    # blank is for a row nobody measured, which is not what these are.
     quality_score: int = 70
 
 
@@ -84,9 +88,12 @@ class ModelSpec:
 # cannot be recovered from -- a self-hosted vLLM/Ollama endpoint rejects the
 # request outright -- while not sending it only forgoes a knob.
 #
-# The two numbers are at FineSub's own warning line (194,000 / 64,000), not
-# below it, and that is deliberate as of engine 0.5.0. The engine now checks
-# every bound model before recognition starts
+# The two numbers sit at or above FineSub's own warning line, not below it, and
+# that is deliberate as of engine 0.5.0. (They were exactly on it when written;
+# 0.5.1 lowered the input line to 192,000 for a real model that declares that
+# number, so 194,000 is now a hair above it. Unchanged on purpose -- the
+# argument below is for guessing high, and being above the line is the safe
+# side of it.) The engine checks every bound model before recognition starts
 # (`llm.routing.capabilities.WINDOW_WARN_*` / `WINDOW_REFUSE_*`) and **stops
 # the run** at `max_output < 32,000`. The old placeholder claimed 16,384, so a
 # user who pinned any endpoint this table does not know would have had the task

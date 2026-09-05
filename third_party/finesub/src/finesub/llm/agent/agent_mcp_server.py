@@ -41,11 +41,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import sys
 import time
 import uuid
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .agent_task_runtime import (
     AgentTaskRuntime,
@@ -53,6 +52,11 @@ from .agent_task_runtime import (
     StaleControlGenerationError,
 )
 from .agent_validators import VALIDATOR_BUILDERS, runtime_validators
+from finesub.text import (
+    decodable_escape_count,
+    looks_escaped,
+    unescape_codepoints,
+)
 
 SERVER_NAME = "finesub"
 PROTOCOL_VERSION = "2025-06-18"
@@ -326,62 +330,74 @@ def _page_end(text: str, offset: int, limit_bytes: int) -> int:
     return end
 
 
-# One `\uXXXX` escape as a CLI that cannot put a non-ASCII character into a
-# tool argument writes it (see `_unescaped_tool_text`).
-_ESCAPED_CODEPOINT = re.compile(r"\\u([0-9a-fA-F]{4})")
-_ESCAPE_REPAIR_REPORTED = False
+def _frame_strings(value: Any) -> Iterator[str]:
+    """Every string in one call's arguments, in no particular order."""
+
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _frame_strings(item)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for item in value:
+            yield from _frame_strings(item)
 
 
-def _unescaped_tool_text(value: str) -> str:
-    r"""Repair one tool argument whose non-ASCII characters arrived escaped.
+def _decoded_frame(value: Any) -> Any:
+    """`unescape_codepoints` over every string, once the frame is judged."""
 
-    antigravity-cli 1.1.24 spells every non-ASCII codepoint of a `tools/call`
-    argument as a literal `\uXXXX` *inside* the JSON string, so `json.loads`
-    hands back the six characters of the escape instead of the character
-    (measured 2026-09-04: a `submit` payload arrived as 5988 ASCII characters
-    carrying 815 backslashes, every one of them followed by `u`, and that
-    window's subtitles reached the SRT as `\u4f1d\u3048...`). Only
-    the non-ASCII characters are treated this way -- quotes and backslashes are
-    not doubled -- so the argument is not a JSON string to parse, and the
-    escapes are decoded where they stand.
-
-    An argument is touched only when it is pure ASCII, carries such an escape
-    and yields a non-ASCII character by it: text that meant to hold the six
-    characters `\u0041` decodes to ASCII and is left alone, and a driver that
-    delivers its arguments intact never matches at all.
-    """
-
-    if not value.isascii() or "\\u" not in value:
-        return value
-    decoded = _ESCAPED_CODEPOINT.sub(lambda match: chr(int(match.group(1), 16)), value)
-    if any("\ud800" <= character <= "\udfff" for character in decoded):
-        # A character outside the BMP arrives as two escapes, one surrogate each.
-        try:
-            decoded = decoded.encode("utf-16", "surrogatepass").decode("utf-16")
-        except UnicodeError:
-            return value
-    return value if decoded.isascii() else decoded
+    if isinstance(value, str):
+        return unescape_codepoints(value)
+    if isinstance(value, Mapping):
+        return {key: _decoded_frame(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_decoded_frame(item) for item in value]
+    return value
 
 
 def _unescaped_arguments(value: Any) -> Any:
-    """`_unescaped_tool_text` over every string in one call's arguments."""
+    r"""One call's arguments, with `\uXXXX`-escaped text decoded.
 
-    if isinstance(value, str):
-        repaired = _unescaped_tool_text(value)
-        if repaired is not value:
-            global _ESCAPE_REPAIR_REPORTED
-            if not _ESCAPE_REPAIR_REPORTED:
-                _ESCAPE_REPAIR_REPORTED = True
-                sys.stderr.write(
-                    "agent_mcp_server: this CLI escaped the non-ASCII characters "
-                    "of its tool arguments as \\uXXXX; decoding them\n"
-                )
-        return repaired
-    if isinstance(value, Mapping):
-        return {key: _unescaped_arguments(item) for key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [_unescaped_arguments(item) for item in value]
-    return value
+    antigravity-cli 1.1.24 cannot put a non-ASCII character into a tool
+    argument: it writes every one of them as a literal escape *inside* the
+    JSON string, so `json.loads` hands back the six characters. The repair
+    sits here, where the frame enters -- before the request fingerprint and
+    before any handler reads the arguments -- because a repaired argument is
+    the argument the model wrote, and everything downstream should see that
+    one.
+
+    ⚠ **Judged over the whole frame, then applied to every string in it.** The
+    fault is frame-shaped: the CLI escapes everything it sends. Density is not
+    -- one mostly-English note carrying two CJK characters falls under
+    `looks_escaped`'s floor by itself. Judging per field would decode some
+    cells of a reply and leave others escaped, and a half-repaired row is
+    worse than either whole answer.
+
+    **Never silent, and once per frame rather than once per process**: the
+    artifact records what the harness *received*, which after this runs is the
+    repaired text, so nothing downstream keeps the original. The stderr line
+    is therefore the only record that an edit happened at all -- it lands in
+    the capsule's `events/stderr.log`, which is where
+    `local_agent._empty_answer_error` already sends readers. It carries the
+    escape count so a reader can tell a whole corrupted window (dozens) from a
+    single ambiguous edit (one), which is the case worth a second look.
+
+    This is the recovery half; the guarantee is `output_protocol._refused_reply`,
+    which refuses escaped text outright. With the repair in place that refusal
+    should never fire -- and if it does, it means the predicate missed a new
+    shape, which is exactly when the loud failure is the one worth having
+    (plan: decision one).
+    """
+
+    joined = "".join(_frame_strings(value))
+    if not looks_escaped(joined):
+        return value
+    sys.stderr.write(
+        "agent_mcp_server: this CLI escaped the non-ASCII characters of its "
+        f"tool arguments; decoding {decodable_escape_count(joined)} "
+        "of them\n"
+    )
+    return _decoded_frame(value)
 
 
 def request_id_for(
@@ -542,8 +558,7 @@ class HarnessToolServer:
         if method == "tools/call":
             name = str(params.get("name") or "")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), Mapping) else {}
-            # Before any handler reads them and before the request
-            # fingerprint: a repaired argument is the argument the model wrote.
+            # Before the request fingerprint and before any handler reads them.
             arguments = _unescaped_arguments(arguments)
             return self._result(rpc_id, self._call(name, arguments, rpc_id=rpc_id))
         if rpc_id is None:

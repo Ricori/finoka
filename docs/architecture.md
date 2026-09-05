@@ -115,8 +115,8 @@ interface ExecutionProvider {
   "artifact_schema": 1,
   "engine": {
     "name": "finesub",
-    "version": "0.5.0",
-    "commit": "4638bb7f01d7ba52520395dad9905e873ba09452"
+    "version": "0.5.1",
+    "commit": "b9b2f10c80abd58ddff739b60461624f51c0789c"
   },
   "features": {
     "raw_srt": true,
@@ -191,8 +191,8 @@ interface ExecutionProvider {
     "message": "正在转写"
   },
   "engine": {
-    "version": "0.5.0",
-    "commit": "4638bb7f01d7ba52520395dad9905e873ba09452"
+    "version": "0.5.1",
+    "commit": "b9b2f10c80abd58ddff739b60461624f51c0789c"
   },
   "requested_capabilities": {},
   "effective_capabilities": {},
@@ -227,7 +227,7 @@ interface ExecutionProvider {
 {
   "schema": 1,
   "task_id": "task_abc123",
-  "engine_commit": "4638bb7f01d7ba52520395dad9905e873ba09452",
+  "engine_commit": "b9b2f10c80abd58ddff739b60461624f51c0789c",
   "artifacts": {
     "stable_json": {
       "uri": "file:///.../video-stable.json",

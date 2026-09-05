@@ -1,4 +1,4 @@
-Subject: [PATCH 1/4] Make the Qwen pass runnable on its own
+Subject: [PATCH 1/6] Make the Qwen pass runnable on its own
 
 Reason: Nonoka X's cloud deployment rents its accelerator by the second and runs
 one FineSub task across three containers. Upstream 0.5.0 split the VAD half out
@@ -22,6 +22,15 @@ the same arguments, so the evidence is not a second implementation. Idempotent
 by construction -- an artifact that already carries `asr_align.qwen_verify` is
 returned untouched -- which is what lets a resumed run call it without checking.
 
+Containment is upstream's own, not ours: 0.5.1 answered the "a failed referee
+must not take the run down" half of the old patch 0004 with
+`contained_verification`, and this entry point calls it rather than restating
+the policy. The cloud reaches here with the default `qwen_verify="auto"`, so
+without it a hub that cannot be reached would discard an alignment pass the GPU
+container has already been billed for. 0.5.1 likewise absorbed the offline
+weight load (`speech/runtime/hf_weights`), which is why nothing about loading
+the referee is patched any more.
+
 `tests/test_split_stage_contract.py` in the Nonoka X repository enforces that
 reading: one file touched, nothing but additions.
 
@@ -30,10 +39,9 @@ existing aligned artifact, or once Nonoka X stops splitting the stage across
 containers.
 
 diff --git a/src/finesub/speech/recognition/vad_asr_stage.py b/src/finesub/speech/recognition/vad_asr_stage.py
-index 9965f28..6d1ac6f 100644
 --- a/src/finesub/speech/recognition/vad_asr_stage.py
 +++ b/src/finesub/speech/recognition/vad_asr_stage.py
-@@ -536,6 +536,125 @@ def write_aligned_json(
+@@ -536,6 +536,139 @@ def write_aligned_json(
      )
  
  
@@ -59,6 +67,10 @@ index 9965f28..6d1ac6f 100644
 +    already-loaded :class:`~finesub.speech.verification.qwen_referee.QwenReferee`
 +    so a caller that warmed one in the background can hand it over; ownership
 +    stays with whoever created it.
++
++    A failed pass is contained by :func:`contained_verification` -- upstream's
++    own policy, called rather than restated, so this entry point and the inline
++    one cannot drift on the question of which failures end a run.
 +    """
 +
 +    if qwen_verify not in {"auto", "on", "off"}:
@@ -112,15 +124,25 @@ index 9965f28..6d1ac6f 100644
 +    owns_referee = referee is None
 +    active_referee = referee or qwen_referee.QwenReferee(device=device)
 +    try:
-+        verified, verify_stats = qwen_referee.apply_verification(
-+            segments,
-+            vad_intervals=intervals,
-+            audio_path=str(source),
-+            referee=active_referee,
++        outcome = contained_verification(
++            lambda: qwen_referee.apply_verification(
++                segments,
++                vad_intervals=intervals,
++                audio_path=str(source),
++                referee=active_referee,
++            ),
++            qwen_verify=qwen_verify,
 +        )
 +    finally:
 +        if owns_referee:
 +            active_referee.close()
++    if outcome is None:
++        # The artifact is left exactly as it was found, `qwen_verify` key
++        # included -- absent. That absence is the condition this function
++        # tests on entry, so a run whose evidence was lost to a transient
++        # fault is still eligible for it next time round.
++        return destination
++    verified, verify_stats = outcome
 +    elapsed = time.perf_counter() - started
 +    payload["segments"] = verified
 +    align_meta["qwen_verify"] = verify_stats

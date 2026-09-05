@@ -1,4 +1,4 @@
-Subject: [PATCH 2/4] Declare the runtime tools Nonoka X needs
+Subject: [PATCH 2/6] Declare the runtime tools Nonoka X needs
 
 Reason: Nonoka X has no resource system of its own -- every managed binary it can
 find lives under `finesub/runtime/<id>/`, resolved by `managedtools` -- so a tool
