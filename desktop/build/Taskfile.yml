@@ -81,7 +81,7 @@ tasks:
     run: once
     sources:
       - ../scripts/run_local_sidecar.py
-      - ../bootstrap-requirements.win-py312.txt
+      - ../bootstrap-requirements.py312.txt
       - ../src/nonoka_x/**/*
       - exclude: ../src/nonoka_x/**/__pycache__/**/*
       - exclude: ../src/nonoka_x/**/*.pyc

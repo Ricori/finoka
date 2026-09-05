@@ -12,6 +12,7 @@ import (
 	"github.com/Ricori/nonoka-x/desktop/internal/assstyles"
 	"github.com/Ricori/nonoka-x/desktop/internal/cloud"
 	"github.com/Ricori/nonoka-x/desktop/internal/library"
+	"github.com/Ricori/nonoka-x/desktop/internal/managedtools"
 	"github.com/Ricori/nonoka-x/desktop/internal/plugins"
 	"github.com/Ricori/nonoka-x/desktop/internal/preferences"
 	"github.com/Ricori/nonoka-x/desktop/internal/provider"
@@ -40,6 +41,11 @@ func init() {
 // non-fatal: the shell remains available so the settings/runtime UI can explain
 // what is missing. The failure is retained in the manager's safe Snapshot.
 func Run(assets fs.FS) error {
+	// Before anything resolves an executable: a macOS app started from Finder
+	// inherits launchd's bare PATH, and every LookPath below -- the sidecar
+	// interpreter, ffmpeg, git -- would otherwise miss tools the user has
+	// installed.
+	managedtools.EnsureSearchPath()
 	selfupdate.CleanupReplacedExecutables()
 	migration, err := migrateDefaultDataDirectory()
 	if err != nil {

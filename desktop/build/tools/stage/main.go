@@ -32,7 +32,7 @@ func main() {
 	must(os.MkdirAll(destination, 0o755))
 
 	entries := []string{
-		"bootstrap-requirements.win-py312.txt",
+		"bootstrap-requirements.py312.txt",
 		"scripts/run_local_sidecar.py",
 		"src/nonoka_x",
 		"third_party/finesub/src",
